@@ -1,0 +1,6 @@
+data-processing/venv/
+/venv
+
+backend/node_modules/
+frontend/node_modules/
+/node_modules
