@@ -1,7 +1,6 @@
 # Virtual environment dependencies
 data-processing/venv/
 venv/
-data-processing/FinanceSheet25.csv
 
 # Dependencies
 node_modules/
@@ -64,6 +63,7 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*.csv
 
 # Package manager files
 package-lock.json
