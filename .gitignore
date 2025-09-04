@@ -1,6 +1,7 @@
 # Virtual environment dependencies
 data-processing/venv/
 venv/
+data-processing/FinanceSheet25.csv
 
 # Dependencies
 node_modules/
