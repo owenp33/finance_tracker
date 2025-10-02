@@ -80,12 +80,27 @@ class recurringTransaction(transaction): #takes a recurringTransaction dict, and
 
 class bankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
     def __init__ (self, acctInfo: dict, acctId: None):
-        self.transactions = {}
-        self.recurring = {}
-        
-    def add_transaction(self, ):
-    
-    def add_recurring(self, ): 
+        self.transactions = {} #dictionary of name?:transaction pairs
+        self.recurring = {} #dictionary of name?:recurringTransaction object pairs
+        if acctInfo is None:
+            acctInfo = {
+                'acctId': acctId,
+                'transactions': {},
+                'recurring': {}
+                }
+        for trans in acctInfo['transactions']: #Convert each into object and store in self.transactions
+            pass
+        for rec in acctInfo['recurring']:
+            pass
+        self.acctId = acctInfo['acctId']
+
+    def add_transaction(self, trans: transaction):
+        self.transactions[(trans.get_vendor() + trans.get_date().isoformat())] = trans
+        #also add to acctInfo and change balance, and update finance Acct
+
+    def add_recurring(self, rec: recurringTransaction):
+        self.recurring[(rec.get_vendor()+ rec.get_date().isoformat())] = rec
+        #also add to acctInfo and update finance acct
 
 class FinanceAcc: #Reads json into dict, calls account contructor, uses account to respond to api calls
     def __init__(self, filename: str, user=None):
