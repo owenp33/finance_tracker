@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta, date
 from abc import ABC, abstractmethod
 
@@ -24,40 +25,57 @@ class FinanceAcct:
                 new_trans = [('date', date), ('store', store), ('category', category), ('amount', amount)]
                 self.transactions.update(new_trans)
                 
-            
-                
-                    
-                    
 
-class transaction(ABC):
+class Transaction(ABC):
+    """Abstract base class for all types of transactions"""
     @abstractmethod
-    def __init__(self,date:date, vendor:str, cat:str, amnt:float):
-        self.date=date # Date when the transaction occured or will occur
-        self.vendor=vendor
-        self.category=cat
-        self.amount=amnt
+    def __init__(self, day: date, vend: str, cat: str, amnt: float):
+        self.date = day # Date when the transaction occured or will occur
+        self.vendor = vend
+        self.category = cat
+        self.amount = amnt
+
+    @abstractmethod
+    def return_dict(self) -> dict:
         pass
-    @abstractmethod
-    def return_as_dict(self):
-        pass
-    @abstractmethod
-    def get_date(self):
-        pass
-    @abstractmethod
+
+    def get_date(self) -> date:
+        return self.date
+
     def get_vendor(self):
-        pass
-    @abstractmethod
-    def get_cat(self):
-        pass
-    @abstractmethod
-    def get_amnt(self):
-        pass
+        return self.vendor
 
-class completedTransaction(transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
+    def get_category(self):
+        return self.category
+
+    def get_amount(self):
+        return self.amount
     
-    pass
+    def edit(self, date: Optional[date] = None, vendor: Optional[str] = None, category: Optional[str] = None, amount: Optional[float] = None):
+        """Edit transaction"""
+        if date is not None:
+            self.date = date
+        if vendor is not None:
+            self.vendor = vendor
+        if category is not None:
+            self.category = category
+        if amount is not None:
+            self.amount = amount
 
-class recurringTransaction(transaction): #takes a recurringTransaction dict, and turns it into an object, similar to above 
+class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
+    def __init__(self, day: date, vend: str, cat: str, amnt: float):
+        super().__init__(day, vend, cat, amnt)
+    
+    def return_dict(self) -> dict:
+        return {
+            'type': 'single',
+            'date': self.date.isoformat(),
+            'vendor': self.vendor,
+            'category': self.category,
+            'amount': self.amount
+        }
+
+class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and turns it into an object, similar to above 
     def __init__(self, next:date, freq:int, num:int):
         self.frequency = freq
         self.number = num
