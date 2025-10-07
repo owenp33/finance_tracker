@@ -68,7 +68,6 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
     
     def return_dict(self) -> dict:
         return {
-            'type': 'single',
             'date': self.date.isoformat(),
             'vendor': self.vendor,
             'category': self.category,
@@ -76,7 +75,9 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
         }
 
 class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and turns it into an object, similar to above 
-    def __init__(self, next:date, freq:int, num:int):
+    def __init__(self, day: date, vend: str, cat: str, amnt: float, next:date, freq:int, num:int):
+        super().__init__(day, vend, cat, amnt)
+        self.next = next
         self.frequency = freq
         self.number = num
         pass
@@ -84,13 +85,23 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         return self.date
     
     def get_remaining_dates(self):
-        return [self.date + timedelta(days=i*self.frequency) for i in range(self.number)] # if number is -1 (goes on forever)
+        return [self.date + timedelta(days=i*self.frequency) for i in range(max(self.number, 10))] # if number is -1 (goes on forever)
     
     def get_vendor(self):
         return self.vendor
 
     def get_cat(self):
         return self.category
+    
+    def get_next_date(self):
+        now = date.today()
+        i = 0
+        if ((now - self.next) > 0):
+            return self.next
+        while (now - self.next or self.number >= i + 1):
+            i =+ 1
+            # do some functionality to add transaction as a single transaction
+            self.next = self.next + timedelta(days=self.frequency)
 
     def get_amnt(self):
         return self.amount
