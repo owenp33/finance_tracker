@@ -112,12 +112,9 @@ class bankAccount: #Takes dict of details, transactions, and recurring transacti
             pass
         self.acctId = acctInfo['acctId']
 
-    def add_transaction(self, trans: transaction):
-        self.transactions[(trans.get_vendor() + trans.get_date().isoformat())] = trans
+    def add_transaction(self, trans: Transaction):
+        self.transactions[(trans.get_vendor() + trans.get_date().isoformat())] = trans#.asDict()
         #also add to acctInfo and change balance, and update finance Acct
-
-    def add_recurring(self, rec: recurringTransaction):
-        self.recurring[(rec.get_vendor()+ rec.get_date().isoformat())] = rec
         #also add to acctInfo and update finance acct
 
 class FinanceAcc: #Reads json into dict, calls account contructor, uses account to respond to api calls
