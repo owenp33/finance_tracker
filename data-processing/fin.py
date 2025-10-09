@@ -86,7 +86,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         return self.date
     
     def get_remaining_dates(self):
-        return [self.date + timedelta(days=i*self.frequency) for i in range(max(self.number, 10))] # if number is -1 (goes on forever)
+        return [self.next + timedelta(days=i*self.frequency) for i in range(max(self.number, 10))] # if number is -1 (goes on forever)
     
     def get_vendor(self):
         return self.vendor
@@ -94,23 +94,34 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
     def get_cat(self):
         return self.category
     
-    def get_next_date(self):
+    def get_next_date(self, f:Optional[int] = None):
         now = date.today()
         i = 0
-        if ((self.next = None) or ((now - self.next) > 0)):
+        if (self.next == None) or ((now - self.next) > 0):
             return self.next
         while ((now - self.next) or (self.number >= i + 1)):
             i =+ 1
-            # do some functionality to add transaction as a single transaction
-            self.next = self.next + timedelta(days=self.frequency)
+            if (f > self.frequency):
+                self.next = self.next + timedelta(days=f)
+            elif (self.frequency > f):
+                self.next = self.next + timedelta(days=(self.frequency + f))
+            else:
+                self.next = self.next + timedelta(days=self.frequency)
         self.number =- i
         return self.next
 
     def update(self): ## To be implemented
-        dates = get_remaining_dates()
-        next = get_next_date()
+        dates = self.get_remaining_dates()
+        next = self.get_next_date()
+        now = date.today()
+        
+        while (now < next):
+            next = next + timedelta(days=self.frequency)
+        
         for day in (dates):
-            if 
+            if (now > day):
+                
+                
         pass
 
     def get_amnt(self):
