@@ -98,54 +98,65 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
 
 
 class FinanceAcc: #Reads json into dict, calls account contructor, uses account to respond to api calls
+    from fin import bankAccount
     def __init__(self, filename: str, user=None): #has a dict of account objects, and a dict of all account info from json
+        self.fullDict = {} #full json dict read from file
+        self.bankAccounts = {} #dictionary of acctId:bankAccount object pairs
+        
         if user is None:
-            #process account from file
+            #process account from file: call bankAccount for each account, use key as acctId
+            #Load json dict from file, generate object dict from json dict 
             pass
         else:
             #new user, create file 
             pass
-    def update(self): #updates json dict, then writes to file
+    def update(self, acctId=None): #updates json dict, then writes to file. If acctId is None, update all accounts, else just that one
+        #every fifth update call save to file
         pass
-    def add_account(self):
+    
+    def add_account(self, account: bankAccount): #to generate new, use empty dict, acctId generated from name, and a new name. Otherwise use info from json
+        
+        #update json dict after adding
         pass
 
 
 class bankAccount: #Takes dict and the uniqueID for that dict, generates transaction objects
-    def __init__ (self, parentAcc: FinanceAcc, acctInfo: dict, acctId: str):
+    def __init__ (self, parentAcc: FinanceAcc, acctInfo: dict, acctId: str, name: Optional[str] = None):
         self.parentAcc = parentAcc 
 
         self.transactions = {} #dictionary of name?:transaction pairs
         self.recurring = {} #dictionary of name?:recurringTransaction object pairs
+        self.balance = 0.0
         self.acctId = acctId
         self.acctInfo = acctInfo
+
         if self.acctInfo is None:
-            acctInfo = {
-                'name': 'TEMP',
-                'curBalance': -1,
+            if name is None:
+                raise ValueError("Must provide a name for new account")
+            self.acctInfo = {
+                'name': name,
+                'curBalance': 0.0,
                 'transactions': {},
                 'recurring': {}
                 }
         for trans in self.acctInfo['transactions']: #Convert each into object and store in self.transactions
-            self.add_transaction(SingleTransaction(
+            self.add_transaction(SingleTransaction( #check for arg changes
                 day=date.fromisoformat(trans['date']),
                 vend=trans['vendor'],
                 cat=trans['category'],
                 amnt=trans['amount']
             ))
         for rec in self.acctInfo['recurring']:
-            pass
-        self.balance = self.acctInfo['curBalance']
+            self.add_recurring(RecurringTransaction( #Check for arg changes / order
+                parentAcc=self,
+                next=date.fromisoformat(rec['date']),
+                freq=rec['frequency'],
+                num=rec['number']
+            ))
         self.name = self.acctInfo['name']
     
     def update(self):
-        #update dict balance, call parent update
-        self.acctInfo['curBalance'] = self.balance
-        self.parentAcc.update()
-        #for transaction in self, acctInfo[transactions][key] = trans.return_dict()
-        #for recurring in self, acctInfo[recurring][key] = rec.return_dict()
-        #self.balance =
-        #update balance and dictionary with values from objects
+        self.parentAcc.update(self.acctId) #Calls parent to update json dict
 
     def add_transaction(self, trans: Transaction):
         #Check if transaction with same name and date exists, if so, try again with #0-9 appended
@@ -159,19 +170,22 @@ class bankAccount: #Takes dict and the uniqueID for that dict, generates transac
         self.transactions[key] = trans #Key:val is stored in OBJ Dict
         self.acctInfo['transactions'][key] = trans.return_dict() #Key:val is stored in JSON dict
         self.balance += trans.get_amount()
-        self.update() #Key:val is stored in JSON dict
-        #also add to acctInfo and change balance, and update finance Acct
-        #also add to acctInfo and update finance acct
+        self.acctInfo['curBalance'] = self.balance
     
-    def add_recurring(self, rec: RecurringTransaction): #pass self to recurring so it can call add_transaction
-
-        self.update()
-        pass
+    def add_recurring(self, rec: RecurringTransaction): 
+        key = rec.get_vendor() + rec.get_date().isoformat()
+        if key in self.recurring:
+            for i in range(10):
+                new_key = f"{key}#{i}"
+                if new_key not in self.recurring:
+                    key = new_key
+                    break
+        self.recurring[key] = rec #Key:val is stored in OBJ Dict
+        self.acctInfo['recurring'][key] = rec.return_dict() #Key:val is stored in JSON dict
 
     def get_balance(self):
         return self.balance
 
     def return_dict(self):
-        self.update()
         return self.acctInfo
 
