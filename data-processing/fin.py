@@ -96,16 +96,38 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
     def get_next_date(self):
         now = date.today()
         i = 0
-        if ((now - self.next) > 0):
+        if ((self.next = None) or ((now - self.next) > 0)):
             return self.next
-        while (now - self.next or self.number >= i + 1):
+        while ((now - self.next) or (self.number >= i + 1)):
             i =+ 1
             # do some functionality to add transaction as a single transaction
             self.next = self.next + timedelta(days=self.frequency)
+        self.number =- i
+        return self.next
+
+    def update(self): ## To be implemented
+        pass
 
     def get_amnt(self):
         return self.amount
-
+    
+    def edit(self, date: Optional[date] = None, vendor: Optional[str] = None, category: Optional[str] = None, amount: Optional[float] = None,
+             next: Optional[date] = None, freq: Optional[int] = None, num: Optional[int] = None):
+        """Edit transaction"""
+        if date is not None:
+            self.date = date
+        if vendor is not None:
+            self.vendor = vendor
+        if category is not None:
+            self.category = category
+        if amount is not None:
+            self.amount = amount
+        if next is not None:
+            self.next = next
+        if freq is not None:
+            self.frequency = freq
+        if num is not None:
+            self.number = num
 
 class bankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
     def __init__ (self, acctInfo: dict, acctId: None):
