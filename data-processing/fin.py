@@ -81,7 +81,8 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         self.frequency = freq
         self.number = num
         pass
-    def get_date(self):
+    
+    def get_date(self): 
         return self.date
     
     def get_remaining_dates(self):
@@ -106,6 +107,10 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         return self.next
 
     def update(self): ## To be implemented
+        dates = get_remaining_dates()
+        next = get_next_date()
+        for day in (dates):
+            if 
         pass
 
     def get_amnt(self):
@@ -128,6 +133,17 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             self.frequency = freq
         if num is not None:
             self.number = num
+            
+    def return_dict(self) -> dict: 
+        return {
+            'start': self.date.isoformat(),
+            'vendor': self.vendor,
+            'category': self.category,
+            'amount': self.amount,
+            'next': self.next.isoformat(),
+            'frequency': self.frequency,
+            'number': self.number
+        }
 
 class bankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
     def __init__ (self, acctInfo: dict, acctId: None):
