@@ -1,10 +1,21 @@
-import pandas as pd
-import numpy as np
-import json
-import re
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta, date
+"""
+Transaction.py - Transaction class definitions
+
+Contains:
+- Transaction (Abstract Base Class)
+- SingleTransaction (One-time transactions)
+- RecurringTransaction (Recurring transactions with auto-generation)
+"""
+
 from abc import ABC, abstractmethod
+from datetime import date, timedelta
+from typing import Optional, List
+
+# from typing import Dict
+# import pandas as pd
+# import numpy as np
+# import json
+# import re
 
 class Transaction(ABC):
     """Abstract base class for all types of transactions"""
@@ -16,7 +27,7 @@ class Transaction(ABC):
         self.category = cat
         self.amount = amnt
         self.notes = desc
-
+        
     @abstractmethod
     def return_dict(self) -> dict:
         pass
@@ -36,8 +47,9 @@ class Transaction(ABC):
     def get_notes(self) -> str:
         return self.notes
         
-    def edit(self, day: Optional[date] = None, vend: Optional[str] = None, cat: Optional[str] = None, amnt: Optional[float] = None,
-             desc: Optional[str] = None):
+    def edit(self, day: Optional[date] = None, vend: Optional[str] = None, 
+             cat: Optional[str] = None, amnt: Optional[float] = None,
+             desc: Optional[str] = None) -> None:
         """Edit transaction"""
         if day is not None:
             self.date = day
@@ -49,6 +61,7 @@ class Transaction(ABC):
             self.amount = amnt
         if desc is not None:
             self.notes = desc
+
 
 class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
     """A one-time transaction"""
@@ -65,23 +78,26 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
             'notes': self.notes,
             'type': 'single' # possibly remove later ?
         }
-
+    
+        
 class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and turns it into an object, similar to above 
     """A recurring transaction with automatic generation"""
     
     def __init__(self, day: date, vend: str, cat: str, amnt: float, 
-                 desc: str = "", nxt: date = None, freq: int = 30, num:int = -1):
+                 desc: str = "", nxt: Optional[date] = None, 
+                 freq: int = 30, num: int = -1) -> None:
         super().__init__(day, vend, cat, amnt, desc)
-        self.next = nxt if nxt else (day + timedelta(days=self.frequency))
+        self.next = nxt if nxt else (day + timedelta(days=freq))
         self.frequency = freq
         self.number = num
 
-    def get_remaining_dates(self):
-        """Get upcoming transaction dates (max 5)"""
+    def get_remaining_dates(self, limit: int = 5) -> List[date]:
+        """Get upcoming transaction dates (max limit = 5)"""
         if self.number == -1:
-            return [self.next + timedelta(days=i*self.frequency) for i in range(5)]
+            return [self.next + timedelta(days=i*self.frequency) for i in range(limit)]
         else:
-            return [self.next + timedelta(days=i*self.frequency) for i in range(min(self.number, 5))]
+            return [self.next + timedelta(days=i*self.frequency)
+                    for i in range(min(self.number, limit))]
 
     def update(self, account: 'BankAccount') -> int:
         """Generate SingleTransactions for all passed dates"""
@@ -111,7 +127,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         return num_trans
     
     def edit(self, day: Optional[date] = None, vend: Optional[str] = None, cat: Optional[str] = None, amnt: Optional[float] = None,
-             desc: Optional[str] = "", nxt: Optional[date] = None, freq: Optional[int] = None, num: Optional[int] = None):
+             desc: Optional[str] = "", nxt: Optional[date] = None, freq: Optional[int] = None, num: Optional[int] = None) -> None:
         """Edit transaction"""
         super().edit(day, vend, cat, amnt, desc)
         if nxt is not None:
