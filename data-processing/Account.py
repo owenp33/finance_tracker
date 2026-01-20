@@ -3,8 +3,8 @@ Account.py - Bank account and financial account management
 
 Contains:
 - BankAccount (Manages transactions for a single bank account)
-- FinanceAcc (Manages multiple bank accounts for a user)
-- FinanceDataProcessor (CSV import and data analysis utilities)
+# - FinanceAcc (Manages multiple bank accounts for a user)
+# - FinanceDataProcessor (CSV import and data analysis utilities)
 """
 
 import pandas as pd
