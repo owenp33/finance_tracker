@@ -12,8 +12,6 @@ import json
 import re
 from typing import Dict, List, Optional
 from datetime import datetime, date
-
-# Import transaction classes
 from Transaction import SingleTransaction, RecurringTransaction
 
 class BankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
@@ -72,8 +70,24 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
     def update_recurring(self) -> int:
         """Updates all recurring transactions (called on login)"""
         total_gen = 0
+        now = date.today()
+        
         for rec in self.recurring.values():
-            total_gen += rec.update(self)
+            # Generate transactions for all passed dates
+            while rec.next <= now and rec.number != 0:
+                # Create new single transaction
+                new_transaction = SingleTransaction(
+                    day=rec.next,
+                    vend=rec.vendor,
+                    cat=rec.category,
+                    amnt=rec.amount,
+                    desc=f"Auto-generated from recurring ({rec.frequency} days)"
+                )
+                
+                self.add_transaction(new_transaction)
+                rec.advance_to_next()
+                total_gen += 1
+        
         return total_gen
     
     def get_balance(self) -> float:
@@ -298,10 +312,14 @@ class FinanceDataProcessor:
         """
         Load and clean financial CSV data
         
-        Expected CSV format:
-            date,store,category,expense,income,account,notes
-            01/23/2025,Fresh Thyme,Grocery,51.71,,StarBank 0101,
+        Expected CSV format
+        1)  date,vendor,category,expense,income,account,(notes)
+            01/23/2025,Fresh Thyme,Grocery,51.71,,StarBank 0101,ramen night!
             01/24/2025,Salary,Income,,"3,292.37",StarBank 0101,Paycheck
+            
+        2)  date,vendor,category,amount,account,(notes)
+            01/23/2025,Fresh Thyme,Grocery,51.71,StarBank 0101,ramen night!
+            01/24/2025,Salary,Income,"3,292.37",StarBank 0101,Paycheck
         """
         # Read CSV
         df = pd.read_csv(filepath)
@@ -313,25 +331,33 @@ class FinanceDataProcessor:
         df['date'] = df['date'].apply(FinanceDataProcessor.parse_date)
         
         # Clean currency columns
-        if 'expense' in df.columns:
+        if 'expense' and 'income' in df.columns:
             df['expense'] = df['expense'].apply(FinanceDataProcessor.clean_currency)
-        else:
-            df['expense'] = 0.0
-            
-        if 'income' in df.columns:
             df['income'] = df['income'].apply(FinanceDataProcessor.clean_currency)
+                
+            df['amount'] = df['income'] - df['expense']
+
+        elif 'amount' in df.columns:
+            df['amount'] = df['amount'].apply(FinanceDataProcessor.clean_currency)
         else:
-            df['income'] = 0.0
+            raise ValueError(
+            "CSV must have either 'expense' and 'income' columns, "
+            "or a single 'amount' column"
+        )
         
         # Calculate net amount (income is positive, expense is negative)
         df['amount'] = df['income'] - df['expense']
         
         # Fill NA values
-        df['store'] = df['store'].fillna('Unknown')
+        df['vendor'] = df['vendor'].fillna('Unknown')
         df['category'] = df['category'].fillna('Uncategorized')
         df['account'] = df['account'].fillna('Default')
-        df['notes'] = df['notes'].fillna('')
+        df['notes'] = df['notes'].fillna('') if 'notes' in df.columns else ''
         
+        # Ensure all required columns exist
+        required_columns = ['date', 'vendor', 'category', 'amount', 'account']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+            
         return df
     
     @staticmethod
