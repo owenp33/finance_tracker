@@ -74,7 +74,7 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
         
         for rec in self.recurring.values():
             # Generate transactions for all passed dates
-            while rec.next <= now and rec.number != 0:
+            while rec.next <= now and (rec.idx < self.num or self.num == -1):
                 # Create new single transaction
                 new_transaction = SingleTransaction(
                     day=rec.next,
@@ -318,10 +318,9 @@ class FinanceDataProcessor:
             01/24/2025,Salary,Income,,"3,292.37",StarBank 0101,Paycheck
             
         2)  date,vendor,category,amount,account,(notes)
-            01/23/2025,Fresh Thyme,Grocery,51.71,StarBank 0101,ramen night!
+            01/23/2025,Fresh Thyme,Grocery,-51.71,StarBank 0101,ramen night!
             01/24/2025,Salary,Income,"3,292.37",StarBank 0101,Paycheck
         """
-        # Read CSV
         df = pd.read_csv(filepath)
         
         # Clean column names (lowercase and strip whitespace)
@@ -345,9 +344,6 @@ class FinanceDataProcessor:
             "or a single 'amount' column"
         )
         
-        # Calculate net amount (income is positive, expense is negative)
-        df['amount'] = df['income'] - df['expense']
-        
         # Fill NA values
         df['vendor'] = df['vendor'].fillna('Unknown')
         df['category'] = df['category'].fillna('Uncategorized')
@@ -357,7 +353,10 @@ class FinanceDataProcessor:
         # Ensure all required columns exist
         required_columns = ['date', 'vendor', 'category', 'amount', 'account']
         missing_columns = [col for col in required_columns if col not in df.columns]
-            
+        
+        if missing_columns:
+            raise ValueError(f"CSV is missing required columns: {missing_columns}")
+    
         return df
     
     @staticmethod
