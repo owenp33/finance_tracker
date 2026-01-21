@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, date
 
 # Import transaction classes
-from Transaction import Transaction, SingleTransaction, RecurringTransaction
+from Transaction import SingleTransaction, RecurringTransaction
 
 class BankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
     """Manages transactions and recurring transactions for a banking account"""
@@ -104,7 +104,152 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
             'transactions': {k: v.return_dict() for k, v in self.transactions.items()},
             'recurring': {k: v.return_dict() for k, v in self.recurring.items()}
         }
+    
+
+class FinanceAccount:
+    """Main account manager, handling multiple bank accounts"""
+    
+    def __init__(self, filename: str, user: Optional[str] = None):
+        """
+        Initialize finance account manager
+        - filename: JSON file path for data persistence
+        - user: Username (for new accounts). If None, loads from file.
+        """
+        self.filename = filename
+        self.user = user
+        self.accounts: Dict[str, 'BankAccount'] = {}
         
+        if user is None:
+            # Load existing account from file
+            self.load_from_file()
+        else:
+            # New user
+            self.user = user
+    
+    def load_from_file(self) -> None:
+        """
+        Load account data from JSON file such as
+        - Account as dictionary
+        - BankAccount objects with their transactions
+        """
+        # from Account import BankAccount #if moved to another file
+        
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+                self.user = data.get('user', 'default')
+                
+                # Reconstruct each account
+                for acct_id, acct_data in data.get('accounts', {}).items():
+                    self.accounts[acct_id] = BankAccount(acctInfo=acct_data, acctId=acct_id)
+                    
+            # print(f"Loaded data for user '{self.user}' from {self.filename}")
+            
+        except FileNotFoundError:
+            print(f"No existing file found at {self.filename}. Creating new account.")
+            self.user = self.user or 'default'
+            
+        except json.JSONDecodeError:
+            print(f"Error reading {self.filename}. File may be corrupted.")
+            self.user = self.user or 'default'
+    
+    def save_to_file(self) -> None:
+        """Save account data to JSON file"""
+        data = {
+            'user': self.user,
+            'accounts': {acct_id: acct.return_dict() 
+                        for acct_id, acct in self.accounts.items()}
+        }
+        
+        with open(self.filename, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        # print(f"Saved data for user '{self.user}' to {self.filename}")
+    
+    def add_account(self, acct_id: str, account: 'BankAccount') -> None:
+        """Add a bank account"""
+        self.accounts[acct_id] = account
+        # print(f"Added account '{acct_id}'")
+    
+    def create_account(self, acct_id: str) -> 'BankAccount':
+        """Create a new empty bank account"""
+        # from Account import BankAccount #if moved to another file
+        
+        account = BankAccount(acctId=acct_id)
+        self.accounts[acct_id] = account
+        # print(f"Created account '{acct_id}'")
+        return account
+    
+    def import_csv(self, filepath: str, acct_id: str) -> None:
+        """Import transactions from CSV into specified account"""
+        account = FinanceDataProcessor.csv_to_account(filepath, acct_id)
+        self.accounts[acct_id] = account
+        # print(f"Imported CSV into account '{acct_id}'")
+        # print(f"Transactions: {len(account.transactions)}")
+        # print(f"Balance: ${account.get_balance():.2f}")
+    
+    def login_update(self) -> Dict[str, int]:
+        """Update all recurring transactions on login"""
+        results = {}
+        total = 0
+        
+        for acct_id, account in self.accounts.items():
+            count = account.update_recurring()
+            results[acct_id] = count
+            total += count
+        
+        return results
+    
+    def get_total_balance(self) -> float:
+        """Get total balance across all accounts"""
+        return sum(acct.get_balance() for acct in self.accounts.values())
+    
+    def get_account(self, acct_id: str) -> Optional['BankAccount']:
+        """Get account by ID"""
+        return self.accounts.get(acct_id)
+    
+    def list_accounts(self) -> List[str]:
+        """Get list of all account IDs"""
+        return list(self.accounts.keys())
+    
+    def export_for_frontend(self) -> dict:
+        """Export all data for frontend"""
+        export_data = {
+            'user': self.user,
+            'total_balance': self.get_total_balance(),
+            'accounts': {}
+        }
+        
+        for acct_id, account in self.accounts.items():
+            df = account.get_transactions_df()
+            
+            export_data['accounts'][acct_id] = {
+                'balance': account.get_balance(),
+                'transaction_count': len(account.transactions),
+                'recurring_count': len(account.recurring),
+                'transactions': df.to_dict('records') if not df.empty else [],
+                'spending_by_category': FinanceDataProcessor.get_spending_by_category(account).to_dict('index'),
+                'income_by_category': FinanceDataProcessor.get_income_by_category(account).to_dict('index'),
+                'monthly_summary': FinanceDataProcessor.get_monthly_summary(account).to_dict('index')
+            }
+        
+        return export_data
+    
+    def get_summary(self) -> str:
+        """Get a text summary of all accounts"""
+        summary = f"Finance Account Summary for {self.user}\n"
+        summary += "=" * 50 + "\n"
+        summary += f"Total Accounts: {len(self.accounts)}\n"
+        summary += f"Total Balance: ${self.get_total_balance():.2f}\n\n"
+        
+        for acct_id, account in self.accounts.items():
+            summary += f"{acct_id}:\n"
+            summary += f"  Balance: ${account.get_balance():.2f}\n"
+            summary += f"  Transactions: {len(account.transactions)}\n"
+            summary += f"  Recurring: {len(account.recurring)}\n"
+        
+        return summary
+
         
 class FinanceDataProcessor:
     """Utility class for CSV processing and data analysis"""
@@ -318,148 +463,3 @@ class FinanceDataProcessor:
         trends.columns = ['total_spent', 'avg_transaction', 'num_transactions']
         
         return trends
-    
-
-class FinanceAccount:
-    """Main account manager, handling multiple bank accounts"""
-    
-    def __init__(self, filename: str, user: Optional[str] = None):
-        """
-        Initialize finance account manager
-        - filename: JSON file path for data persistence
-        - user: Username (for new accounts). If None, loads from file.
-        """
-        self.filename = filename
-        self.user = user
-        self.accounts: Dict[str, 'BankAccount'] = {}
-        
-        if user is None:
-            # Load existing account from file
-            self.load_from_file()
-        else:
-            # New user
-            self.user = user
-    
-    def load_from_file(self) -> None:
-        """
-        Load account data from JSON file such as
-        - Accounts dictionary
-        - BankAccount objects with their transactions
-        """
-        # from Account import BankAccount #if moved to another file
-        
-        try:
-            with open(self.filename, 'r') as f:
-                data = json.load(f)
-                self.user = data.get('user', 'default')
-                
-                # Reconstruct each account
-                for acct_id, acct_data in data.get('accounts', {}).items():
-                    self.accounts[acct_id] = BankAccount(acctInfo=acct_data, acctId=acct_id)
-                    
-            # print(f"Loaded data for user '{self.user}' from {self.filename}")
-            
-        except FileNotFoundError:
-            print(f"No existing file found at {self.filename}. Creating new account.")
-            self.user = self.user or 'default'
-            
-        except json.JSONDecodeError:
-            print(f"Error reading {self.filename}. File may be corrupted.")
-            self.user = self.user or 'default'
-    
-    def save_to_file(self) -> None:
-        """Save account data to JSON file"""
-        data = {
-            'user': self.user,
-            'accounts': {acct_id: acct.return_dict() 
-                        for acct_id, acct in self.accounts.items()}
-        }
-        
-        with open(self.filename, 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        # print(f"Saved data for user '{self.user}' to {self.filename}")
-    
-    def add_account(self, acct_id: str, account: 'BankAccount') -> None:
-        """Add a bank account"""
-        self.accounts[acct_id] = account
-        # print(f"Added account '{acct_id}'")
-    
-    def create_account(self, acct_id: str) -> 'BankAccount':
-        """Create a new empty bank account"""
-        # from Account import BankAccount #if moved to another file
-        
-        account = BankAccount(acctId=acct_id)
-        self.accounts[acct_id] = account
-        # print(f"Created account '{acct_id}'")
-        return account
-    
-    def import_csv(self, filepath: str, acct_id: str) -> None:
-        """Import transactions from CSV into specified account"""
-        account = FinanceDataProcessor.csv_to_account(filepath, acct_id)
-        self.accounts[acct_id] = account
-        # print(f"Imported CSV into account '{acct_id}'")
-        # print(f"Transactions: {len(account.transactions)}")
-        # print(f"Balance: ${account.get_balance():.2f}")
-    
-    def login_update(self) -> Dict[str, int]:
-        """Update all recurring transactions on login"""
-        results = {}
-        total = 0
-        
-        for acct_id, account in self.accounts.items():
-            count = account.update_recurring()
-            results[acct_id] = count
-            total += count
-        
-        return results
-    
-    def get_total_balance(self) -> float:
-        """Get total balance across all accounts"""
-        return sum(acct.get_balance() for acct in self.accounts.values())
-    
-    def get_account(self, acct_id: str) -> Optional['BankAccount']:
-        """Get account by ID"""
-        return self.accounts.get(acct_id)
-    
-    def list_accounts(self) -> List[str]:
-        """Get list of all account IDs"""
-        return list(self.accounts.keys())
-    
-    def export_for_frontend(self) -> dict:
-        """Export all data for frontend"""
-        export_data = {
-            'user': self.user,
-            'total_balance': self.get_total_balance(),
-            'accounts': {}
-        }
-        
-        for acct_id, account in self.accounts.items():
-            df = account.get_transactions_df()
-            
-            export_data['accounts'][acct_id] = {
-                'balance': account.get_balance(),
-                'transaction_count': len(account.transactions),
-                'recurring_count': len(account.recurring),
-                'transactions': df.to_dict('records') if not df.empty else [],
-                'spending_by_category': FinanceDataProcessor.get_spending_by_category(account).to_dict('index'),
-                'income_by_category': FinanceDataProcessor.get_income_by_category(account).to_dict('index'),
-                'monthly_summary': FinanceDataProcessor.get_monthly_summary(account).to_dict('index')
-            }
-        
-        return export_data
-    
-    def get_summary(self) -> str:
-        """Get a text summary of all accounts"""
-        summary = f"Finance Account Summary for {self.user}\n"
-        summary += "=" * 50 + "\n"
-        summary += f"Total Accounts: {len(self.accounts)}\n"
-        summary += f"Total Balance: ${self.get_total_balance():.2f}\n\n"
-        
-        for acct_id, account in self.accounts.items():
-            summary += f"{acct_id}:\n"
-            summary += f"  Balance: ${account.get_balance():.2f}\n"
-            summary += f"  Transactions: {len(account.transactions)}\n"
-            summary += f"  Recurring: {len(account.recurring)}\n"
-        
-        return summary

@@ -33,18 +33,23 @@ class Transaction(ABC):
         pass
 
     def get_date(self) -> date:
+        """Get thedate of transaction"""
         return self.date
 
     def get_vendor(self) -> str:
+        """Get vendor of transaction"""
         return self.vendor
 
     def get_category(self) -> str:
+        """Get category of transaction"""
         return self.category
 
     def get_amount(self) -> float:
+        """Get how much the transaction was worth"""
         return self.amount
 
     def get_notes(self) -> str:
+        """Get notes of transaction"""
         return self.notes
         
     def edit(self, day: Optional[date] = None, vend: Optional[str] = None, 
@@ -126,8 +131,10 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             
         return num_trans
     
-    def edit(self, day: Optional[date] = None, vend: Optional[str] = None, cat: Optional[str] = None, amnt: Optional[float] = None,
-             desc: Optional[str] = "", nxt: Optional[date] = None, freq: Optional[int] = None, num: Optional[int] = None) -> None:
+    def edit(self, day: Optional[date] = None, vend: Optional[str] = None, 
+             cat: Optional[str] = None, amnt: Optional[float] = None,
+             desc: Optional[str] = "", nxt: Optional[date] = None, 
+             freq: Optional[int] = None, num: Optional[int] = None) -> None:
         """Edit transaction"""
         super().edit(day, vend, cat, amnt, desc)
         if nxt is not None:
@@ -147,94 +154,5 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             'next': self.next.isoformat(),
             'frequency': self.frequency,
             'number': self.number,
-            'type': 'recurring' # possibly remove later ?
+            'type': 'recurring' 
         }
-
-class BankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
-    """Manages transactions and recurring transactions for a banking account"""
-    
-    def __init__ (self, acctInfo: Optional[dict] = None, acctId: Optional[str] = None):
-        self.transactions: Dict[str, SingleTransaction] = {} #dictionary of name?:transaction pairs
-        self.recurring: Dict[str, RecurringTransaction] = {} #dictionary of name?:recurringTransaction object pairs
-        self.balance = 0.0
-        
-        if acctInfo is None:
-            # For new account
-            self.acctId = acctId or "default"
-            
-        else:
-            # Load existing account from acctInfo dict
-            self.acctId = acctInfo.get('acctId', 'default')
-            self.balance = acctInfo.get('balance', 0.0)
-            
-            # Load single transactions
-            for key, trans_dict in acctInfo.get('transactions', {}).items():
-                trans = SingleTransaction(
-                    day=datetime.fromisoformat(trans_dict['date']).date(),
-                    vend=trans_dict['vendor'],
-                    cat=trans_dict['category'],
-                    amnt=trans_dict['amount'],
-                    desc=trans_dict.get('notes', '')
-                )
-                self.transaction[key] = trans
-                
-            # Load recurring transactions
-            for key, rec_dict in acctInfo.get('recurring', {}).items():
-                rec = RecurringTransaction(
-                    day=datetime.fromisoformat(rec_dict['start']).date(),
-                    vend=rec_dict['vendor'],
-                    cat=rec_dict['category'],
-                    amnt=rec_dict['amount'],
-                    desc=rec_dict.get('notes', ''),
-                    nxt=datetime.fromisoformat(rec_dict['next']).date(),
-                    freq=rec_dict['frequency'],
-                    num=rec_dict['number']
-                )
-                self.recurring[key] = rec
-
-    def add_transactions(self, trans: SingleTransaction) -> None:
-        """Add a transaction and update balance"""
-        key = f"single_{trans.get_vendor()}_{trans.get_date().isoformat()}"
-        self.transactions[key] = trans
-        self.balance += trans.get_amount()
-        
-    def add_recurring(self, rec: RecurringTransaction) -> None:
-        """Add a recurring transaction"""
-        key = f"recurs_{rec.get_vendor()}_{rec.get_date().isoformat()}"
-        self.recurring[key] = rec
-        
-    def update_recurring(self) -> int:
-        """Updates all recurring transactions (called on login)"""
-        total_gen = 0
-        for rec in self.recurring.values():
-            total_gen += rec.update(self)
-        return total_gen
-    
-    def get_balance(self) -> float:
-        """Get current account balance"""
-        return self.balance
-    
-    def recalculate_balance(self) -> float:
-        """Recalculate balance from all transactions"""
-        self.balance = sum(t.get_amount() for t in self.transactions.values())
-        return self.balance
-    
-    def get_transactions_df(self) -> pd.DataFrame:
-        """Get all transactions as a pandas DataFrame"""
-        data = [trans.return_dict() for trans in self.transactions.values()]
-        
-        if not data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(data)
-        df['date'] = pd.to_datetime(df['date'])
-        return df.sort_values('date')
-
-class FinanceAcc: #Reads json into dict, calls account contructor, uses account to respond to api calls
-    def __init__(self, filename: str, user=None):
-        if user is None:
-            #process account from file
-            pass
-        else:
-            #new user, create file 
-            pass
