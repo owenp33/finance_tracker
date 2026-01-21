@@ -89,6 +89,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         self.next = nxt if nxt else (day + timedelta(days=freq))
         self.frequency = freq
         self.number = num
+        self.idx = 0
 
     def get_remaining_dates(self, limit: int = 5) -> List[date]:
         """Get upcoming transaction dates (max limit = 5)"""
@@ -96,13 +97,12 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             return [self.next + timedelta(days=i*self.frequency) for i in range(limit)]
         else:
             return [self.next + timedelta(days=i*self.frequency)
-                    for i in range(min(self.number, limit))]
+                    for i in range(min(self.number-self.idx, limit))]
 
     def advance_to_next(self) -> None:
         """Move to the next occurrence date"""
         self.next = self.next + timedelta(days=self.frequency)
-        if self.number > 0:
-            self.number -= 1
+        self.idx += 1
                 
     def edit(self, day: Optional[date] = None, vend: Optional[str] = None, 
              cat: Optional[str] = None, amnt: Optional[float] = None,
