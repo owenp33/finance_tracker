@@ -27,7 +27,7 @@ class Transaction(ABC):
         pass
 
     def get_date(self) -> date:
-        """Get thedate of transaction"""
+        """Get the date of transaction"""
         return self.date
 
     def get_vendor(self) -> str:
