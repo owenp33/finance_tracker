@@ -8,9 +8,8 @@ Contains:
 """
 
 from abc import ABC, abstractmethod
-from datetime import date, timedelta, datetime
-from typing import Optional, List, Dict
-import pandas as pd
+from datetime import date, timedelta
+from typing import Optional, List
 
 class Transaction(ABC):
     """Abstract base class for all types of transactions"""
@@ -28,7 +27,7 @@ class Transaction(ABC):
         pass
 
     def get_date(self) -> date:
-        """Get thedate of transaction"""
+        """Get the date of transaction"""
         return self.date
 
     def get_vendor(self) -> str:
@@ -76,7 +75,7 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
             'category': self.category,
             'amount': self.amount,
             'notes': self.notes,
-            'type': 'single' # possibly remove later ?
+            'type': 'single'
         }
     
         
@@ -99,33 +98,12 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             return [self.next + timedelta(days=i*self.frequency)
                     for i in range(min(self.number, limit))]
 
-    def update(self, account: 'BankAccount') -> int:
-        """Generate SingleTransactions for all passed dates"""
-        now = date.today()
-        num_trans = 0
-        
-        # Generate transactions for all recurring transaction dates that have passed
-        while (self.next <= now and self.number != 0):
-            # Create new single transaction for this occurrence
-            new_transaction = SingleTransaction(
-                day=self.next,
-                vend=self.vendor,
-                cat=self.category,
-                amnt=self.amount,
-                desc=f"Auto-generated from recurring transaction ({self.frequency} days)"
-            )
-            
-            account.add_transactions(new_transaction)
-            
-            self.next = self.next + timedelta(days=self.frequency)
-            
-            if self.number > 0:
-                self.number -= 1
+    def advance_to_next(self) -> None:
+        """Move to the next occurrence date"""
+        self.next = self.next + timedelta(days=self.frequency)
+        if self.number > 0:
+            self.number -= 1
                 
-            num_trans += 1
-            
-        return num_trans
-    
     def edit(self, day: Optional[date] = None, vend: Optional[str] = None, 
              cat: Optional[str] = None, amnt: Optional[float] = None,
              desc: Optional[str] = "", nxt: Optional[date] = None, 
