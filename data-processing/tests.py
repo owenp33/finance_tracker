@@ -492,6 +492,76 @@ def test_9_full_workflow():
     print("\n✅ TEST 9: PASSED - Full workflow completed!")
 
 
+def test_10_generate_api_report():
+    """Test 10: Generate API analytics report"""
+    print("\n" + "="*60)
+    print("TEST 10: Generate API Report")
+    print("="*60)
+    
+    from datetime import date, timedelta
+    
+    # Create mock TransactionModel objects
+    class MockTransaction:
+        def __init__(self, id, date, vendor, category, amount, notes=''):
+            self.id = id
+            self.date = date
+            self.vendor = vendor
+            self.category = category
+            self.amount = amount
+            self.notes = notes
+    
+    # Create test transactions
+    today = date.today()
+    mock_transactions = [
+        MockTransaction(1, today - timedelta(days=30), "Salary", "Income", 3000.00),
+        MockTransaction(2, today - timedelta(days=25), "Grocery Store", "Food", -150.00),
+        MockTransaction(3, today - timedelta(days=20), "Gas Station", "Transportation", -45.00),
+        MockTransaction(4, today - timedelta(days=15), "Netflix", "Entertainment", -15.99),
+        MockTransaction(5, today - timedelta(days=10), "Target", "Shopping", -87.50),
+        MockTransaction(6, today - timedelta(days=5), "Rent", "Housing", -1500.00),
+        MockTransaction(7, today - timedelta(days=3), "Amazon", "Shopping", -124.99),
+        MockTransaction(8, today - timedelta(days=1), "Restaurant", "Food", -65.00),
+    ]
+    
+    # Generate report
+    report = FinanceDataProcessor.generate_api_report(mock_transactions)
+    
+    print("\nReport generated successfully!")
+    
+    # Display summary
+    print("\nSummary")
+    for key, value in report['summary'].items():
+        print(f"  {key}: {value}")
+    
+    # Display spending by category
+    print("\n Spending by Category")
+    for category, data in report['spending_by_category'].items():
+        print(f"  {category}: ${data['total']} ({data['count']} transactions)")
+    
+    # Display monthly summary
+    print("\n Monthly Summary")
+    for month, data in report['monthly_summary'].items():
+        print(f"  {month}:")
+        print(f"    Income: ${data['income']}")
+        print(f"    Expenses: ${data['expenses']}")
+        print(f"    Net: ${data['net']}")
+    
+    # Display trends
+    print("\n Trends")
+    print(f"  Weekly avg expenses: ${report['trends']['weekly_avg_expenses']}")
+    print(f"  Weekly avg income: ${report['trends']['weekly_avg_income']}")
+    
+    # Verify structure
+    assert 'summary' in report
+    assert 'spending_by_category' in report
+    assert 'income_by_category' in report
+    assert 'monthly_summary' in report
+    assert 'recent_transactions' in report
+    assert 'top_vendors' in report
+    assert 'trends' in report
+    
+    print("\n✅ TEST 10: PASSED - Analytics report working!")
+
 # ==================== TEST RUNNER ====================
 
 def run_all_tests():
@@ -509,7 +579,8 @@ def run_all_tests():
         test_6_finance_acc,
         test_7_data_analytics,
         test_8_export_for_frontend,
-        test_9_full_workflow
+        test_9_full_workflow,
+        test_10_generate_api_report
     ]
     
     passed = 0
@@ -592,4 +663,5 @@ if __name__ == '__main__':
         print("  7: Data analytics")
         print("  8: Export for frontend")
         print("  9: Full workflow simulation")
+        print("  10: Full API analytics report")
         
