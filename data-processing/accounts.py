@@ -330,7 +330,7 @@ class FinanceDataProcessor:
         df['date'] = df['date'].apply(FinanceDataProcessor.parse_date)
         
         # Clean currency columns
-        if 'expense' and 'income' in df.columns:
+        if 'expense' in df.columns and 'income' in df.columns:
             df['expense'] = df['expense'].apply(FinanceDataProcessor.clean_currency)
             df['income'] = df['income'].apply(FinanceDataProcessor.clean_currency)
                 
@@ -345,7 +345,10 @@ class FinanceDataProcessor:
         )
         
         # Fill NA values
-        df['vendor'] = df['vendor'].fillna('Unknown')
+        if 'vendor' in df.columns:
+            df['vendor'] = df['vendor'].fillna('Unknown')
+        elif 'store' in df.columns:
+            df['vendor'] = df['store'].fillna('Unknown')
         df['category'] = df['category'].fillna('Uncategorized')
         df['account'] = df['account'].fillna('Default')
         df['notes'] = df['notes'].fillna('') if 'notes' in df.columns else ''
@@ -488,3 +491,202 @@ class FinanceDataProcessor:
         trends.columns = ['total_spent', 'avg_transaction', 'num_transactions']
         
         return trends
+    
+    @staticmethod
+    def generate_api_report(transactions: list) -> dict:
+        """
+        Generate comprehensive analytics report from database transactions.
+        - Returns dictionary with analytics data ready for API response
+        """    
+        # Handle empty transactions
+        if not transactions:
+            return {
+                'summary': {
+                    'total_income': 0.0,
+                    'total_expenses': 0.0,
+                    'net_amount': 0.0,
+                    'transaction_count': 0,
+                    'avg_transaction': 0.0
+                },
+                'spending_by_category': {},
+                'income_by_category': {},
+                'monthly_summary': {},
+                'recent_transactions': []
+            }
+        
+        # Convert TransactionModel objects to DataFrame
+        data = []
+        for t in transactions:
+            data.append({
+                'id': t.id,
+                'date': t.date,
+                'vendor': t.vendor,
+                'category': t.category,
+                'amount': t.amount,
+                'notes': t.notes
+            })
+        
+        df = pd.DataFrame(data)
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # SUMMARY STATISTICS 
+        total_income = df[df['amount'] > 0]['amount'].sum()
+        total_expenses = abs(df[df['amount'] < 0]['amount'].sum())
+        net_amount = total_income - total_expenses
+        transaction_count = len(df)
+        avg_transaction = df['amount'].abs().mean()
+        
+        summary = {
+            'total_income': round(float(total_income), 2),
+            'total_expenses': round(float(total_expenses), 2),
+            'net_amount': round(float(net_amount), 2),
+            'transaction_count': int(transaction_count),
+            'avg_transaction': round(float(avg_transaction), 2)
+        }
+        
+        # SPENDING BY CATEGORY 
+        expenses = df[df['amount'] < 0].copy()
+        
+        if not expenses.empty:
+            expenses['amount_abs'] = expenses['amount'].abs()
+            
+            spending_grouped = expenses.groupby('category')['amount_abs'].agg([
+                ('total', 'sum'),
+                ('average', 'mean'),
+                ('count', 'count')
+            ]).round(2)
+            
+            spending_by_category = {
+                cat: {
+                    'total': float(row['total']),
+                    'average': float(row['average']),
+                    'count': int(row['count']),
+                    'percentage': round(float(row['total'] / total_expenses * 100), 1) if total_expenses > 0 else 0
+                }
+                for cat, row in spending_grouped.iterrows()
+            }
+            
+            # Sort by total spending
+            spending_by_category = dict(
+                sorted(spending_by_category.items(), 
+                    key=lambda x: x[1]['total'], 
+                    reverse=True)
+            )
+        else:
+            spending_by_category = {}
+        
+        # INCOME BY CATEGORY
+        income_df = df[df['amount'] > 0].copy()
+        
+        if not income_df.empty:
+            income_grouped = income_df.groupby('category')['amount'].agg([
+                ('total', 'sum'),
+                ('average', 'mean'),
+                ('count', 'count')
+            ]).round(2)
+            
+            income_by_category = {
+                cat: {
+                    'total': float(row['total']),
+                    'average': float(row['average']),
+                    'count': int(row['count']),
+                    'percentage': round(float(row['total'] / total_income * 100), 1) if total_income > 0 else 0
+                }
+                for cat, row in income_grouped.iterrows()
+            }
+            
+            income_by_category = dict(
+                sorted(income_by_category.items(), 
+                    key=lambda x: x[1]['total'], 
+                    reverse=True)
+            )
+        else:
+            income_by_category = {}
+        
+        # MONTHLY SUMMARY
+        df['year_month'] = df['date'].dt.to_period('M').astype(str)
+        
+        monthly_data = []
+        for month, group in df.groupby('year_month'):
+            month_income = group[group['amount'] > 0]['amount'].sum()
+            month_expenses = abs(group[group['amount'] < 0]['amount'].sum())
+            month_net = month_income - month_expenses
+            
+            monthly_data.append({
+                'month': month,
+                'income': round(float(month_income), 2),
+                'expenses': round(float(month_expenses), 2),
+                'net': round(float(month_net), 2),
+                'transaction_count': len(group)
+            })
+        
+        # Sort by month (most recent first)
+        monthly_data.sort(key=lambda x: x['month'], reverse=True)
+        
+        monthly_summary = {
+            item['month']: {
+                'income': item['income'],
+                'expenses': item['expenses'],
+                'net': item['net'],
+                'transaction_count': item['transaction_count']
+            }
+            for item in monthly_data
+        }
+        
+        # TOP VENDORS         
+        top_expense_vendors = expenses.groupby('vendor')['amount_abs'].sum().sort_values(ascending=False).head(10) if not expenses.empty else pd.Series()
+        
+        top_vendors = {
+            'expenses': {
+                vendor: round(float(amount), 2)
+                for vendor, amount in top_expense_vendors.items()
+            } if not top_expense_vendors.empty else {}
+        }
+        
+        # RECENT TRANSACTIONS 
+        recent = df.sort_values('date', ascending=False).head(10)
+        recent_transactions = [
+            {
+                'id': int(row['id']),
+                'date': row['date'].strftime('%Y-%m-%d'),
+                'vendor': row['vendor'],
+                'category': row['category'],
+                'amount': round(float(row['amount']), 2),
+                'notes': row['notes']
+            }
+            for _, row in recent.iterrows()
+        ]
+        
+        # SPENDING TRENDS 
+        if len(df) >= 7:
+            df_sorted = df.sort_values('date')
+            date_range = (df_sorted['date'].max() - df_sorted['date'].min()).days
+            
+            if date_range > 0:
+                weeks = max(date_range / 7, 1)
+                weekly_avg_expenses = total_expenses / weeks
+                weekly_avg_income = total_income / weeks
+            else:
+                weekly_avg_expenses = 0
+                weekly_avg_income = 0
+        else:
+            weekly_avg_expenses = 0
+            weekly_avg_income = 0
+        
+        trends = {
+            'weekly_avg_expenses': round(float(weekly_avg_expenses), 2),
+            'weekly_avg_income': round(float(weekly_avg_income), 2)
+        }
+        
+        # COMPILE FINAL REPORT 
+        report = {
+            'summary': summary,
+            'spending_by_category': spending_by_category,
+            'income_by_category': income_by_category,
+            'monthly_summary': monthly_summary,
+            'top_vendors': top_vendors,
+            'recent_transactions': recent_transactions,
+            'trends': trends
+        }
+        
+        return report
