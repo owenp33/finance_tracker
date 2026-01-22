@@ -1,5 +1,5 @@
 """
-testing.py - Comprehensive test suite for finance app data processing
+tests.py - Comprehensive test suite for finance app data processing
 Location: data-processing/testing.py
 
 Run tests with:

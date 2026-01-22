@@ -1,9 +1,9 @@
 """
-Account.py - Bank account and financial account management
+accounts.py - Bank account and financial account management
 
 Contains:
 - BankAccount (Manages transactions for a single bank account)
-- FinanceAcc (Manages multiple bank accounts for a user)
+- FinanceAccount (Manages multiple bank accounts for a user)
 - FinanceDataProcessor (CSV import and data analysis utilities)
 """
 
@@ -12,7 +12,7 @@ import json
 import re
 from typing import Dict, List, Optional
 from datetime import datetime, date
-from Transaction import SingleTransaction, RecurringTransaction
+from transactions import SingleTransaction, RecurringTransaction
 
 class BankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
     """Manages transactions and recurring transactions for a banking account"""

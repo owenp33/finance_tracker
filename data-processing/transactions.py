@@ -1,5 +1,5 @@
 """
-Transaction.py - Transaction class definitions
+transactions.py - Transaction class definitions
 
 Contains:
 - Transaction (Abstract Base Class)
@@ -60,6 +60,7 @@ class Transaction(ABC):
             self.amount = amnt
         if desc is not None:
             self.notes = desc
+    #Set additional fields to null in database
 
 
 class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
