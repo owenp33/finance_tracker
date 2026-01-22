@@ -37,7 +37,7 @@ class User(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'username': self.username, 'email': self.email,
+            'id': self.id, 'username': str(self.username), 'email': self.email,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -55,7 +55,7 @@ class AccountModel(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'account_id': self.acct_id_str, 'balance': self.balance,
+            'id': self.id, 'account_id': str(self.acct_id_str), 'balance': float(self.balance),
             'transaction_count': len(self.transactions)
         }
         
@@ -94,10 +94,10 @@ class RecurringModel(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'date':self.date.isoformat(), 'vendor': self.vendor,
-            'category': self.category, 'amount': self.amount, 'notes': self.notes,
-            'next_date': self.next_date.isoformat(), 'frequency': self.frequency,
-            'number': self.number, 'idx': self.idx
+            'id': self.id, 'date':self.date.isoformat(), 'vendor': str(self.vendor),
+            'category': str(self.category), 'amount': float(self.amount), 'notes': str(self.notes),
+            'next_date': self.next_date.isoformat(), 'frequency': int(self.frequency),
+            'number': int(self.number), 'idx': int(self.idx)
         }
         
         
