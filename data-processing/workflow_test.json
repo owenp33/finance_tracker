@@ -1,0 +1,291 @@
+{
+  "user": "jane_doe",
+  "accounts": {
+    "Primary_Checking": {
+      "acctId": "Primary_Checking",
+      "balance": -12269.199999999999,
+      "transactions": {
+        "single_Shelby Jackson LLC_2025-01-01": {
+          "date": "2025-01-01",
+          "vendor": "Shelby Jackson LLC",
+          "category": "Rent",
+          "amount": -985.41,
+          "notes": "Monthly rent payment",
+          "type": "single"
+        },
+        "single_University of MN_2025-01-17": {
+          "date": "2025-01-17",
+          "vendor": "University of MN",
+          "category": "Loan",
+          "amount": 3987.63,
+          "notes": "Student loan disbursement",
+          "type": "single"
+        },
+        "single_Fresh Thyme_2025-01-23": {
+          "date": "2025-01-23",
+          "vendor": "Fresh Thyme",
+          "category": "Grocery",
+          "amount": -51.71,
+          "notes": "Weekly groceries",
+          "type": "single"
+        },
+        "single_Employer_2025-01-24": {
+          "date": "2025-01-24",
+          "vendor": "Employer",
+          "category": "Income",
+          "amount": 3292.37,
+          "notes": "Bi-weekly paycheck",
+          "type": "single"
+        },
+        "single_Target_2025-01-25": {
+          "date": "2025-01-25",
+          "vendor": "Target",
+          "category": "Shopping",
+          "amount": -87.43,
+          "notes": "Household items",
+          "type": "single"
+        },
+        "single_Shell Gas Station_2025-01-26": {
+          "date": "2025-01-26",
+          "vendor": "Shell Gas Station",
+          "category": "Transportation",
+          "amount": -45.0,
+          "notes": "Gas fill-up",
+          "type": "single"
+        },
+        "single_Netflix_2025-01-27": {
+          "date": "2025-01-27",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Monthly subscription",
+          "type": "single"
+        },
+        "single_Whole Foods_2025-01-28": {
+          "date": "2025-01-28",
+          "vendor": "Whole Foods",
+          "category": "Grocery",
+          "amount": -63.21,
+          "notes": "Organic produce",
+          "type": "single"
+        },
+        "single_Rent Payment_2025-02-01": {
+          "date": "2025-02-01",
+          "vendor": "Rent Payment",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Monthly rent",
+          "type": "single"
+        },
+        "single_Amazon_2025-02-05": {
+          "date": "2025-02-05",
+          "vendor": "Amazon",
+          "category": "Shopping",
+          "amount": -124.56,
+          "notes": "Various items",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-03-01": {
+          "date": "2025-03-01",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-03-31": {
+          "date": "2025-03-31",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-04-30": {
+          "date": "2025-04-30",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-05-30": {
+          "date": "2025-05-30",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-06-29": {
+          "date": "2025-06-29",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-07-29": {
+          "date": "2025-07-29",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-08-28": {
+          "date": "2025-08-28",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-09-27": {
+          "date": "2025-09-27",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-10-27": {
+          "date": "2025-10-27",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-11-26": {
+          "date": "2025-11-26",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Apartment Complex_2025-12-26": {
+          "date": "2025-12-26",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-03-15": {
+          "date": "2025-03-15",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-04-14": {
+          "date": "2025-04-14",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-05-14": {
+          "date": "2025-05-14",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-06-13": {
+          "date": "2025-06-13",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-07-13": {
+          "date": "2025-07-13",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-08-12": {
+          "date": "2025-08-12",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-09-11": {
+          "date": "2025-09-11",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-10-11": {
+          "date": "2025-10-11",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-11-10": {
+          "date": "2025-11-10",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2025-12-10": {
+          "date": "2025-12-10",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        },
+        "single_Netflix_2026-01-09": {
+          "date": "2026-01-09",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "Auto-generated from recurring (30 days)",
+          "type": "single"
+        }
+      },
+      "recurring": {
+        "recurs_Apartment Complex_2025-01-01": {
+          "start": "2025-01-01",
+          "vendor": "Apartment Complex",
+          "category": "Housing",
+          "amount": -1500.0,
+          "notes": "",
+          "next": "2026-01-25",
+          "frequency": 30,
+          "number": -1,
+          "type": "recurring"
+        },
+        "recurs_Netflix_2025-01-15": {
+          "start": "2025-01-15",
+          "vendor": "Netflix",
+          "category": "Entertainment",
+          "amount": -15.99,
+          "notes": "",
+          "next": "2026-02-08",
+          "frequency": 30,
+          "number": -1,
+          "type": "recurring"
+        }
+      }
+    }
+  }
+}

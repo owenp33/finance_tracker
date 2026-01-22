@@ -7,10 +7,12 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
 
-# Adding logic paths
-sys.path.append('../data-preprocessing')
+# Adding logic paths - absolute path
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+data_processing_path = os.path.join(parent_dir, 'data-processing')
+sys.path.insert(0, data_processing_path)
 
-from models import DatabaseManager, TransactionModel # Added Model imports
+from models import DatabaseManager # Added Model imports
 from accounts import FinanceDataProcessor
 
 app = Flask(__name__)
@@ -21,8 +23,7 @@ CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 jwt = JWTManager(app)
 db = DatabaseManager()
 
-# ==================== HELPERS ====================
-
+# HELPER FUNCS===============================================================
 def validate_ownership(account_id):
     """Utility to ensure the JWT user actually owns the account they are requesting"""
     user_id = get_jwt_identity()
@@ -54,8 +55,7 @@ def update_user_recurring(user_id):
             db.update_recurring_after_generation(rec.id, rec.next_date, rec.number)
     return total_gen
 
-# ==================== AUTH ENDPOINTS ====================
-
+# AUTH ENDPOINTS========================================================
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -85,8 +85,7 @@ def login():
         'updates': {'transactions_generated': generated}
     }), 200
 
-# ==================== ACCOUNT & TRANSACTION ENDPOINTS ====================
-
+# ACCOUNT & TRANSACTION ENDPOINTS============================================
 @app.route('/api/accounts', methods=['GET'])
 @jwt_required()
 def get_accounts():
@@ -117,7 +116,7 @@ def add_transaction(account_id):
     )
     return jsonify(t.to_dict()), 201
 
-# ==================== ANALYTICS (REFACTORED) ====================
+# ANALYTICS (REFACTORED)=====================================================
 
 @app.route('/api/accounts/<int:account_id>/analytics', methods=['GET'])
 @jwt_required()
@@ -134,7 +133,7 @@ def get_analytics(account_id):
     
     return jsonify(analytics_data), 200
 
-# ==================== CSV IMPORT ====================
+# CSV IMPORT ================================================================
 
 @app.route('/api/accounts/<int:account_id>/import-csv', methods=['POST'])
 @jwt_required()

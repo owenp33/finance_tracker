@@ -15,7 +15,7 @@ import sys
 
 # Import your classes
 from transactions import SingleTransaction, RecurringTransaction
-from accounts import BankAccount, FinanceAcc, FinanceDataProcessor
+from accounts import BankAccount, FinanceAccount, FinanceDataProcessor
 
 
 # ==================== TEST DATA ====================
@@ -185,8 +185,8 @@ def test_3_recurring_update():
     # Create account
     account = BankAccount(acctId='Test_Account')
     
-    # Add recurring transaction that's 2 months old
-    old_date = date.today() - timedelta(days=60)
+    # Add recurring transaction that's less than 2 months old
+    old_date = date.today() - timedelta(days=57)
     rent = RecurringTransaction(
         day=old_date,
         vend="Landlord",
@@ -290,7 +290,7 @@ def test_6_finance_acc():
     print("="*60)
     
     # Create FinanceAcc
-    finance = FinanceAcc(filename='test_user_data.json', user='test_user')
+    finance = FinanceAccount(filename='test_user_data.json', user='test_user')
     print(f"\nCreated FinanceAcc for user: {finance.user}")
     
     # Add accounts
@@ -337,7 +337,7 @@ def test_6_finance_acc():
     print(f"Saved to {finance.filename}")
     
     # Load from file
-    finance2 = FinanceAcc(filename='test_user_data.json')
+    finance2 = FinanceAccount(filename='test_user_data.json')
     print(f"Loaded from file: {finance2.user}")
     print(f"Accounts: {finance2.list_accounts()}")
     print(f"Total Balance: ${finance2.get_total_balance():.2f}")
@@ -398,7 +398,7 @@ def test_8_export_for_frontend():
     
     # Load test data
     if os.path.exists('test_user_data.json'):
-        finance = FinanceAcc(filename='test_user_data.json')
+        finance = FinanceAccount(filename='test_user_data.json')
     else:
         print("  Skipping - run test 6 first")
         return
@@ -432,7 +432,7 @@ def test_9_full_workflow():
     
     # 1. Create new user
     print("\n1. Creating new user account...")
-    finance = FinanceAcc(filename='workflow_test.json', user='jane_doe')
+    finance = FinanceAccount(filename='workflow_test.json', user='jane_doe')
     
     # 2. Import CSV
     print("2. Importing CSV transactions...")
@@ -474,7 +474,7 @@ def test_9_full_workflow():
     
     # 5. Simulate login (reload and update)
     print("5. Simulating user login...")
-    finance2 = FinanceAcc(filename='workflow_test.json')
+    finance2 = FinanceAccount(filename='workflow_test.json')
     results = finance2.login_update()
     print(f"   Generated {sum(results.values())} recurring transactions")
     
@@ -650,9 +650,9 @@ if __name__ == '__main__':
         print("Finance App Testing Suite")
         print("=" * 60)
         print("\nUsage:")
-        print("  python testing.py all          # Run all tests")
-        print("  python testing.py 1            # Run test 1")
-        print("  python testing.py cleanup      # Remove test files")
+        print("  python tests.py all          # Run all tests")
+        print("  python tests.py 1            # Run test 1")
+        print("  python tests.py cleanup      # Remove test files")
         print("\nAvailable tests:")
         print("  1: Transaction classes")
         print("  2: BankAccount class")

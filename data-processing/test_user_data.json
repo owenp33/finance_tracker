@@ -1,0 +1,43 @@
+{
+  "user": "test_user",
+  "accounts": {
+    "Checking": {
+      "acctId": "Checking",
+      "balance": 4000.0,
+      "transactions": {
+        "single_Employer_2025-01-15": {
+          "date": "2025-01-15",
+          "vendor": "Employer",
+          "category": "Salary",
+          "amount": 5000.0,
+          "notes": "Monthly salary",
+          "type": "single"
+        },
+        "single_Transfer to Savings_2025-01-16": {
+          "date": "2025-01-16",
+          "vendor": "Transfer to Savings",
+          "category": "Transfer",
+          "amount": -1000.0,
+          "notes": "Savings transfer",
+          "type": "single"
+        }
+      },
+      "recurring": {}
+    },
+    "Savings": {
+      "acctId": "Savings",
+      "balance": 1000.0,
+      "transactions": {
+        "single_Transfer from Checking_2025-01-16": {
+          "date": "2025-01-16",
+          "vendor": "Transfer from Checking",
+          "category": "Transfer",
+          "amount": 1000.0,
+          "notes": "Savings deposit",
+          "type": "single"
+        }
+      },
+      "recurring": {}
+    }
+  }
+}

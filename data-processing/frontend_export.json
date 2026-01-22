@@ -1,0 +1,104 @@
+{
+  "user": "test_user",
+  "total_balance": 5000.0,
+  "accounts": {
+    "Checking": {
+      "balance": 4000.0,
+      "transaction_count": 2,
+      "recurring_count": 0,
+      "transactions": [
+        {
+          "date": "2025-01-15 00:00:00",
+          "vendor": "Employer",
+          "category": "Salary",
+          "amount": 5000.0,
+          "notes": "Monthly salary",
+          "type": "single"
+        },
+        {
+          "date": "2025-01-16 00:00:00",
+          "vendor": "Transfer to Savings",
+          "category": "Transfer",
+          "amount": -1000.0,
+          "notes": "Savings transfer",
+          "type": "single"
+        }
+      ],
+      "spending_by_category": {
+        "total": {
+          "Transfer": 1000.0
+        },
+        "average": {
+          "Transfer": 1000.0
+        },
+        "count": {
+          "Transfer": 1
+        }
+      },
+      "income_by_category": {
+        "total": {
+          "Salary": 5000.0
+        },
+        "average": {
+          "Salary": 5000.0
+        },
+        "count": {
+          "Salary": 1
+        }
+      },
+      "monthly_summary": {
+        "income": {
+          "2025-01": 5000.0
+        },
+        "expenses": {
+          "2025-01": 1000.0
+        },
+        "net": {
+          "2025-01": 4000.0
+        }
+      }
+    },
+    "Savings": {
+      "balance": 1000.0,
+      "transaction_count": 1,
+      "recurring_count": 0,
+      "transactions": [
+        {
+          "date": "2025-01-16 00:00:00",
+          "vendor": "Transfer from Checking",
+          "category": "Transfer",
+          "amount": 1000.0,
+          "notes": "Savings deposit",
+          "type": "single"
+        }
+      ],
+      "spending_by_category": {
+        "total": {},
+        "average": {},
+        "count": {}
+      },
+      "income_by_category": {
+        "total": {
+          "Transfer": 1000.0
+        },
+        "average": {
+          "Transfer": 1000.0
+        },
+        "count": {
+          "Transfer": 1
+        }
+      },
+      "monthly_summary": {
+        "income": {
+          "2025-01": 1000.0
+        },
+        "expenses": {
+          "2025-01": 0.0
+        },
+        "net": {
+          "2025-01": 1000.0
+        }
+      }
+    }
+  }
+}

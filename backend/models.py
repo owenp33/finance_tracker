@@ -13,7 +13,6 @@ Contains:
 """
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, date, timezone
-from transactions import SingleTransaction, RecurringTransaction
 from werkzeug.security import generate_password_hash, check_password_hash
 from typing import Optional
 
@@ -129,7 +128,11 @@ class DatabaseManager:
     # ACCOUNT OPERATIONS 
     def create_account(self, user_id, acct_id_str, account_name=""):
         display_name = account_name if account_name else acct_id_str
-        acc = AccountModel(user_id=user_id, acct_id_str=acct_id_str, acct_name=display_name, balance=0.0)
+        acc = AccountModel(user_id=user_id, 
+                           acct_id_str=acct_id_str, 
+                           acct_name=display_name, 
+                           balance=0.0
+                           )
         
         db.session.add(acc)
         db.session.commit()

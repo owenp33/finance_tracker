@@ -56,7 +56,7 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
                 )
                 self.recurring[key] = rec
 
-    def add_transactions(self, trans: SingleTransaction) -> None:
+    def add_transaction(self, trans: SingleTransaction) -> None:
         """Add a transaction and update balance"""
         key = f"single_{trans.get_vendor()}_{trans.get_date().isoformat()}"
         self.transactions[key] = trans
@@ -74,7 +74,7 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
         
         for rec in self.recurring.values():
             # Generate transactions for all passed dates
-            while rec.next <= now and (rec.idx < self.num or self.num == -1):
+            while rec.next <= now and (rec.idx < rec.number or rec.number == -1):
                 # Create new single transaction
                 new_transaction = SingleTransaction(
                     day=rec.next,
@@ -237,14 +237,26 @@ class FinanceAccount:
         for acct_id, account in self.accounts.items():
             df = account.get_transactions_df()
             
+            spending = FinanceDataProcessor.get_spending_by_category(account)
+            income = FinanceDataProcessor.get_income_by_category(account)
+            monthly = FinanceDataProcessor.get_monthly_summary(account)
+            
+            # This turns Period('2025-01') into "2025-01" so JSON can read them
+            if hasattr(spending, 'index'):
+                spending.index = spending.index.astype(str)
+            if hasattr(income, 'index'):
+                income.index = income.index.astype(str)
+            if hasattr(monthly, 'index'):
+                monthly.index = monthly.index.astype(str)
+            
             export_data['accounts'][acct_id] = {
                 'balance': account.get_balance(),
                 'transaction_count': len(account.transactions),
                 'recurring_count': len(account.recurring),
                 'transactions': df.to_dict('records') if not df.empty else [],
-                'spending_by_category': FinanceDataProcessor.get_spending_by_category(account).to_dict('index'),
-                'income_by_category': FinanceDataProcessor.get_income_by_category(account).to_dict('index'),
-                'monthly_summary': FinanceDataProcessor.get_monthly_summary(account).to_dict('index')
+                'spending_by_category': spending.to_dict(),
+                'income_by_category': income.to_dict(),
+                'monthly_summary': monthly.to_dict()
             }
         
         return export_data
@@ -379,7 +391,7 @@ class FinanceDataProcessor:
                 amnt=row['amount'],
                 desc=row['notes']
             )
-            account.add_transactions(trans)
+            account.add_transaction(trans)
         
         return account
     
