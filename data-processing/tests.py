@@ -14,8 +14,8 @@ import os
 import sys
 
 # Import your classes
-from Transaction import SingleTransaction, RecurringTransaction
-from Account import BankAccount, FinanceAcc, FinanceDataProcessor
+from transactions import SingleTransaction, RecurringTransaction
+from accounts import BankAccount, FinanceAcc, FinanceDataProcessor
 
 
 # ==================== TEST DATA ====================
