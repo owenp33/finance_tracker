@@ -549,7 +549,7 @@ def cleanup_test_files():
         except FileNotFoundError:
             print(f"  {file} not found")
     
-    print("\n✓ Cleanup complete")
+    print("\nCleanup complete")
 
 
 # ==================== MAIN ====================
