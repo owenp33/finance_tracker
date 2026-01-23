@@ -215,9 +215,6 @@ def get_analytics(account_id):
     
     # We fetch raw transactions
     transactions = db.get_account_transactions(account_id)
-    
-    # Instead of doing Pandas here, we pass the list to our Processor
-    # This keeps the API layer "thin"
     analytics_data = FinanceDataProcessor.generate_api_report(transactions)
     
     return jsonify(analytics_data), 200
