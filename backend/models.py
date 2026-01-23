@@ -56,7 +56,7 @@ class AccountModel(db.Model):
     def to_dict(self):
         return {
             'id': self.id, 'account_id': str(self.acct_id_str), 'balance': float(self.balance),
-            'transaction_count': len(self.transactions)
+            'transaction_count': len(self.transactions), 'recurring_count': len(self.recurring)
         }
         
 class TransactionModel(db.Model):

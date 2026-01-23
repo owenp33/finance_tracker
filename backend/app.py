@@ -1,18 +1,13 @@
 import os
 import sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
 
-# Adding logic paths - absolute path
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-data_processing_path = os.path.join(parent_dir, 'data-processing')
-sys.path.insert(0, data_processing_path)
-
-from models import DatabaseManager # Added Model imports
+from models import DatabaseManager, TransactionModel
 from accounts import FinanceDataProcessor
 
 app = Flask(__name__)
@@ -21,9 +16,15 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 jwt = JWTManager(app)
-db = DatabaseManager()
+try:
+    db = DatabaseManager()
+    db.create_tables()
+    print("Database connected and tables ready")
+except Exception as e:
+    print(f"Database error: {e}")
+    db = None
 
-# HELPER FUNCS===============================================================
+# HELPER FUNCTIONS ===========================================================
 def validate_ownership(account_id):
     """Utility to ensure the JWT user actually owns the account they are requesting"""
     user_id = get_jwt_identity()
@@ -55,7 +56,32 @@ def update_user_recurring(user_id):
             db.update_recurring_after_generation(rec.id, rec.next_date, rec.number)
     return total_gen
 
-# AUTH ENDPOINTS========================================================
+# HEALTH CHECK ===============================================================
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'database': 'connected' if db else 'disconnected',
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), 200
+
+@app.route('/', methods=['GET'])
+def home():
+    """API home"""
+    return jsonify({
+        'name': 'Finance Tracker API',
+        'version': '1.0',
+        'endpoints': {
+            'auth': '/api/auth/{register,login}',
+            'accounts': '/api/accounts',
+            'transactions': '/api/accounts/:id/transactions',
+            'analytics': '/api/accounts/:id/analytics',
+            'import': '/api/accounts/:id/import-csv'
+        }
+    }), 200
+
+# AUTH ENDPOINTS =======================================================
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -84,15 +110,52 @@ def login():
         'access_token': create_access_token(identity=user.id),
         'updates': {'transactions_generated': generated}
     }), 200
+    
+@app.route('/api/auth/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    """Get current user info"""
+    user_id = get_jwt_identity()
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    return jsonify(user.to_dict()), 200
 
-# ACCOUNT & TRANSACTION ENDPOINTS============================================
+# ACCOUNT ENDPOINTS =================================================
 @app.route('/api/accounts', methods=['GET'])
 @jwt_required()
 def get_accounts():
     user_id = get_jwt_identity()
     accounts = db.get_user_accounts(user_id)
-    return jsonify([acc.to_dict() for acc in accounts]), 200
+    return jsonify({'accounts':[acc.to_dict() for acc in accounts]}), 200
 
+@app.route('/api/accounts', methods=['POST'])
+@jwt_required()
+def create_account():
+    """Create new account"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    try:
+        account = db.create_account(
+            user_id, 
+            data['account_id'], 
+            data.get('account_name', data['account_id'])
+        )
+        return jsonify({'account': account.to_dict()}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/accounts/<int:account_id>', methods=['GET'])
+@jwt_required()
+def get_account(account_id):
+    """Get specific account"""
+    acc = validate_ownership(account_id)
+    if not acc:
+        return jsonify({'error': 'Unauthorized'}), 403
+    return jsonify(acc.to_dict()), 200
+
+# TRANSACTION ENDPOINTS ====================================================
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['GET'])
 @jwt_required()
 def get_transactions(account_id):
@@ -100,7 +163,7 @@ def get_transactions(account_id):
         return jsonify({'error': 'Unauthorized'}), 403
     
     transactions = db.get_account_transactions(account_id)
-    return jsonify([t.to_dict() for t in transactions]), 200
+    return jsonify({'transactions': [t.to_dict() for t in transactions]}), 200
 
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['POST'])
 @jwt_required()
@@ -114,10 +177,39 @@ def add_transaction(account_id):
         datetime.fromisoformat(data['date']).date(),
         data['vendor'], data['category'], float(data['amount']), data.get('notes', '')
     )
-    return jsonify(t.to_dict()), 201
+    
+    acc = db.get_account(account_id)
+    return jsonify({
+        'transaction': t.to_dict(),
+        'new_balance': acc.balance
+        }), 201
+    
+@app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
+@jwt_required()
+def delete_transaction(transaction_id):
+    user_id = get_jwt_identity()
+    
+    # 1. Look up the transaction
+    # We use the Model directly because it's faster than writing a new Manager wrapper
+    transaction = TransactionModel.query.get(transaction_id)
+    
+    if not transaction:
+        return jsonify({'error': 'Transaction not found'}), 404
+    
+    # 2. Check Ownership
+    # Your TransactionModel has a relationship to AccountModel (backref='account')
+    # So we can access transaction.account.user_id directly!
+    if transaction.account.user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # 3. Perform the Delete
+    success = db.delete_transaction(transaction_id)
+    
+    if success:
+        return jsonify({'message': 'Transaction deleted'}), 200
+    return jsonify({'error': 'Failed to delete'}), 400
 
-# ANALYTICS (REFACTORED)=====================================================
-
+# ANALYTICS ================================================================
 @app.route('/api/accounts/<int:account_id>/analytics', methods=['GET'])
 @jwt_required()
 def get_analytics(account_id):
@@ -134,7 +226,6 @@ def get_analytics(account_id):
     return jsonify(analytics_data), 200
 
 # CSV IMPORT ================================================================
-
 @app.route('/api/accounts/<int:account_id>/import-csv', methods=['POST'])
 @jwt_required()
 def import_csv(account_id):
@@ -145,19 +236,33 @@ def import_csv(account_id):
     
     # Process using a temporary stream or file
     try:
-        # Pass the file directly to your processor
         df = FinanceDataProcessor.load_csv(file) 
         
+        count = 0
         for _, row in df.iterrows():
             db.add_transaction(
-                account_id, row['date'], row['vendor'], 
+                account_id, row['date'], row['store'], 
                 row['category'], row['amount'], row.get('notes', '')
             )
+            count += 1
             
         new_balance = db.recalculate_account_balance(account_id)
-        return jsonify({'message': 'Import successful', 'new_balance': new_balance}), 200
+        return jsonify({
+            'message': f'Imported {count} transactions',
+            'count': count,
+            'new_balance': new_balance
+        }), 200
     except Exception as e:
         return jsonify({'error': f"Import failed: {str(e)}"}), 400
 
+# ERROR HANDLERS============================================================
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')
