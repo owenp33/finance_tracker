@@ -7,44 +7,46 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
 
-from models import DatabaseManager, TransactionModel
+from models import db, DatabaseManager, TransactionModel
 from accounts import FinanceDataProcessor
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
+    'DATABASE_URL',
+    'postgresql://postgres:password@localhost:5432/finance_app'
+)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
+db.init_app(app)
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 jwt = JWTManager(app)
-try:
-    db = DatabaseManager()
-    db.create_tables()
-    print("Database connected and tables ready")
-except Exception as e:
-    print(f"Database error: {e}")
-    db = None
+
+# Create DatabaseManager instance
+db_manager = DatabaseManager()
 
 # HELPER FUNCTIONS ===========================================================
 def validate_ownership(account_id):
     """Utility to ensure the JWT user actually owns the account they are requesting"""
     user_id = get_jwt_identity()
-    account = db.get_account(account_id)
+    account = db_manager.get_account(account_id)
     if not account or account.user_id != user_id:
         return None
     return account
 
 def update_user_recurring(user_id):
     """Processes all recurring transactions for a user across all accounts"""
-    accounts = db.get_user_accounts(user_id)
+    accounts = db_manager.get_user_accounts(user_id)
     total_gen = 0
     today = date.today()
 
     for acc in accounts:
-        recurring_templates = db.get_account_recurring(acc.id)
+        recurring_templates = db_manager.get_account_recurring(acc.id)
         for rec in recurring_templates:
             # rec is a RecurringModel instance
             while rec.next_date <= today and rec.number != 0:
-                db.add_transaction(
+                db_manager.add_transaction(
                     acc.id, rec.next_date, rec.vendor, rec.category, 
                     rec.amount, f"Auto-gen: {rec.notes}"
                 )
@@ -53,7 +55,7 @@ def update_user_recurring(user_id):
                 if rec.number > 0: rec.number -= 1
                 total_gen += 1
             
-            db.update_recurring_after_generation(rec.id, rec.next_date, rec.number)
+            db_manager.update_recurring_after_generation(rec.id, rec.next_date, rec.number)
     return total_gen
 
 # HEALTH CHECK ===============================================================
@@ -62,7 +64,7 @@ def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'database': 'connected' if db else 'disconnected',
+        'database': 'connected',
         'timestamp': datetime.now(timezone.utc).isoformat()
     }), 200
 
@@ -86,7 +88,7 @@ def home():
 def register():
     data = request.get_json()
     try:
-        user = db.create_user(data['username'], data['email'], data['password'])
+        user = db_manager.create_user(data['username'], data['email'], data['password'])
         return jsonify({
             'user': user.to_dict(),
             'access_token': create_access_token(identity=user.id)
@@ -97,7 +99,7 @@ def register():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json()
-    user = db.authenticate_user(data.get('username'), data.get('password'))
+    user = db_manager.authenticate_user(data.get('username'), data.get('password'))
     
     if not user:
         return jsonify({'error': 'Invalid credentials'}), 401
@@ -116,7 +118,7 @@ def login():
 def get_current_user():
     """Get current user info"""
     user_id = get_jwt_identity()
-    user = db.get_user_by_id(user_id)
+    user = db_manager.get_user_by_id(user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
     return jsonify(user.to_dict()), 200
@@ -126,7 +128,7 @@ def get_current_user():
 @jwt_required()
 def get_accounts():
     user_id = get_jwt_identity()
-    accounts = db.get_user_accounts(user_id)
+    accounts = db_manager.get_user_accounts(user_id)
     return jsonify({'accounts':[acc.to_dict() for acc in accounts]}), 200
 
 @app.route('/api/accounts', methods=['POST'])
@@ -137,7 +139,7 @@ def create_account():
     data = request.get_json()
     
     try:
-        account = db.create_account(
+        account = db_manager.create_account(
             user_id, 
             data['account_id'], 
             data.get('account_name', data['account_id'])
@@ -162,7 +164,7 @@ def get_transactions(account_id):
     if not validate_ownership(account_id):
         return jsonify({'error': 'Unauthorized'}), 403
     
-    transactions = db.get_account_transactions(account_id)
+    transactions = db_manager.get_account_transactions(account_id)
     return jsonify({'transactions': [t.to_dict() for t in transactions]}), 200
 
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['POST'])
@@ -172,13 +174,13 @@ def add_transaction(account_id):
         return jsonify({'error': 'Unauthorized'}), 403
     
     data = request.get_json()
-    t = db.add_transaction(
+    t = db_manager.add_transaction(
         account_id, 
         datetime.fromisoformat(data['date']).date(),
         data['vendor'], data['category'], float(data['amount']), data.get('notes', '')
     )
     
-    acc = db.get_account(account_id)
+    acc = db_manager.get_account(account_id)
     return jsonify({
         'transaction': t.to_dict(),
         'new_balance': acc.balance
@@ -200,7 +202,7 @@ def delete_transaction(transaction_id):
         return jsonify({'error': 'Unauthorized'}), 403
     
     # Perform the Delete
-    success = db.delete_transaction(transaction_id)
+    success = db_manager.delete_transaction(transaction_id)
     
     if success:
         return jsonify({'message': 'Transaction deleted'}), 200
@@ -214,7 +216,7 @@ def get_analytics(account_id):
     if not acc: return jsonify({'error': 'Unauthorized'}), 403
     
     # We fetch raw transactions
-    transactions = db.get_account_transactions(account_id)
+    transactions = db_manager.get_account_transactions(account_id)
     analytics_data = FinanceDataProcessor.generate_api_report(transactions)
     
     return jsonify(analytics_data), 200
@@ -234,13 +236,13 @@ def import_csv(account_id):
         
         count = 0
         for _, row in df.iterrows():
-            db.add_transaction(
+            db_manager.add_transaction(
                 account_id, row['date'], row['store'], 
                 row['category'], row['amount'], row.get('notes', '')
             )
             count += 1
             
-        new_balance = db.recalculate_account_balance(account_id)
+        new_balance = db_manager.recalculate_account_balance(account_id)
         return jsonify({
             'message': f'Imported {count} transactions',
             'count': count,
