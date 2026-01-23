@@ -561,6 +561,113 @@ def test_10_generate_api_report():
     assert 'trends' in report
     
     print("\n✅ TEST 10: PASSED - Analytics report working!")
+    
+def test_11_delete_transaction():
+    """Test 11: Delete transaction and verify balance update"""
+    print("\n" + "="*60)
+    print("TEST 11: Delete Transaction")
+    print("="*60)
+    
+    # Create account with some transactions
+    account = BankAccount(acctId='Test_Delete')
+    
+    # Add multiple transactions and track them
+    trans1 = SingleTransaction(
+        day=date(2025, 1, 15),
+        vend="Salary",
+        cat="Income",
+        amnt=3000.00,
+        desc="Monthly salary"
+    )
+    
+    trans2 = SingleTransaction(
+        day=date(2025, 1, 16),
+        vend="Grocery Store",
+        cat="Food",
+        amnt=-150.00,
+        desc="Weekly shopping"
+    )
+    
+    trans3 = SingleTransaction(
+        day=date(2025, 1, 17),
+        vend="Gas Station",
+        cat="Transportation",
+        amnt=-45.00,
+        desc="Fill up"
+    )
+    
+    account.add_transaction(trans1)
+    account.add_transaction(trans2)
+    account.add_transaction(trans3)
+    
+    print(f"\nInitial state:")
+    print(f"  Transactions: {len(account.transactions)}")
+    print(f"  Balance: ${account.get_balance():.2f}")
+    
+    # Get the key for trans2 to delete it
+    trans2_key = f"single_{trans2.get_vendor()}_{trans2.get_date().isoformat()}"
+    
+    # Verify transaction exists
+    assert trans2_key in account.transactions, f"Transaction key '{trans2_key}' not found"
+    print(f"\n  Found transaction to delete: {trans2.get_vendor()}")
+    
+    # Store balance before deletion
+    balance_before = account.get_balance()
+    trans2_amount = trans2.get_amount()
+    
+    # Delete the transaction
+    print(f"\nDeleting transaction: {trans2.get_vendor()} (${trans2_amount:.2f})")
+    del account.transactions[trans2_key]
+    
+    # Recalculate balance after deletion
+    account.recalculate_balance()
+    balance_after = account.get_balance()
+    
+    print(f"\nAfter deletion:")
+    print(f"  Transactions: {len(account.transactions)}")
+    print(f"  Balance before: ${balance_before:.2f}")
+    print(f"  Balance after: ${balance_after:.2f}")
+    print(f"  Expected balance: ${balance_before - trans2_amount:.2f}")
+    
+    # Verify transaction was deleted
+    assert trans2_key not in account.transactions, "Transaction still exists after deletion"
+    assert len(account.transactions) == 2, f"Expected 2 transactions, got {len(account.transactions)}"
+    
+    # Verify balance updated correctly
+    expected_balance = balance_before - trans2_amount
+    assert abs(balance_after - expected_balance) < 0.01, \
+        f"Balance incorrect: expected ${expected_balance:.2f}, got ${balance_after:.2f}"
+    
+    # Verify remaining transactions are correct
+    print(f"\nRemaining transactions:")
+    for key, trans in account.transactions.items():
+        print(f"  {trans.get_vendor()}: ${trans.get_amount():.2f}")
+    
+    # Test deleting from FinanceAccount with save/load
+    print(f"\n[Testing with FinanceAccount persistence]")
+    finance = FinanceAccount(filename='test_delete.json', user='delete_test')
+    finance.add_account('TestAcct', account)
+    
+    # Save with 2 transactions
+    finance.save_to_file()
+    print(f"  Saved account with {len(account.transactions)} transactions")
+    
+    # Load and verify
+    finance2 = FinanceAccount(filename='test_delete.json')
+    loaded_account = finance2.get_account('TestAcct')
+    
+    assert len(loaded_account.transactions) == 2, \
+        f"Loaded account should have 2 transactions, got {len(loaded_account.transactions)}"
+    assert abs(loaded_account.get_balance() - balance_after) < 0.01, \
+        "Loaded account balance doesn't match"
+    
+    print(f"  Loaded account verified: {len(loaded_account.transactions)} transactions, ${loaded_account.get_balance():.2f}")
+    
+    # Cleanup
+    if os.path.exists('test_delete.json'):
+        os.remove('test_delete.json')
+    
+    print("\n✅ TEST 11: PASSED")
 
 # ==================== TEST RUNNER ====================
 
@@ -580,7 +687,8 @@ def run_all_tests():
         test_7_data_analytics,
         test_8_export_for_frontend,
         test_9_full_workflow,
-        test_10_generate_api_report
+        test_10_generate_api_report,
+        test_11_delete_transaction
     ]
     
     passed = 0
@@ -609,7 +717,8 @@ def cleanup_test_files():
         'test_format2.csv',
         'test_user_data.json',
         'frontend_export.json',
-        'workflow_test.json'
+        'workflow_test.json',
+        'test_delete.json'
     ]
     
     print("\nCleaning up test files...")
@@ -664,4 +773,5 @@ if __name__ == '__main__':
         print("  8: Export for frontend")
         print("  9: Full workflow simulation")
         print("  10: Full API analytics report")
+        print("  11: Delete transaction")
         
