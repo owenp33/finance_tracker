@@ -189,20 +189,17 @@ def add_transaction(account_id):
 def delete_transaction(transaction_id):
     user_id = get_jwt_identity()
     
-    # 1. Look up the transaction
-    # We use the Model directly because it's faster than writing a new Manager wrapper
+    # Look up the transaction
     transaction = TransactionModel.query.get(transaction_id)
     
     if not transaction:
         return jsonify({'error': 'Transaction not found'}), 404
     
-    # 2. Check Ownership
-    # Your TransactionModel has a relationship to AccountModel (backref='account')
-    # So we can access transaction.account.user_id directly!
+    # Check Ownership
     if transaction.account.user_id != user_id:
         return jsonify({'error': 'Unauthorized'}), 403
     
-    # 3. Perform the Delete
+    # Perform the Delete
     success = db.delete_transaction(transaction_id)
     
     if success:
