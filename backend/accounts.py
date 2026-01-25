@@ -386,7 +386,7 @@ class FinanceDataProcessor:
         for _, row in df.iterrows():
             trans = SingleTransaction(
                 day=row['date'],
-                vend=row['store'],
+                vend=row['vendor'],
                 cat=row['category'],
                 amnt=row['amount'],
                 desc=row['notes']

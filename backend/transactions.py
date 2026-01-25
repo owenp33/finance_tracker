@@ -66,8 +66,9 @@ class Transaction(ABC):
 class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
     """A one-time transaction"""
     
-    def __init__(self, day: date, vend: str, cat: str, amnt: float, desc: str = ""):
+    def __init__(self, day: date, vend: str, cat: str, amnt: float, desc: str = "", type: ):
         super().__init__(day, vend, cat, amnt, desc)
+        type
     
     def return_dict(self) -> dict:
         return {
@@ -117,6 +118,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             self.frequency = freq
         if num is not None:
             self.number = num
+            # 
             
     def return_dict(self) -> dict: 
         return {

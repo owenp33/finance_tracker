@@ -40,6 +40,7 @@ class User(db.Model):
             'id': self.id, 'username': str(self.username), 'email': self.email,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
 
 class AccountModel(db.Model):
     __tablename__ = 'accounts'
@@ -55,9 +56,11 @@ class AccountModel(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'account_id': str(self.acct_id_str), 'balance': float(self.balance),
+            'id': self.id, 'account_id': str(self.acct_id_str), 
+            'account_name': str(self.acct_name), 'balance': float(self.balance),
             'transaction_count': len(self.transactions), 'recurring_count': len(self.recurring)
         }
+        
         
 class TransactionModel(db.Model):
     __tablename__ = 'transactions'
@@ -90,17 +93,47 @@ class RecurringModel(db.Model):
     next_date = db.Column(db.Date, nullable=False)
     frequency = db.Column(db.Integer, default=30) # days
     number = db.Column(db.Integer, default=-1)    # -1 for infinite
-    current_index = db.Column(db.Integer, default=0)
-
+    idx = db.Column(db.Integer, default=0)
+    
     def to_dict(self):
         return {
             'id': self.id, 'date':self.date.isoformat(), 'vendor': str(self.vendor),
-            'category': str(self.category), 'amount': float(self.amount), 'notes': str(self.notes),
+            'category': str(self.category), 'amount': float(self.amount), 'notes': str(self.notes or ''),
             'next_date': self.next_date.isoformat(), 'frequency': int(self.frequency),
             'number': int(self.number), 'idx': int(self.idx)
         }
+    
+    def process_due_recurring(self, account_id):
+        """Generate transactions for all due recurring items"""
+        recurring_list = self.get_account_recurring(account_id)
+        transactions_created = 0
+        today = date.today()
         
+        for rec in recurring_list:
+            while rec.next_date <= today and (rec.number == -1 or rec.idx < rec.number):
+                # Create transaction from recurring
+                self.add_transaction(
+                    account_id=account_id,
+                    date_obj=rec.next_date,
+                    vendor=rec.vendor,
+                    category=rec.category,
+                    amount=rec.amount,
+                    notes=f"Auto from recurring: {rec.notes}"
+                )
+                
+                # Advance to next occurrence
+                rec.advance_to_next()
+                rec.idx += 1
+                transactions_created += 1
+                
+                # If finite and complete, could delete it
+                if rec.number != -1 and rec.idx >= rec.number:
+                    break
         
+        db.session.commit()
+        return transactions_created
+        
+
 class DatabaseManager:
     """Data Access Layer using Flask-SQLAlchemy"""
 
@@ -166,7 +199,7 @@ class DatabaseManager:
             account = self.get_account(t.account_id)
             if account:
                 account.balance -= t.amount
-            
+
             db.session.delete(t)
             db.session.commit()
             return True
@@ -196,6 +229,8 @@ class DatabaseManager:
                 rec.next_date = next_date
             if remaining_number is not None:
                 rec.number = remaining_number
+                if rec.idx > rec.number:
+                    
             db.session.commit()
 
     def recalculate_account_balance(self, account_id):

@@ -1,6 +1,5 @@
 """
 __init__.py - Flask application factory
-Location: backend/__init__.py
 
 This centralizes app initialization for better testing and deployment.
 """

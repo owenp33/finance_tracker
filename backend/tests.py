@@ -668,6 +668,47 @@ def test_11_delete_transaction():
         os.remove('test_delete.json')
     
     print("\n✅ TEST 11: PASSED")
+    
+    
+def test_12_recurring_deletion():
+    """Test 12: Recurring transaction update mechanism"""
+    print("\n" + "="*60)
+    print("TEST 3: Recurring Transaction Update")
+    print("="*60)
+    
+    # Create account
+    account = BankAccount(acctId='Test_Account')
+    
+    # Add recurring transaction that's less than 2 months old
+    old_date = date.today() - timedelta(days=57)
+    rent = RecurringTransaction(
+        day=old_date,
+        vend="Landlord",
+        cat="Housing",
+        amnt=-1500.00,
+        desc="Monthly rent",
+        nxt=old_date,
+        freq=30,
+        num=-1  # Infinite
+    )
+    account.add_recurring(rent)
+    
+    print(f"\nAdded recurring rent (started {old_date})")
+    print(f"Current balance: ${account.get_balance():.2f}")
+    print(f"Transactions: {len(account.transactions)}")
+    
+    # Update recurring transactions
+    count = account.update_recurring()
+    
+    print(f"\nUpdate generated {count} transactions")
+    print(f"New balance: ${account.get_balance():.2f}")
+    print(f"Total transactions: {len(account.transactions)}")
+    print(f"Next rent payment: {rent.next}")
+    
+    # Verify the count is correct (should be 2 for 60 days / 30 days)
+    assert count == 2, f"Expected 2 transactions, got {count}"
+    
+    print("\n✅ TEST 3: PASSED")
 
 # ==================== TEST RUNNER ====================
 
