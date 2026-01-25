@@ -20,7 +20,7 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
 db.init_app(app)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
 jwt = JWTManager(app)
 
 # Create DatabaseManager instance

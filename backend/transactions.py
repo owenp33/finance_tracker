@@ -66,9 +66,8 @@ class Transaction(ABC):
 class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
     """A one-time transaction"""
     
-    def __init__(self, day: date, vend: str, cat: str, amnt: float, desc: str = "", type: ):
+    def __init__(self, day: date, vend: str, cat: str, amnt: float, desc: str = ""):
         super().__init__(day, vend, cat, amnt, desc)
-        type
     
     def return_dict(self) -> dict:
         return {
@@ -76,8 +75,7 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
             'vendor': self.vendor,
             'category': self.category,
             'amount': self.amount,
-            'notes': self.notes,
-            'type': 'single'
+            'notes': self.notes
         }
     
         
@@ -91,7 +89,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         self.next = nxt if nxt else (day + timedelta(days=freq))
         self.frequency = freq
         self.number = num
-        self.idx = 0
+        self.idx = 1
 
     def get_remaining_dates(self, limit: int = 5) -> List[date]:
         """Get upcoming transaction dates (max limit = 5)"""
@@ -118,7 +116,6 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             self.frequency = freq
         if num is not None:
             self.number = num
-            # 
             
     def return_dict(self) -> dict: 
         return {
@@ -129,6 +126,5 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             'notes': self.notes,
             'next': self.next.isoformat(),
             'frequency': self.frequency,
-            'number': self.number,
-            'type': 'recurring' 
+            'number': self.number        
         }

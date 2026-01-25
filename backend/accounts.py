@@ -11,7 +11,7 @@ import pandas as pd
 import json
 import re
 from typing import Dict, List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from transactions import SingleTransaction, RecurringTransaction
 
 class BankAccount: #Takes dict of details, transactions, and recurring transactions, generates transaction objects
@@ -72,10 +72,28 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
         total_gen = 0
         now = date.today()
         
-        for rec in self.recurring.values():
-            # Generate transactions for all passed dates
-            while rec.next <= now and (rec.idx < rec.number or rec.number == -1):
-                # Create new single transaction
+        for _, rec in self.recurring.items():
+            # First, clean up excess transactions if number was reduced
+            if rec.number != -1:
+                # Find all auto-generated transactions from this recurring item
+                cutoff_date = rec.date + timedelta(days=rec.frequency * rec.number)
+                
+                # Identify and remove transactions after the cutoff
+                keys_to_delete = []
+                for trans_key, trans in self.transactions.items():
+                    if (trans.vendor == rec.vendor and 
+                        trans.category == rec.category and
+                        abs(trans.amount - rec.amount) < 0.01 and
+                        trans.date >= cutoff_date and
+                        "Auto-generated" in trans.notes):
+                        keys_to_delete.append(trans_key)
+                        self.balance -= trans.amount  # Reverse the transaction
+                
+                for k in keys_to_delete:
+                    del self.transactions[k]
+            
+            # Then generate new transactions for passed dates
+            while rec.next <= now and (rec.idx <= rec.number or rec.number == -1):
                 new_transaction = SingleTransaction(
                     day=rec.next,
                     vend=rec.vendor,
@@ -83,7 +101,6 @@ class BankAccount: #Takes dict of details, transactions, and recurring transacti
                     amnt=rec.amount,
                     desc=f"Auto-generated from recurring ({rec.frequency} days)"
                 )
-                
                 self.add_transaction(new_transaction)
                 rec.advance_to_next()
                 total_gen += 1

@@ -673,19 +673,19 @@ def test_11_delete_transaction():
 def test_12_recurring_deletion():
     """Test 12: Recurring transaction update mechanism"""
     print("\n" + "="*60)
-    print("TEST 3: Recurring Transaction Update")
+    print("TEST 12: Recurring Transaction Deletion")
     print("="*60)
     
     # Create account
     account = BankAccount(acctId='Test_Account')
     
     # Add recurring transaction that's less than 2 months old
-    old_date = date.today() - timedelta(days=57)
+    old_date = date.today() - timedelta(days=755)
     rent = RecurringTransaction(
         day=old_date,
         vend="Landlord",
         cat="Housing",
-        amnt=-1500.00,
+        amnt=-900.00,
         desc="Monthly rent",
         nxt=old_date,
         freq=30,
@@ -700,15 +700,62 @@ def test_12_recurring_deletion():
     # Update recurring transactions
     count = account.update_recurring()
     
-    print(f"\nUpdate generated {count} transactions")
-    print(f"New balance: ${account.get_balance():.2f}")
+    print(f"\nFirst update generated {count} transactions")
+    print(f"Balance after generation: ${account.get_balance():.2f}")
     print(f"Total transactions: {len(account.transactions)}")
     print(f"Next rent payment: {rent.next}")
+    print(f"Recurring idx: {rent.idx}")
     
-    # Verify the count is correct (should be 2 for 60 days / 30 days)
-    assert count == 2, f"Expected 2 transactions, got {count}"
+    # Verify the count is correct (should be 26)
+    expected_first = (755 // 30) + 1
+    assert count == expected_first, f"Expected ~{expected_first} transactions, got {count}"
     
-    print("\n✅ TEST 3: PASSED")
+    # Store the count before editing
+    transactions_before_edit = len(account.transactions)
+    balance_before_edit = account.get_balance()
+    
+    print("EDITING: Changing number from -1 (infinite) to 12")
+    
+    # Edit to limit to only 12 occurrences
+    # This should DELETE transactions #13 onwards
+    rent.edit(num=12)
+    
+    # Call update again - this should:
+    # 1. Not generate new transactions (none are due)
+    # 2. Remove transactions beyond the 12th occurrence
+    count_after = account.update_recurring()
+    
+    print(f"\nSecond update generated {count_after} new transactions")
+    print(f"Balance after edit: ${account.get_balance():.2f}")
+    print(f"Total transactions: {len(account.transactions)}")
+    print(f"Next rent payment: {rent.next}")
+    print(f"Recurring idx: {rent.idx}")
+    
+    # Verify:
+    # - No new transactions were generated (count_after should be 0)
+    # - Total transactions should now be 12
+    # - Balance should reflect only 12 payments of -900
+    assert count_after == 0, f"Expected 0 new transactions, got {count_after}"
+    assert len(account.transactions) == 12, f"Expected 12 total transactions, got {len(account.transactions)}"
+    
+    expected_balance = 12 * -900.00
+    assert abs(account.get_balance() - expected_balance) < 0.01, \
+        f"Expected balance ${expected_balance:.2f}, got ${account.get_balance():.2f}"
+    
+    # Verify the 12th transaction date
+    twelfth_occurrence_date = old_date + timedelta(days=30 * 11)  # 0-indexed: 11 = 12th occurrence
+    print(f"\n12th occurrence should be around: {twelfth_occurrence_date}")
+    
+    # Verify next is set correctly (should be after the 12th occurrence)
+    print(f"Recurring 'next' date: {rent.next}")
+    print(f"Recurring idx (should be 12 or more): {rent.idx}")
+    
+    print(f"\nTransactions deleted: {transactions_before_edit - len(account.transactions)}")
+    print(f"Balance change: ${balance_before_edit:.2f} -> ${account.get_balance():.2f}")
+    print(f"Amount recovered: ${balance_before_edit - account.get_balance():.2f}")
+    
+    print("\n✅ TEST 12: PASSED")
+
 
 # ==================== TEST RUNNER ====================
 
@@ -729,7 +776,8 @@ def run_all_tests():
         test_8_export_for_frontend,
         test_9_full_workflow,
         test_10_generate_api_report,
-        test_11_delete_transaction
+        test_11_delete_transaction,
+        test_12_recurring_deletion
     ]
     
     passed = 0
