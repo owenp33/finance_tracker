@@ -1,5 +1,5 @@
 """
-Transaction.py - Transaction class definitions
+transactions.py - Transaction class definitions
 
 Contains:
 - Transaction (Abstract Base Class)
@@ -60,6 +60,7 @@ class Transaction(ABC):
             self.amount = amnt
         if desc is not None:
             self.notes = desc
+    #Set additional fields to null in database
 
 
 class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
@@ -74,8 +75,7 @@ class SingleTransaction(Transaction): #takes a transaction dict, and turns it in
             'vendor': self.vendor,
             'category': self.category,
             'amount': self.amount,
-            'notes': self.notes,
-            'type': 'single'
+            'notes': self.notes
         }
     
         
@@ -89,7 +89,7 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
         self.next = nxt if nxt else (day + timedelta(days=freq))
         self.frequency = freq
         self.number = num
-        self.idx = 0
+        self.idx = 1
 
     def get_remaining_dates(self, limit: int = 5) -> List[date]:
         """Get upcoming transaction dates (max limit = 5)"""
@@ -126,6 +126,5 @@ class RecurringTransaction(Transaction): #takes a recurringTransaction dict, and
             'notes': self.notes,
             'next': self.next.isoformat(),
             'frequency': self.frequency,
-            'number': self.number,
-            'type': 'recurring' 
+            'number': self.number        
         }
