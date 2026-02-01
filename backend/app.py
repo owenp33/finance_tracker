@@ -16,6 +16,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URL',
     'postgresql://postgres:password@localhost:5432/finance_app'
 )
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production') # secret key here
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
