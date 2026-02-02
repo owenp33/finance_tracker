@@ -4,7 +4,9 @@ import './App.css';
 function App() {
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => {
+    return localStorage.getItem('token') || null;
+  });
   const [user, setUser] = useState(null);
   
   // App state
@@ -15,9 +17,14 @@ function App() {
   const [analytics, setAnalytics] = useState(null);
   
   // UI state
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('dashboard'); // dashboard, transactions, analytics, recurring
+
+  // const [showCSVImport, setShowCSVImport] = useState(false);
+  // const [csvFile, setCSVFile] = useState(null);
+  // const [csvImporting, setCSVImporting] = useState(false);
   
   // Form state
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -30,17 +37,23 @@ function App() {
   });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
+  
   // Utility function for API calls
   const fetchAPI = async (endpoint, options = {}) => {
+    const tokenTemp = localStorage.getItem('token'); // Add this line
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    const skipAuth = endpoint === '/login' || endpoint === '/register'; 
+    if (tokenTemp && !skipAuth) {
+      headers['Authorization'] = `Bearer ${tokenTemp}`;
     }
+
+    console.log('Request endpoint: ', endpoint);
+    console.log('Request body: ', options.body);
+    console.log('Request method: ', options.method || 'GET');
 
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -49,6 +62,8 @@ function App() {
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.log('Error status: ', response.status);
+      console.log('Error data: ', errorData);
       throw new Error(errorData.error || 'Request failed');
     }
 
@@ -63,6 +78,7 @@ function App() {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('Data: ', data);
       setToken(data.access_token);
       setUser(data.user);
       setIsAuthenticated(true);
@@ -109,6 +125,7 @@ function App() {
       
       if (data.accounts.length > 0 && !selectedAccount) {
         setSelectedAccount(data.accounts[0].id);
+        loadAnalytics(data.accounts[0].id)
       }
     } catch (err) {
       setError(err.message);
@@ -136,14 +153,17 @@ function App() {
   };
 
   // Load analytics
-  const loadAnalytics = async (accountId) => {
-    try {
-      const data = await fetchAPI(`/api/accounts/${accountId}/analytics`);
-      setAnalytics(data);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+const loadAnalytics = async (accountId) => {
+  if (!accountId) return;
+  
+  try {
+    const data = await fetchAPI(`/api/accounts/${accountId}/analytics`);
+    setAnalytics(data);
+  } catch (err) {
+    console.error('Failed to load analytics:', err);
+    setError(err.message);
+  }
+};
 
   // Add transaction
   const handleAddTransaction = async (e) => {
@@ -155,8 +175,14 @@ function App() {
         body: JSON.stringify(transactionFormData),
       });
 
+
+  
       // Refresh transactions
-      await loadTransactions(selectedAccount);
+      await Promise.all([
+        loadTransactions(selectedAccount),
+        loadAccounts(),
+        loadAnalytics(selectedAccount)
+      ])
       
       // Reset form
       setTransactionFormData({
@@ -186,7 +212,11 @@ function App() {
       });
 
       // Refresh transactions
-      await loadTransactions(selectedAccount);
+      await Promise.all ([
+        loadTransactions(selectedAccount),
+        loadAccounts(),
+        loadAnalytics(selectedAccount)
+      ]);
       alert('Transaction deleted successfully!');
     } catch (err) {
       setError(err.message);
@@ -245,7 +275,7 @@ function App() {
 
   // Calculate summary statistics from analytics
   const getSummaryStats = () => {
-    if (!analytics) {
+    if (!analytics || !analytics.summary) {
       return {
         totalTransactions: 0,
         totalIncome: 0,
@@ -253,12 +283,11 @@ function App() {
         netAmount: 0
       };
     }
-
     return {
-      totalTransactions: analytics.total_transactions || 0,
-      totalIncome: analytics.total_income || 0,
-      totalExpenses: Math.abs(analytics.total_expenses || 0),
-      netAmount: analytics.net_amount || 0
+      totalTransactions: analytics.summary.transaction_count || 0,
+      totalIncome: analytics.summary.total_income || 0,
+      totalExpenses: analytics.summary.total_expenses || 0,  // Already absolute value from backend
+      netAmount: analytics.summary.net_amount || 0
     };
   };
 
@@ -509,7 +538,7 @@ function App() {
                   {analytics.top_vendors.map((vendor, idx) => (
                     <div key={idx} className="vendor-item">
                       <span>{vendor.vendor}</span>
-                      <span>${Math.abs(vendor.total).toFixed(2)}</span>
+                      <span>${Math.abs(vendor.amount).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>

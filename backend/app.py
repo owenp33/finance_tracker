@@ -2,10 +2,11 @@ import os
 import sys
 from datetime import datetime, date, timedelta, timezone
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
+import json
 
 from models import db, DatabaseManager, TransactionModel, RecurringModel
 from accounts import FinanceDataProcessor
@@ -16,13 +17,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URL',
     'postgresql://postgres:password@localhost:5432/finance_app'
 )
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production') # secret key here
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
 # INITIALIZE EXTENSIONS ====================================================
 db.init_app(app)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+CORS(app, resources={r"/api/*": {
+    "origins": ["*"],#["*.ngrok-free.dev/","http://localhost:3000"],  # For development - allows all origins
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=True)
 jwt = JWTManager(app)
 
 # Create DatabaseManager instance
@@ -32,13 +37,18 @@ db_manager = DatabaseManager()
 def validate_ownership(account_id):
     """Utility to ensure the JWT user actually owns the account they are requesting"""
     user_id = get_jwt_identity()
+    print("User-id = " + str(user_id))
     account = db_manager.get_account(account_id)
-    if not account or account.user_id != user_id:
+    #print("Account = " + account)
+    print("Account.user-id =" + str(account.user_id))
+    if (not account) or (int(account.user_id) != int(user_id)):
+        print('AAAAAA')
         return None
     return account
 
 # HEALTH CHECK =============================================================
 @app.route('/health', methods=['GET'])
+@cross_origin()
 def health():
     """Health check endpoint"""
     return jsonify({
@@ -48,6 +58,7 @@ def health():
     }), 200
 
 @app.route('/', methods=['GET'])
+@cross_origin()
 def home():
     """API home - lists available endpoints"""
     return jsonify({
@@ -65,6 +76,7 @@ def home():
 
 # AUTH ENDPOINTS =======================================================
 @app.route('/api/auth/register', methods=['POST'])
+@cross_origin()
 def register():
     data = request.get_json()
     try:
@@ -77,6 +89,7 @@ def register():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/auth/login', methods=['POST'])
+@cross_origin()
 def login():
     """Login and process any due recurring transactions"""
     data = request.get_json()
@@ -89,6 +102,11 @@ def login():
     if not user:
         return jsonify({'error': 'Invalid credentials'}), 401
     
+    access_token = create_access_token(
+        identity=str(user.id),
+        expires_delta=timedelta(hours=24)
+    )
+    
     # Process recurring transactions for all user accounts
     total_generated = 0
     accounts = db_manager.get_user_accounts(user.id)
@@ -98,14 +116,15 @@ def login():
         total_generated += generated
     
     return jsonify({
-        'user': user.to_dict(),
-        'access_token': create_access_token(identity=user.id),
+        'access_token': access_token,
+        'user': json.dumps(user.to_dict()),
         'updates': {
             'transactions_generated': total_generated
         }
     }), 200
     
 @app.route('/api/auth/me', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_current_user():
     """Get current authenticated user info"""
@@ -119,6 +138,7 @@ def get_current_user():
 
 # ACCOUNT ENDPOINTS =================================================
 @app.route('/api/accounts', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_accounts():
     """Get all bank accounts for current user"""
@@ -130,6 +150,7 @@ def get_accounts():
     }), 200
 
 @app.route('/api/accounts', methods=['POST'])
+@cross_origin()
 @jwt_required()
 def create_account():
     """Create new account for current user"""
@@ -151,6 +172,7 @@ def create_account():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/accounts/<int:account_id>', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_account(account_id):
     """Get specific account details"""
@@ -162,6 +184,7 @@ def get_account(account_id):
 
 # TRANSACTION ENDPOINTS ====================================================
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_transactions(account_id):
     """Get all transactions for an account"""
@@ -175,6 +198,7 @@ def get_transactions(account_id):
     }), 200
 
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['POST'])
+@cross_origin()
 @jwt_required()
 def add_transaction(account_id):
     """Add a new transaction to an account"""
@@ -209,6 +233,7 @@ def add_transaction(account_id):
         return jsonify({'error': str(e)}), 400
     
 @app.route('/api/transactions/<int:transaction_id>', methods=['PUT', 'PATCH'])
+@cross_origin()
 @jwt_required()
 def update_transaction(transaction_id):
     """Update an existing transaction"""
@@ -249,6 +274,7 @@ def update_transaction(transaction_id):
         return jsonify({'error': str(e)}), 400
     
 @app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
+@cross_origin()
 @jwt_required()
 def delete_transaction(transaction_id):
     """Delete a transaction"""
@@ -259,7 +285,7 @@ def delete_transaction(transaction_id):
     if not transaction:
         return jsonify({'error': 'Transaction not found'}), 404
     
-    if transaction.account.user_id != user_id:
+    if int(transaction.account.user_id) != int(user_id):
         return jsonify({'error': 'Unauthorized'}), 403
     
     success = db_manager.delete_transaction(transaction_id)
@@ -274,6 +300,7 @@ def delete_transaction(transaction_id):
 
 # RECURRING TRANSACTION ENDPOINTS ==========================================
 @app.route('/api/accounts/<int:account_id>/recurring', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_recurring(account_id):
     """Get all recurring transactions for an account"""
@@ -287,6 +314,7 @@ def get_recurring(account_id):
     }), 200
 
 @app.route('/api/accounts/<int:account_id>/recurring', methods=['POST'])
+@cross_origin()
 @jwt_required()
 def add_recurring(account_id):
     """Add a new recurring transaction template"""
@@ -322,6 +350,7 @@ def add_recurring(account_id):
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/recurring/<int:recurring_id>', methods=['PUT', 'PATCH'])
+@cross_origin()
 @jwt_required()
 def update_recurring_endpoint(recurring_id):
     """Update a recurring transaction (will clean up excess generated transactions)"""
@@ -368,6 +397,7 @@ def update_recurring_endpoint(recurring_id):
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/recurring/<int:recurring_id>', methods=['DELETE'])
+@cross_origin()
 @jwt_required()
 def delete_recurring_endpoint(recurring_id):
     """Delete a recurring transaction template"""
@@ -396,6 +426,7 @@ def delete_recurring_endpoint(recurring_id):
 
 # ANALYTICS ================================================================
 @app.route('/api/accounts/<int:account_id>/analytics', methods=['GET'])
+@cross_origin()
 @jwt_required()
 def get_analytics(account_id):
     """Get comprehensive analytics for an account"""
@@ -410,6 +441,7 @@ def get_analytics(account_id):
 
 # CSV IMPORT ================================================================
 @app.route('/api/accounts/<int:account_id>/import-csv', methods=['POST'])
+@cross_origin()
 @jwt_required()
 def import_csv(account_id):
     """Import transactions from CSV file"""
@@ -453,14 +485,17 @@ def import_csv(account_id):
         return jsonify({'error': f'Import failed: {str(e)}'}), 400
 
 # ERROR HANDLERS============================================================
+@cross_origin()
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Endpoint not found'}), 404
 
+@cross_origin()
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+@cross_origin()
 @app.errorhandler(Exception)
 def handle_exception(error):
     """Catch-all error handler for debugging"""
@@ -471,6 +506,7 @@ def handle_exception(error):
     }), 500
 
 # DATABASE INITIALIZATION ==================================================
+@cross_origin()
 @app.before_request
 def create_tables():
     """Create database tables on first request"""
