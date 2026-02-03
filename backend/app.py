@@ -25,7 +25,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 # INITIALIZE EXTENSIONS ====================================================
 db.init_app(app)
 CORS(app, resources={r"/api/*": {
-    "origins": ["*"],#["*.ngrok-free.dev/","http://localhost:3000"],  # For development - allows all origins
+    "origins": ["*"], #["*.ngrok-free.dev/","http://localhost:3000"],  # For development - allows all origins
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=True)
 jwt = JWTManager(app)
@@ -181,65 +181,6 @@ def get_account(account_id):
         return jsonify({'error': 'Unauthorized or account not found'}), 403
         
     return jsonify(acc.to_dict()), 200
-
-# UPDATE ACCOUNT ============================================================
-# @app.route('/api/accounts/<int:account_id>', methods=['PUT'])
-# @cross_origin()
-# @jwt_required()
-# def update_account(account_id):
-#     """Update account details"""
-#     if not validate_ownership(account_id):
-#         return jsonify({'error': 'Unauthorized'}), 403
-    
-#     data = request.get_json()
-#     name = data.get('name')
-    
-#     if not name:
-#         return jsonify({'error': 'Account name is required'}), 400
-    
-#     try:
-#         success = db_manager.update_account(account_id, name)
-        
-#         if success:
-#             account = db_manager.get_account(account_id)
-#             print("success")
-#             return jsonify({
-#                 'message': 'Account updated successfully',
-#                 'account': {
-#                     'id': account.id,
-#                     'name': account.acct_name,
-#                     'balance': account.balance
-#                 }
-#             }), 200
-#         else:
-#             return jsonify({'error': 'Failed to update account'}), 400
-            
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 400
-
-# # DELETE ACCOUNT ============================================================
-# @app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
-# @cross_origin()
-# @jwt_required()
-# def delete_account(account_id):
-#     """Delete an account and all its transactions"""
-#     user_id = int(get_jwt_identity()) 
-        
-#     if not validate_ownership(account_id):
-#         return jsonify({'error': 'Unauthorized'}), 403
-    
-#     try:
-#         success = db_manager.delete_account(account_id, user_id)
-        
-#         if success:
-#             return jsonify({
-#                 'message': 'Account deleted successfully'
-#             }), 200
-#         else:
-#             return jsonify({'error': 'Failed to delete account'}), 400
-            
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 400
 
 # TRANSACTION ENDPOINTS ====================================================
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['GET'])
@@ -573,3 +514,11 @@ def create_tables():
         with app.app_context():
             db.create_all()
             app.tables_created = True
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        print("Database tables created")
+        print(f"Server running on http://localhost:5000")
+    
+    app.run(debug=True, port=5000, host='0.0.0.0')

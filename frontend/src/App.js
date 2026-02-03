@@ -29,8 +29,7 @@ function App() {
   const [showEditAccount, setShowEditAccount] = useState(false);
   const [editAccountData, setEditAccountData] = useState({
   id: null,
-  name: '',
-  account_type: ''
+  name: ''
 });
 
   // Form state
