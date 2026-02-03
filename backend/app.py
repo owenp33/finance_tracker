@@ -25,7 +25,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 # INITIALIZE EXTENSIONS ====================================================
 db.init_app(app)
 CORS(app, resources={r"/api/*": {
-    "origins": ["*"],#["*.ngrok-free.dev/","http://localhost:3000"],  # For development - allows all origins
+    "origins": ["*"], #["*.ngrok-free.dev/","http://localhost:3000"],  # For development - allows all origins
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]}}, supports_credentials=True)
 jwt = JWTManager(app)
