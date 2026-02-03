@@ -182,6 +182,65 @@ def get_account(account_id):
         
     return jsonify(acc.to_dict()), 200
 
+# UPDATE ACCOUNT ============================================================
+# @app.route('/api/accounts/<int:account_id>', methods=['PUT'])
+# @cross_origin()
+# @jwt_required()
+# def update_account(account_id):
+#     """Update account details"""
+#     if not validate_ownership(account_id):
+#         return jsonify({'error': 'Unauthorized'}), 403
+    
+#     data = request.get_json()
+#     name = data.get('name')
+    
+#     if not name:
+#         return jsonify({'error': 'Account name is required'}), 400
+    
+#     try:
+#         success = db_manager.update_account(account_id, name)
+        
+#         if success:
+#             account = db_manager.get_account(account_id)
+#             print("success")
+#             return jsonify({
+#                 'message': 'Account updated successfully',
+#                 'account': {
+#                     'id': account.id,
+#                     'name': account.acct_name,
+#                     'balance': account.balance
+#                 }
+#             }), 200
+#         else:
+#             return jsonify({'error': 'Failed to update account'}), 400
+            
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 400
+
+# # DELETE ACCOUNT ============================================================
+# @app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
+# @cross_origin()
+# @jwt_required()
+# def delete_account(account_id):
+#     """Delete an account and all its transactions"""
+#     user_id = int(get_jwt_identity()) 
+        
+#     if not validate_ownership(account_id):
+#         return jsonify({'error': 'Unauthorized'}), 403
+    
+#     try:
+#         success = db_manager.delete_account(account_id, user_id)
+        
+#         if success:
+#             return jsonify({
+#                 'message': 'Account deleted successfully'
+#             }), 200
+#         else:
+#             return jsonify({'error': 'Failed to delete account'}), 400
+            
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 400
+
 # TRANSACTION ENDPOINTS ====================================================
 @app.route('/api/accounts/<int:account_id>/transactions', methods=['GET'])
 @cross_origin()

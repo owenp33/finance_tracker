@@ -155,6 +155,44 @@ class DatabaseManager:
         db.session.add(acc)
         db.session.commit()
         return acc
+    
+    # def update_account(self, account_id: int, name: str) -> bool:
+    #     """Update account details"""
+    #     try:
+    #         account = AccountModel.query.get(account_id)
+    #         if not account:
+    #             return False
+            
+    #         if int(account.user_id) != int(user_id):
+    #             print(f"Security: User {user_id} attempted to delete account {account_id}")
+    #             return False
+            
+    #         account.acct_name = name
+    #         db.session.commit()
+    #         return True
+    #     except Exception as e:
+    #         db.session.rollback()
+    #         print(f"Error updating account: {e}")
+    #         return False
+
+    # def delete_account(self, account_id: int, user_id: int) -> bool:
+    #     """Delete account and all its transactions"""
+    #     try:            
+    #         # Delete the account
+    #         account = AccountModel.query.get(account_id)
+    #         if not account:
+    #             return False
+            
+    #         # Delete all transactions first (CASCADE should handle this, but being explicit)
+    #         TransactionModel.query.filter_by(account_id=account_id).delete()
+            
+    #         db.session.delete(account)
+    #         db.session.commit()
+    #         return True
+    #     except Exception as e:
+    #         db.session.rollback()
+    #         print(f"Error deleting account: {e}")
+    #         return False
 
     def get_user_accounts(self, user_id):
         """Get all accounts belonging to a user"""

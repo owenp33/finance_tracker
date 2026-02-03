@@ -314,6 +314,23 @@ class FinanceDataProcessor:
     @staticmethod
     def parse_date(date_str: str) -> date:
         """Parse date string of multiple formats"""
+        # Handle NaN or empty values
+        if pd.isna(date_str) or date_str == '':
+            return date.today()
+        
+        # Convert to string if it's a number (Excel sometimes converts dates to numbers)
+        date_str = str(date_str).strip()
+        
+        # Handle Excel serial date numbers (e.g., 45678.0)
+        try:
+            # If it's a number, try to parse as Excel date
+            if '.' in date_str or date_str.isdigit():
+                excel_date = float(date_str)
+                # Excel epoch starts at 1899-12-30
+                return datetime(1899, 12, 30) + timedelta(days=excel_date)
+        except (ValueError, OverflowError):
+            pass
+        
         # Try MM/DD/YYYY format first
         try:
             return datetime.strptime(date_str, '%m/%d/%Y').date()
@@ -332,8 +349,14 @@ class FinanceDataProcessor:
         except ValueError:
             pass
         
+        # Try M/D/YYYY format (single digit month/day)
+        try:
+            return datetime.strptime(date_str, '%m/%d/%Y').date()
+        except ValueError:
+            pass
+        
         # Default to today if parsing fails
-        # print(f"Warning: Could not parse date '{date_str}', using today's date")
+        print(f"Warning: Could not parse date '{date_str}', using today's date")
         return date.today()
     
     @staticmethod

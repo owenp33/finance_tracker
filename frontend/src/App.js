@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 
 function App() {
   // Authentication state
@@ -17,15 +18,21 @@ function App() {
   const [analytics, setAnalytics] = useState(null);
   
   // UI state
-  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('dashboard'); // dashboard, transactions, analytics, recurring
 
-  // const [showCSVImport, setShowCSVImport] = useState(false);
-  // const [csvFile, setCSVFile] = useState(null);
+  const [showCSVImport, setShowCSVImport] = useState(false);
+  const [csvFile, setCSVFile] = useState(null);
   // const [csvImporting, setCSVImporting] = useState(false);
   
+  const [showEditAccount, setShowEditAccount] = useState(false);
+  const [editAccountData, setEditAccountData] = useState({
+  id: null,
+  name: '',
+  account_type: ''
+});
+
   // Form state
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionFormData, setTransactionFormData] = useState({
@@ -130,7 +137,7 @@ function App() {
     } catch (err) {
       setError(err.message);
     }
-  };
+  }; 
 
   // Load transactions for selected account
   const loadTransactions = async (accountId) => {
@@ -151,6 +158,64 @@ function App() {
       setError(err.message);
     }
   };
+
+  const handleCSVImport = async (e) => {
+  e.preventDefault();
+  
+  if (!csvFile) {
+    alert('Please select a CSV file');
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    
+    const formData = new FormData();
+    formData.append('file', csvFile);
+    
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/accounts/${selectedAccount}/import-csv`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Import failed');
+    }
+    
+    const data = await response.json();
+    
+    // Refresh all data
+    await Promise.all([
+      loadTransactions(selectedAccount),
+      loadAccounts(),
+      loadAnalytics(selectedAccount)
+    ]);
+    
+    setCSVFile(null);
+    setShowCSVImport(false);
+    alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
+    
+  } catch (err) {
+    alert(`Import failed: ${err.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleCSVFileChange = (e) => {
+  const file = e.target.files[0];
+  if (file && file.name.endsWith('.csv')) {
+    setCSVFile(file);
+  } else {
+    alert('Please select a valid CSV file');
+    e.target.value = '';
+  }
+};
 
   // Load analytics
 const loadAnalytics = async (accountId) => {
@@ -436,6 +501,23 @@ const loadAnalytics = async (accountId) => {
         {/* Transactions View */}
         {view === 'transactions' && selectedAccount && (
           <div className="transactions-view">
+            <div className="view-header">
+              <h2>Transactions</h2>
+              <div style={{display: 'flex', gap: '10px'}}>
+                <button 
+                  className="primary-btn" 
+                  onClick={() => setShowTransactionForm(true)}
+                >
+                  Add Transaction
+                </button>
+                <button 
+                  className="secondary-btn" 
+                  onClick={() => setShowCSVImport(true)}
+                >
+                  Import CSV
+                </button>
+              </div>
+            </div>
             <div className="transactions-header">
               <h2>All Transactions</h2>
               <button 
@@ -508,43 +590,64 @@ const loadAnalytics = async (accountId) => {
           </div>
         )}
 
-        {/* Analytics View */}
-        {view === 'analytics' && selectedAccount && analytics && (
-          <div className="analytics-view">
-            <h2>Financial Analytics</h2>
-            
-            <div className="analytics-section">
-              <h3>Monthly Breakdown</h3>
-              {analytics.monthly_breakdown && (
-                <div className="monthly-list">
-                  {Object.entries(analytics.monthly_breakdown).map(([month, data]) => (
-                    <div key={month} className="monthly-item">
-                      <div className="month-name">{month}</div>
-                      <div className="month-stats">
-                        <span className="green">Income: ${data.income?.toFixed(2) || '0.00'}</span>
-                        <span className="red">Expenses: ${Math.abs(data.expenses || 0).toFixed(2)}</span>
-                        <span>Net: ${data.net?.toFixed(2) || '0.00'}</span>
-                      </div>
-                    </div>
-                  ))}
+        {/* CSV Import Modal */}
+        {showCSVImport && (
+          <div className="modal-overlay" onClick={() => setShowCSVImport(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Import Transactions from CSV</h3>
+              
+              <form onSubmit={handleCSVImport}>
+                <div style={{background: '#f8f9fa', padding: '15px', borderRadius: '5px', marginBottom: '20px'}}>
+                  <p><strong>Expected CSV Format:</strong></p>
+                  <p style={{fontSize: '0.9em'}}>date, vendor, category, amount, account, notes</p>
+                  <p style={{fontSize: '0.85em', color: '#666', marginTop: '10px'}}>
+                    • Date: MM/DD/YYYY or YYYY-MM-DD<br/>
+                    • Amount: negative for expenses, positive for income
+                  </p>
                 </div>
-              )}
-            </div>
-
-            <div className="analytics-section">
-              <h3>Top Vendors</h3>
-              {analytics.top_vendors && (
-                <div className="vendor-list">
-                  {analytics.top_vendors.map((vendor, idx) => (
-                    <div key={idx} className="vendor-item">
-                      <span>{vendor.vendor}</span>
-                      <span>${Math.abs(vendor.amount).toFixed(2)}</span>
-                    </div>
-                  ))}
+                
+                <div className="form-group">
+                  <label>Select CSV File:</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleCSVFileChange}
+                    required
+                  />
+                  {csvFile && (
+                    <p style={{color: 'green', fontSize: '0.9em', marginTop: '5px'}}>
+                      ✓ Selected: {csvFile.name}
+                    </p>
+                  )}
                 </div>
-              )}
+                
+                <div className="form-actions">
+                  <button 
+                    type="submit" 
+                    className="primary-btn"
+                    disabled={!csvFile || loading}
+                  >
+                    {loading ? 'Importing...' : 'Import'}
+                  </button>
+                  <button 
+                    type="button" 
+                    className="secondary-btn" 
+                    onClick={() => {
+                      setShowCSVImport(false);
+                      setCSVFile(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
+        )}
+
+        {/* Analytics View */}
+        {view === 'analytics' && selectedAccount && (
+          <AnalyticsDashboard analytics={analytics} />
         )}
 
         {/* Recurring Transactions View */}
