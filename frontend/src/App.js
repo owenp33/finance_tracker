@@ -20,17 +20,10 @@ function App() {
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [view, setView] = useState('dashboard'); // dashboard, transactions, analytics, recurring
+  const [view, setView] = useState('dashboard');
 
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [csvFile, setCSVFile] = useState(null);
-  // const [csvImporting, setCSVImporting] = useState(false);
-  
-  const [showEditAccount, setShowEditAccount] = useState(false);
-  const [editAccountData, setEditAccountData] = useState({
-  id: null,
-  name: ''
-});
 
   // Form state
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -46,20 +39,20 @@ function App() {
   
   // Utility function for API calls
   const fetchAPI = async (endpoint, options = {}) => {
-    const tokenTemp = localStorage.getItem('token'); // Add this line
+    const tokenTemp = localStorage.getItem('token');
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
 
-    const skipAuth = endpoint === '/login' || endpoint === '/register'; 
+    const skipAuth = endpoint === '/api/auth/login' || endpoint === '/api/auth/register'; 
     if (tokenTemp && !skipAuth) {
       headers['Authorization'] = `Bearer ${tokenTemp}`;
     }
 
-    console.log('Request endpoint: ', endpoint);
-    console.log('Request body: ', options.body);
-    console.log('Request method: ', options.method || 'GET');
+    console.log('Request endpoint:', endpoint);
+    console.log('Request body:', options.body);
+    console.log('Request method:', options.method || 'GET');
 
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -68,8 +61,8 @@ function App() {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.log('Error status: ', response.status);
-      console.log('Error data: ', errorData);
+      console.log('Error status:', response.status);
+      console.log('Error data:', errorData);
       throw new Error(errorData.error || 'Request failed');
     }
 
@@ -84,9 +77,12 @@ function App() {
         body: JSON.stringify({ username, password }),
       });
 
-      console.log('Data: ', data);
+      console.log('Login response:', data);
       setToken(data.access_token);
-      setUser(data.user);
+      
+      // Parse user from JSON string
+      const userData = typeof data.user === 'string' ? JSON.parse(data.user) : data.user;
+      setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('token', data.access_token);
       
@@ -106,7 +102,10 @@ function App() {
       });
 
       setToken(data.access_token);
-      setUser(data.user);
+      
+      // Parse user from response
+      const userData = typeof data.user === 'object' ? data.user : JSON.parse(data.user);
+      setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('token', data.access_token);
     } catch (err) {
@@ -131,7 +130,7 @@ function App() {
       
       if (data.accounts.length > 0 && !selectedAccount) {
         setSelectedAccount(data.accounts[0].id);
-        loadAnalytics(data.accounts[0].id)
+        loadAnalytics(data.accounts[0].id);
       }
     } catch (err) {
       setError(err.message);
@@ -158,95 +157,97 @@ function App() {
     }
   };
 
+  // CSV Import
   const handleCSVImport = async (e) => {
-  e.preventDefault();
-  
-  if (!csvFile) {
-    alert('Please select a CSV file');
-    return;
-  }
-  
-  try {
-    setLoading(true);
+    e.preventDefault();
     
-    const formData = new FormData();
-    formData.append('file', csvFile);
-    
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/accounts/${selectedAccount}/import-csv`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Import failed');
+    if (!csvFile) {
+      alert('Please select a CSV file');
+      return;
     }
     
-    const data = await response.json();
-    
-    // Refresh all data
-    await Promise.all([
-      loadTransactions(selectedAccount),
-      loadAccounts(),
-      loadAnalytics(selectedAccount)
-    ]);
-    
-    setCSVFile(null);
-    setShowCSVImport(false);
-    alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
-    
-  } catch (err) {
-    alert(`Import failed: ${err.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      setLoading(true);
+      
+      const formData = new FormData();
+      formData.append('file', csvFile);
+      
+      const token = localStorage.getItem('token');
+      
+      // FIXED: Correct endpoint format
+      const response = await fetch(`${API_BASE}/api/csv/accounts/${selectedAccount}/import-csv`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Import failed');
+      }
+      
+      const data = await response.json();
+      
+      // Refresh all data
+      await Promise.all([
+        loadTransactions(selectedAccount),
+        loadAccounts(),
+        loadAnalytics(selectedAccount)
+      ]);
+      
+      setCSVFile(null);
+      setShowCSVImport(false);
+      alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
+      
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-const handleCSVFileChange = (e) => {
-  const file = e.target.files[0];
-  if (file && file.name.endsWith('.csv')) {
-    setCSVFile(file);
-  } else {
-    alert('Please select a valid CSV file');
-    e.target.value = '';
-  }
-};
+  const handleCSVFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      setCSVFile(file);
+    } else {
+      alert('Please select a valid CSV file');
+      e.target.value = '';
+    }
+  };
 
   // Load analytics
-const loadAnalytics = async (accountId) => {
-  if (!accountId) return;
-  
-  try {
-    const data = await fetchAPI(`/api/accounts/${accountId}/analytics`);
-    setAnalytics(data);
-  } catch (err) {
-    console.error('Failed to load analytics:', err);
-    setError(err.message);
-  }
-};
+  const loadAnalytics = async (accountId) => {
+    if (!accountId) return;
+    
+    try {
+      // FIXED: Correct endpoint path
+      const data = await fetchAPI(`/api/analytics/accounts/${accountId}/analytics`);
+      setAnalytics(data);
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+      setError(err.message);
+    }
+  };
 
   // Add transaction
   const handleAddTransaction = async (e) => {
     e.preventDefault();
     
     try {
-      const data = await fetchAPI(`/api/accounts/${selectedAccount}/transactions`, {
+      await fetchAPI(`/api/accounts/${selectedAccount}/transactions`, {
         method: 'POST',
         body: JSON.stringify(transactionFormData),
       });
 
-
-  
       // Refresh transactions
       await Promise.all([
         loadTransactions(selectedAccount),
         loadAccounts(),
         loadAnalytics(selectedAccount)
-      ])
+      ]);
       
       // Reset form
       setTransactionFormData({
@@ -276,7 +277,7 @@ const loadAnalytics = async (accountId) => {
       });
 
       // Refresh transactions
-      await Promise.all ([
+      await Promise.all([
         loadTransactions(selectedAccount),
         loadAccounts(),
         loadAnalytics(selectedAccount)
@@ -350,7 +351,7 @@ const loadAnalytics = async (accountId) => {
     return {
       totalTransactions: analytics.summary.transaction_count || 0,
       totalIncome: analytics.summary.total_income || 0,
-      totalExpenses: analytics.summary.total_expenses || 0,  // Already absolute value from backend
+      totalExpenses: analytics.summary.total_expenses || 0,
       netAmount: analytics.summary.net_amount || 0
     };
   };
@@ -469,16 +470,16 @@ const loadAnalytics = async (accountId) => {
               </div>
             </div>
 
-            {/* Category Breakdown */}
-            {analytics?.category_breakdown && (
+            {/* Spending by Category */}
+            {analytics?.spending_by_category && analytics.spending_by_category.length > 0 && (
               <div className="category-section">
                 <h3>Spending by Category</h3>
                 <div className="category-list">
-                  {Object.entries(analytics.category_breakdown).map(([category, amount]) => (
-                    <div key={category} className="category-item">
-                      <span>{category}</span>
-                      <span className={amount < 0 ? 'red' : 'green'}>
-                        ${Math.abs(amount).toFixed(2)}
+                  {analytics.spending_by_category.map((item, index) => (
+                    <div key={index} className="category-item">
+                      <span>{item.category}</span>
+                      <span className="red">
+                        ${item.total.toFixed(2)} ({item.percentage}%)
                       </span>
                     </div>
                   ))}
@@ -503,12 +504,6 @@ const loadAnalytics = async (accountId) => {
             <div className="view-header">
               <h2>Transactions</h2>
               <div style={{display: 'flex', gap: '10px'}}>
-                <button 
-                  className="primary-btn" 
-                  onClick={() => setShowTransactionForm(true)}
-                >
-                  Add Transaction
-                </button>
                 <button 
                   className="secondary-btn" 
                   onClick={() => setShowCSVImport(true)}
