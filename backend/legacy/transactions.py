@@ -63,7 +63,7 @@ class Transaction(ABC):
     #Set additional fields to null in database
 
 
-class SingleTransaction(Transaction): #takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
+class SingleTransaction(Transaction): # takes a transaction dict, and turns it into an object - has methods to get info, set info, generate a new transaction from info instead of dict, 
     """A one-time transaction"""
     
     def __init__(self, day: date, vend: str, cat: str, amnt: float, desc: str = ""):
