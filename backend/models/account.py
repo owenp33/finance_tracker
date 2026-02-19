@@ -7,9 +7,9 @@ class AccountModel(db.Model):
     __tablename__ = 'accounts'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    acct_id_str = db.Column(db.String(50), nullable=False)
+    acct_id_str = db.Column(db.String(24), nullable=False) #Discover 1234
     balance = db.Column(db.Float, default=0.0)
-    acct_name = db.Column(db.String(60), nullable=False)
+    acct_name = db.Column(db.String(40), nullable=False) #Owen's Credit Card
     
     # Relationships: One account has many transactions
     transactions = db.relationship('TransactionModel', backref='account', cascade="all, delete-orphan")
