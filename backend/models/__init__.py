@@ -8,7 +8,6 @@ from models.user import User
 from models.account import AccountModel
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
-from models.database_manager import DatabaseManager
 
 __all__ = [
     'User',
