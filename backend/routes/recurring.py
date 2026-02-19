@@ -2,28 +2,22 @@
 recurring.py - Recurring transaction routes
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 from datetime import datetime
-from models import RecurringModel
 from services import AccountService
+from middleware.ownership import owns_recurring
 
 recurring_bp = Blueprint('recurring', __name__)
 account_service = AccountService()
 
+
 @recurring_bp.route('/<int:recurring_id>', methods=['PUT', 'PATCH'])
 @jwt_required()
+@owns_recurring
 def update_recurring(recurring_id):
     """Update a recurring transaction"""
-    user_id = get_jwt_identity()
-    recurring = RecurringModel.query.get(recurring_id)
-
-    if not recurring:
-        return jsonify({'success': False, 'error': 'Recurring transaction not found'}), 404
-
-    if int(recurring.account.user_id) != int(user_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     data = request.get_json()
+
     update_fields = {}
     if 'start_date' in data:
         update_fields['start_date'] = datetime.fromisoformat(data['start_date']).date()
@@ -42,40 +36,26 @@ def update_recurring(recurring_id):
     if 'notes' in data:
         update_fields['notes'] = data['notes']
 
-    try:
-        updated = account_service.update_recurring(recurring_id, **update_fields)
+    updated = account_service.update_recurring(recurring_id, **update_fields)
 
-        return jsonify({
-            'success': True,
-            'recurring': updated.to_dict(),
-            'message': 'Recurring transaction updated'
-        }), 200
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({
+        'success': True,
+        'recurring': updated.to_dict(),
+        'message': 'Recurring transaction updated'
+    }), 200
 
 
 @recurring_bp.route('/<int:recurring_id>', methods=['DELETE'])
 @jwt_required()
+@owns_recurring
 def delete_recurring(recurring_id):
     """Delete a recurring transaction template"""
-    user_id = get_jwt_identity()
-    recurring = RecurringModel.query.get(recurring_id)
-
-    if not recurring:
-        return jsonify({'success': False, 'error': 'Recurring transaction not found'}), 404
-
-    if int(recurring.account.user_id) != int(user_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     delete_generated = request.args.get('delete_generated', 'false').lower() == 'true'
-    success = account_service.delete_recurring(recurring_id, delete_generated=delete_generated)
 
-    if success:
-        return jsonify({
-            'success': True,
-            'message': 'Recurring transaction deleted',
-            'deleted_generated': delete_generated
-        }), 200
+    account_service.delete_recurring(recurring_id, delete_generated=delete_generated)
 
-    return jsonify({'success': False, 'error': 'Failed to delete'}), 400
+    return jsonify({
+        'success': True,
+        'message': 'Recurring transaction deleted',
+        'deleted_generated': delete_generated
+    }), 200

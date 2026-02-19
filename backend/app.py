@@ -53,6 +53,9 @@ def create_app(config_name='development'):
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(csv_bp, url_prefix='/api/csv')
     
+    from middleware.error_handlers import register_error_handlers
+    register_error_handlers(app)
+    
     # Create tables on first run
     with app.app_context():
         db.create_all()

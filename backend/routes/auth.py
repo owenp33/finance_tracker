@@ -4,7 +4,6 @@ auth.py - Authentication routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta
-import json
 from services import DbService, AccountService
 
 auth_bp = Blueprint('auth', __name__)
@@ -16,15 +15,12 @@ account_service = AccountService()
 def register():
     """Register new user"""
     data = request.get_json()
-    try:
-        user = db_service.create_user(data['username'], data['email'], data['password'])
-        return jsonify({
-            'success': True,
-            'user': user.to_dict(),
-            'access_token': create_access_token(identity=user.id)
-        }), 201
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+    user = db_service.create_user(data['username'], data['email'], data['password'])
+    return jsonify({
+        'success': True,
+        'user': user.to_dict(),
+        'access_token': create_access_token(identity=user.id)
+    }), 201
 
 
 @auth_bp.route('/login', methods=['POST'])
@@ -52,7 +48,7 @@ def login():
     return jsonify({
         'success': True,
         'access_token': access_token,
-        'user': json.dumps(user.to_dict()),
+        'user': user.to_dict(),
         'updates': {
             'transactions_generated': total_generated
         }

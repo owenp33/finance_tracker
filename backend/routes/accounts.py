@@ -4,20 +4,13 @@ accounts.py - Account management routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService
+from middleware.ownership import owns_account
+from datetime import datetime
+
 
 accounts_bp = Blueprint('accounts', __name__)
 db_service = DbService()
 account_service = AccountService()
-
-
-def validate_ownership(account_id):
-    """Utility to ensure the JWT user actually owns the account"""
-    user_id = get_jwt_identity()
-    account = db_service.get_account(account_id)
-
-    if (not account) or (int(account.user_id) != int(user_id)):
-        return None
-    return account
 
 
 @accounts_bp.route('', methods=['GET'])
@@ -43,36 +36,28 @@ def create_account():
     if not data.get('account_id'):
         return jsonify({'success': False, 'error': 'account_id is required'}), 400
 
-    try:
-        account = db_service.create_account(
-            user_id=user_id,
-            acct_id_str=data['account_id'],
-            account_name=data.get('account_name', data['account_id'])
-        )
-        return jsonify({'success': True, 'account': account.to_dict()}), 201
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+    account = db_service.create_account(
+        user_id=user_id,
+        acct_id_str=data['account_id'],
+        account_name=data.get('account_name', data['account_id'])
+    )
+    return jsonify({'success': True, 'account': account.to_dict()}), 201
 
 
 @accounts_bp.route('/<int:account_id>', methods=['GET'])
 @jwt_required()
+@owns_account
 def get_account(account_id):
     """Get specific account details"""
-    acc = validate_ownership(account_id)
-    if not acc:
-        return jsonify({'success': False, 'error': 'Unauthorized or account not found'}), 403
-
+    acc = db_service.get_account(account_id)
     return jsonify({'success': True, 'account': acc.to_dict()}), 200
 
 
 @accounts_bp.route('/<int:account_id>/transactions', methods=['GET'])
 @jwt_required()
+@owns_account
 def get_transactions(account_id):
     """Get all transactions for an account"""
-    if not validate_ownership(account_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     transactions = db_service.get_account_transactions(account_id)
 
     return jsonify({
@@ -83,48 +68,38 @@ def get_transactions(account_id):
 
 @accounts_bp.route('/<int:account_id>/transactions', methods=['POST'])
 @jwt_required()
+@owns_account
 def add_transaction(account_id):
     """Add a new transaction to an account"""
-    from datetime import datetime
-
-    if not validate_ownership(account_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     data = request.get_json()
 
     required = ['date', 'vendor', 'category', 'amount']
     if not all(k in data for k in required):
         return jsonify({'success': False, 'error': f'Missing required fields: {required}'}), 400
 
-    try:
-        transaction = db_service.add_transaction(
-            account_id=account_id,
-            date_obj=datetime.fromisoformat(data['date']).date(),
-            vendor=data['vendor'],
-            category=data['category'],
-            amount=float(data['amount']),
-            notes=data.get('notes', '')
-        )
+    transaction = db_service.add_transaction(
+        account_id=account_id,
+        date_obj=datetime.fromisoformat(data['date']).date(),
+        vendor=data['vendor'],
+        category=data['category'],
+        amount=float(data['amount']),
+        notes=data.get('notes', '')
+    )
 
-        acc = db_service.get_account(account_id)
+    acc = db_service.get_account(account_id)
 
-        return jsonify({
-            'success': True,
-            'transaction': transaction.to_dict(),
-            'new_balance': acc.balance
-        }), 201
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({
+        'success': True,
+        'transaction': transaction.to_dict(),
+        'new_balance': acc.balance
+    }), 201
 
 
 @accounts_bp.route('/<int:account_id>/recurring', methods=['GET'])
 @jwt_required()
+@owns_account
 def get_recurring(account_id):
     """Get all recurring transactions for an account"""
-    if not validate_ownership(account_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     recurring = db_service.get_account_recurring(account_id)
 
     return jsonify({
@@ -135,36 +110,28 @@ def get_recurring(account_id):
 
 @accounts_bp.route('/<int:account_id>/recurring', methods=['POST'])
 @jwt_required()
+@owns_account
 def add_recurring(account_id):
     """Add a new recurring transaction template"""
-    from datetime import datetime
-
-    if not validate_ownership(account_id):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
     data = request.get_json()
 
     required = ['start_date', 'vendor', 'category', 'amount', 'frequency']
     if not all(k in data for k in required):
         return jsonify({'success': False, 'error': f'Missing required fields: {required}'}), 400
 
-    try:
-        start_date = datetime.fromisoformat(data['start_date']).date()
-        next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
+    start_date = datetime.fromisoformat(data['start_date']).date()
+    next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
-        recurring = db_service.add_recurring(
-            account_id=account_id,
-            start_date=start_date,
-            vendor=data['vendor'],
-            category=data['category'],
-            amount=float(data['amount']),
-            next_date=next_date,
-            frequency=int(data['frequency']),
-            number=int(data.get('number', -1)),
-            notes=data.get('notes', '')
-        )
+    recurring = db_service.add_recurring(
+        account_id=account_id,
+        start_date=start_date,
+        vendor=data['vendor'],
+        category=data['category'],
+        amount=float(data['amount']),
+        next_date=next_date,
+        frequency=int(data['frequency']),
+        number=int(data.get('number', -1)),
+        notes=data.get('notes', '')
+    )
 
-        return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201
