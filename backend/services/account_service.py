@@ -17,31 +17,67 @@ class AccountService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def update_transaction(self, transaction_id, **kwargs):
-        """Update transaction fields and adjust account balance if amount changed"""
+    def get_transaction_authorized(self, transaction_id, user_id):
+        """
+        Fetch a transaction and verify it belongs to the requesting user.
+        Returns (transaction, error_message, status_code).
+        On success, error and status are None. On failure, transaction is None.
+        """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
-            return False
+            return None, 'Transaction not found', 404
+        if int(trans.account.user_id) != int(user_id):
+            return None, 'Unauthorized', 403
+        return trans, None, None
 
-        old_amount = trans.amount
+    def update_transaction(self, transaction_id, data: dict):
+        """
+        Parse raw request data and update a transaction.
+        Handles type coercion so routes don't have to.
+        Returns (updated_transaction, error_message).
+        """
+        trans = db_service.get_transaction(transaction_id)
+        if not trans:
+            return None, 'Transaction not found'
 
-        for key, value in kwargs.items():
-            if hasattr(trans, key) and key != 'id':
-                setattr(trans, key, value)
+        try:
+            update_fields = {}
+            if 'date' in data:
+                from datetime import datetime
+                update_fields['date'] = datetime.fromisoformat(data['date']).date()
+            if 'vendor' in data:
+                update_fields['vendor'] = data['vendor']
+            if 'category' in data:
+                update_fields['category'] = data['category']
+            if 'amount' in data:
+                update_fields['amount'] = float(data['amount'])
+            if 'notes' in data:
+                update_fields['notes'] = data['notes']
 
-        if 'amount' in kwargs and kwargs['amount'] != old_amount:
-            account = db_service.get_account(trans.account_id)
-            if account:
-                account.balance += (kwargs['amount'] - old_amount)
+            old_amount = trans.amount
+            for key, value in update_fields.items():
+                if hasattr(trans, key) and key != 'id':
+                    setattr(trans, key, value)
 
-        db.session.commit()
-        return trans
+            if 'amount' in update_fields and update_fields['amount'] != old_amount:
+                account = db_service.get_account(trans.account_id)
+                if account:
+                    account.balance += (update_fields['amount'] - old_amount)
+
+            db.session.commit()
+            return trans, None
+
+        except Exception as e:
+            return None, str(e)
 
     def delete_transaction(self, transaction_id):
-        """Delete a transaction and adjust account balance"""
+        """
+        Delete a transaction and reverse its effect on the account balance.
+        Returns (success, error_message).
+        """
         t = db_service.get_transaction(transaction_id)
         if not t:
-            return False
+            return False, 'Transaction not found'
 
         account = db_service.get_account(t.account_id)
         if account:
@@ -49,7 +85,7 @@ class AccountService:
 
         db.session.delete(t)
         db.session.commit()
-        return True
+        return True, None
 
     # RECURRING OPERATIONS ======================================================
 

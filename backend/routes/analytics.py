@@ -24,9 +24,9 @@ def get_analytics(account_id):
     """Get comprehensive analytics for an account"""
     acc = validate_ownership(account_id)
     if not acc:
-        return jsonify({'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     transactions = db_manager.get_account_transactions(account_id)
     analytics_data = FinanceDataProcessor.generate_api_report(transactions)
     
-    return jsonify(analytics_data), 200
+    return jsonify({'success': True, **analytics_data}), 200
