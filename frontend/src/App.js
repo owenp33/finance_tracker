@@ -36,7 +36,7 @@ function App() {
   });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-  
+
   // Utility function for API calls
   const fetchAPI = async (endpoint, options = {}) => {
     const tokenTemp = localStorage.getItem('token');

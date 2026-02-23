@@ -32,8 +32,13 @@ def create_app(config_name='development'):
     db.init_app(app)
     jwt.init_app(app)
     
+    allowed_origins = [
+        "http://localhost:3000",
+        os.getenv("FRONTEND_URL", "")   # Set FRONTEND_URL in .env to ngrok URL
+    ]
+    
     CORS(app, 
-         resources={r"/api/*": {"origins": ["*"]}}, #["http://localhost:3000", r"https://.*\.ngrok-free\.dev"]}},  # For development - allows all origins
+         resources={r"/api/*": {"origins": [o for o in allowed_origins if o]}}, #["http://localhost:3000", r"https://.*\.ngrok-free\.dev"]}},  # 
          supports_credentials=True)
     
     # Register blueprints
