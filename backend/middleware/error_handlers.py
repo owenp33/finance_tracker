@@ -5,6 +5,7 @@ Registered in app.py so all routes get consistent error responses
 without needing individual try/except blocks.
 """
 from flask import jsonify
+import traceback
 
 
 def register_error_handlers(app):
@@ -27,4 +28,5 @@ def register_error_handlers(app):
 
     @app.errorhandler(Exception)
     def unhandled_exception(e):
+        traceback.print_exc()  # prints full traceback to your terminal
         return jsonify({'success': False, 'error': str(e)}), 500
