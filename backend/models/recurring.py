@@ -1,7 +1,7 @@
 """
 recurring.py - Recurring Transaction Model
 """
-from app import db
+from extensions import db
 from datetime import timedelta
 
 class RecurringModel(db.Model):

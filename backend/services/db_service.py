@@ -2,8 +2,9 @@
 db_service.py - Data Access Layer
 
 Thin CRUD operations for interacting with the database.
-Business logic and orchestration belong in account_service.py.
+Business logic and orchestration belongs in account_service.py.
 """
+from extensions import db
 from models.user import User
 from models.account import AccountModel
 from models.transaction import TransactionModel
@@ -13,13 +14,11 @@ from models.recurring import RecurringModel
 class DbService:
 
     def create_tables(self):
-        from app import db
         db.create_all()
 
     # USER OPERATIONS ===========================================================
 
     def create_user(self, username, email, password):
-        from app import db
         user = User(username=username, email=email)
         user.set_password(password)
         db.session.add(user)
@@ -38,7 +37,6 @@ class DbService:
     # ACCOUNT OPERATIONS ========================================================
 
     def create_account(self, user_id, acct_id_str, account_name=""):
-        from app import db
         display_name = account_name if account_name else acct_id_str
         acc = AccountModel(
             user_id=user_id,
@@ -59,7 +57,6 @@ class DbService:
     # TRANSACTION OPERATIONS ====================================================
 
     def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
-        from app import db
         transaction = TransactionModel(
             account_id=account_id,
             date=date_obj,
@@ -85,7 +82,6 @@ class DbService:
     # RECURRING OPERATIONS ======================================================
 
     def add_recurring(self, account_id, start_date, vendor, category, amount, next_date, frequency, number=-1, notes=""):
-        from app import db
         rec = RecurringModel(
             account_id=account_id,
             start_date=start_date,

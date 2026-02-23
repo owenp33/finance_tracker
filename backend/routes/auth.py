@@ -6,6 +6,9 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from datetime import timedelta
 from services import DbService, AccountService
 
+from extensions import db as auth_db
+print(f"auth.py db id: {id(auth_db)}")  # ADD THIS
+
 auth_bp = Blueprint('auth', __name__)
 db_service = DbService()
 account_service = AccountService()

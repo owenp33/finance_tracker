@@ -1,7 +1,7 @@
 """
 user.py - User Authentication Model
 """
-from app import db
+from extensions import db
 from datetime import datetime, timezone
 
 class User(db.Model):

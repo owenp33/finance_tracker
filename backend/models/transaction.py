@@ -1,7 +1,7 @@
 """
 transaction.py - Transaction Model
 """
-from app import db
+from extensions import db
 
 class TransactionModel(db.Model):
     __tablename__ = 'transactions'

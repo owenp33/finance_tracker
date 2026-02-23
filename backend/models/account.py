@@ -1,8 +1,7 @@
 """
 account.py - Bank Account Model
 """
-from app import db
-
+from extensions import db
 class AccountModel(db.Model):
     __tablename__ = 'accounts'
     id = db.Column(db.Integer, primary_key=True)

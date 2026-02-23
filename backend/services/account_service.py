@@ -5,7 +5,7 @@ Orchestrates business rules around accounts, transactions, and recurring items.
 Depends on db_service.py for raw data access.
 """
 from datetime import date, timedelta
-from app import db
+from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
 from services.db_service import DbService

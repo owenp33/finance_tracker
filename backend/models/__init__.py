@@ -1,8 +1,5 @@
 """
 Models package - Database models for finance tracker.
-
-Import all models here so you can do:
-    from backend.models import User, AccountModel, TransactionModel
 """
 from models.user import User
 from models.account import AccountModel
@@ -13,6 +10,5 @@ __all__ = [
     'User',
     'AccountModel',
     'TransactionModel',
-    'RecurringModel',
-    'DatabaseManager'
+    'RecurringModel'
 ]

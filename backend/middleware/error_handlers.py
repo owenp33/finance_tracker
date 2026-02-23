@@ -7,7 +7,6 @@ without needing individual try/except blocks.
 from flask import jsonify
 import traceback
 
-
 def register_error_handlers(app):
 
     @app.errorhandler(400)
