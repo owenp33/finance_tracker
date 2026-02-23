@@ -5,6 +5,10 @@ Creates and configures the Flask app with all extensions.
 This is the ONLY place db should be initialized.
 """
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -15,7 +19,7 @@ from datetime import timedelta
 db = SQLAlchemy()
 jwt = JWTManager()
 
-def create_app(config_name='development'):
+def create_app():
     """Application factory pattern"""
     app = Flask(__name__)
     
