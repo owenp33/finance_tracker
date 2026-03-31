@@ -62,13 +62,14 @@ class DbService:
             date=date_obj,
             vendor=vendor,
             category=category,
-            amount=amount,
             notes=notes,
             recurring_id=recurring_id
         )
+        transaction.amount = amount
+        
         account = self.get_account(account_id)
         if account:
-            account.balance += amount
+            account.balance_cents += transaction.amount_cents
         db.session.add(transaction)
         db.session.commit()
         return transaction
