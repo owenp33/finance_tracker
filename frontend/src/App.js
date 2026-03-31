@@ -1,91 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import { fetchAPI, uploadFile } from './api/client';
+import AuthScreen from './components/AuthScreen';
+import TransactionList from './components/TransactionList';
+import TransactionForm from './components/TransactionForm';
+import CSVImportModal from './components/CSVImportModal';
+import DashboardView from './components/DashboardView';
+import RecurringView from './components/RecurringView';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 
 function App() {
-  // Authentication state
+  // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem('token') || null;
-  });
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [user, setUser] = useState(null);
-  
+
   // App state
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [recurringTransactions, setRecurringTransactions] = useState([]);
   const [analytics, setAnalytics] = useState(null);
-  
+
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('dashboard');
-
   const [showCSVImport, setShowCSVImport] = useState(false);
-  const [csvFile, setCSVFile] = useState(null);
-
-  // Form state
   const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [transactionFormData, setTransactionFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    vendor: '',
-    category: '',
-    amount: '',
-    notes: ''
-  });
 
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  // AUTH HANDLERS =============================================================
 
-  // Utility function for API calls
-  const fetchAPI = async (endpoint, options = {}) => {
-    const tokenTemp = localStorage.getItem('token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    const skipAuth = endpoint === '/api/auth/login' || endpoint === '/api/auth/register'; 
-    if (tokenTemp && !skipAuth) {
-      headers['Authorization'] = `Bearer ${tokenTemp}`;
-    }
-
-    console.log('Request endpoint:', endpoint);
-    console.log('Request body:', options.body);
-    console.log('Request method:', options.method || 'GET');
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.log('Error status:', response.status);
-      console.log('Error data:', errorData);
-      throw new Error(errorData.error || 'Request failed');
-    }
-
-    return response.json();
-  };
-
-  // Authentication functions
   const handleLogin = async (username, password) => {
     try {
       const data = await fetchAPI('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-
-      console.log('Login response:', data);
-      setToken(data.access_token);
-      
-      // Parse user from JSON string
       const userData = typeof data.user === 'string' ? JSON.parse(data.user) : data.user;
+      setToken(data.access_token);
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('token', data.access_token);
-      
       if (data.updates?.transactions_generated > 0) {
         alert(`Generated ${data.updates.transactions_generated} recurring transactions`);
       }
@@ -100,11 +56,8 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ username, email, password }),
       });
-
-      setToken(data.access_token);
-      
-      // Parse user from response
       const userData = typeof data.user === 'object' ? data.user : JSON.parse(data.user);
+      setToken(data.access_token);
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('token', data.access_token);
@@ -122,12 +75,12 @@ function App() {
     setSelectedAccount(null);
   };
 
-  // Load user accounts
+  // DATA LOADERS ==============================================================
+
   const loadAccounts = async () => {
     try {
       const data = await fetchAPI('/api/accounts');
       setAccounts(data.accounts);
-      
       if (data.accounts.length > 0 && !selectedAccount) {
         setSelectedAccount(data.accounts[0].id);
         loadAnalytics(data.accounts[0].id);
@@ -135,9 +88,8 @@ function App() {
     } catch (err) {
       setError(err.message);
     }
-  }; 
+  };
 
-  // Load transactions for selected account
   const loadTransactions = async (accountId) => {
     try {
       const data = await fetchAPI(`/api/accounts/${accountId}/transactions`);
@@ -147,7 +99,6 @@ function App() {
     }
   };
 
-  // Load recurring transactions
   const loadRecurringTransactions = async (accountId) => {
     try {
       const data = await fetchAPI(`/api/accounts/${accountId}/recurring`);
@@ -157,107 +108,33 @@ function App() {
     }
   };
 
-  // CSV Import
-  const handleCSVImport = async (e) => {
-    e.preventDefault();
-    
-    if (!csvFile) {
-      alert('Please select a CSV file');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      
-      const formData = new FormData();
-      formData.append('file', csvFile);
-      
-      const token = localStorage.getItem('token');
-      
-      // FIXED: Correct endpoint format
-      const response = await fetch(`${API_BASE}/api/csv/accounts/${selectedAccount}/import-csv`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Import failed');
-      }
-      
-      const data = await response.json();
-      
-      // Refresh all data
-      await Promise.all([
-        loadTransactions(selectedAccount),
-        loadAccounts(),
-        loadAnalytics(selectedAccount)
-      ]);
-      
-      setCSVFile(null);
-      setShowCSVImport(false);
-      alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
-      
-    } catch (err) {
-      alert(`Import failed: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCSVFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.name.endsWith('.csv')) {
-      setCSVFile(file);
-    } else {
-      alert('Please select a valid CSV file');
-      e.target.value = '';
-    }
-  };
-
-  // Load analytics
   const loadAnalytics = async (accountId) => {
     if (!accountId) return;
-    
     try {
-      // FIXED: Correct endpoint path
       const data = await fetchAPI(`/api/analytics/accounts/${accountId}/analytics`);
       setAnalytics(data);
     } catch (err) {
-      console.error('Failed to load analytics:', err);
       setError(err.message);
     }
   };
 
-  // Add transaction
-  const handleAddTransaction = async (e) => {
-    e.preventDefault();
-    
+  const refreshAccountData = async (accountId) => {
+    await Promise.all([
+      loadTransactions(accountId),
+      loadAccounts(),
+      loadAnalytics(accountId),
+    ]);
+  };
+
+  // ACTION HANDLERS ===========================================================
+
+  const handleAddTransaction = async (formData) => {
     try {
       await fetchAPI(`/api/accounts/${selectedAccount}/transactions`, {
         method: 'POST',
-        body: JSON.stringify(transactionFormData),
+        body: JSON.stringify(formData),
       });
-
-      // Refresh transactions
-      await Promise.all([
-        loadTransactions(selectedAccount),
-        loadAccounts(),
-        loadAnalytics(selectedAccount)
-      ]);
-      
-      // Reset form
-      setTransactionFormData({
-        date: new Date().toISOString().split('T')[0],
-        vendor: '',
-        category: '',
-        amount: '',
-        notes: ''
-      });
-      
+      await refreshAccountData(selectedAccount);
       setShowTransactionForm(false);
       alert('Transaction added successfully!');
     } catch (err) {
@@ -265,37 +142,23 @@ function App() {
     }
   };
 
-  // Delete transaction
   const handleDeleteTransaction = async (transactionId) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
-
+    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
     try {
-      await fetchAPI(`/api/transactions/${transactionId}`, {
-        method: 'DELETE',
-      });
-
-      // Refresh transactions
-      await Promise.all([
-        loadTransactions(selectedAccount),
-        loadAccounts(),
-        loadAnalytics(selectedAccount)
-      ]);
+      await fetchAPI(`/api/transactions/${transactionId}`, { method: 'DELETE' });
+      await refreshAccountData(selectedAccount);
       alert('Transaction deleted successfully!');
     } catch (err) {
       setError(err.message);
     }
   };
 
-  // Create account
   const handleCreateAccount = async (accountId, accountName) => {
     try {
       await fetchAPI('/api/accounts', {
         method: 'POST',
         body: JSON.stringify({ account_id: accountId, account_name: accountName }),
       });
-
       await loadAccounts();
       alert('Account created successfully!');
     } catch (err) {
@@ -303,33 +166,42 @@ function App() {
     }
   };
 
-  // Check authentication and load initial data
+  const handleCSVImport = async (file) => {
+    try {
+      setLoading(true);
+      const data = await uploadFile(`/api/csv/accounts/${selectedAccount}/import-csv`, file);
+      await refreshAccountData(selectedAccount);
+      setShowCSVImport(false);
+      alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // EFFECTS ===================================================================
+
   useEffect(() => {
     const checkAuth = async () => {
       if (token) {
         try {
           const data = await fetchAPI('/api/auth/me');
-          setUser(data);
+          setUser(data.user);
           setIsAuthenticated(true);
-        } catch (err) {
-          // Token invalid, clear it
+        } catch {
           handleLogout();
         }
       }
       setLoading(false);
     };
-
     checkAuth();
   }, [token]);
 
-  // Load accounts when authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      loadAccounts();
-    }
+    if (isAuthenticated) loadAccounts();
   }, [isAuthenticated]);
 
-  // Load data when account is selected
   useEffect(() => {
     if (selectedAccount) {
       loadTransactions(selectedAccount);
@@ -338,25 +210,8 @@ function App() {
     }
   }, [selectedAccount]);
 
-  // Calculate summary statistics from analytics
-  const getSummaryStats = () => {
-    if (!analytics || !analytics.summary) {
-      return {
-        totalTransactions: 0,
-        totalIncome: 0,
-        totalExpenses: 0,
-        netAmount: 0
-      };
-    }
-    return {
-      totalTransactions: analytics.summary.transaction_count || 0,
-      totalIncome: analytics.summary.total_income || 0,
-      totalExpenses: analytics.summary.total_expenses || 0,
-      netAmount: analytics.summary.net_amount || 0
-    };
-  };
+  // RENDER ====================================================================
 
-  // Loading screen
   if (loading) {
     return (
       <div className="App">
@@ -368,12 +223,9 @@ function App() {
     );
   }
 
-  // Login/Register screen
   if (!isAuthenticated) {
     return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} error={error} />;
   }
-
-  const stats = getSummaryStats();
 
   return (
     <div className="App">
@@ -388,8 +240,8 @@ function App() {
 
         {/* Account Selector */}
         <div className="account-selector">
-          <select 
-            value={selectedAccount || ''} 
+          <select
+            value={selectedAccount || ''}
             onChange={(e) => setSelectedAccount(parseInt(e.target.value))}
           >
             <option value="">Select Account</option>
@@ -399,13 +251,11 @@ function App() {
               </option>
             ))}
           </select>
-          <button 
+          <button
             onClick={() => {
               const accountId = prompt('Enter account ID:');
               const accountName = prompt('Enter account name:');
-              if (accountId && accountName) {
-                handleCreateAccount(accountId, accountName);
-              }
+              if (accountId && accountName) handleCreateAccount(accountId, accountName);
             }}
             className="add-account-btn"
           >
@@ -415,30 +265,18 @@ function App() {
 
         {/* Navigation */}
         <nav className="view-nav">
-          <button 
-            className={view === 'dashboard' ? 'active' : ''} 
-            onClick={() => setView('dashboard')}
-          >
-            📊 Dashboard
-          </button>
-          <button 
-            className={view === 'transactions' ? 'active' : ''} 
-            onClick={() => setView('transactions')}
-          >
-            💳 Transactions
-          </button>
-          <button 
-            className={view === 'analytics' ? 'active' : ''} 
-            onClick={() => setView('analytics')}
-          >
-            📈 Analytics
-          </button>
-          <button 
-            className={view === 'recurring' ? 'active' : ''} 
-            onClick={() => setView('recurring')}
-          >
-            🔄 Recurring
-          </button>
+          {['dashboard', 'transactions', 'analytics', 'recurring'].map(v => (
+            <button
+              key={v}
+              className={view === v ? 'active' : ''}
+              onClick={() => setView(v)}
+            >
+              {v === 'dashboard' && '📊 Dashboard'}
+              {v === 'transactions' && '💳 Transactions'}
+              {v === 'analytics' && '📈 Analytics'}
+              {v === 'recurring' && '🔄 Recurring'}
+            </button>
+          ))}
         </nav>
 
         {error && (
@@ -448,347 +286,69 @@ function App() {
           </div>
         )}
 
-        {/* Dashboard View */}
-        {view === 'dashboard' && selectedAccount && (
-          <div className="dashboard-view">
-            <div className="stats-grid">
-              <div className="stat-card">
-                <h3>Total Transactions</h3>
-                <div className="value">{stats.totalTransactions}</div>
-              </div>
-              <div className="stat-card">
-                <h3>Total Income</h3>
-                <div className="value green">${stats.totalIncome.toFixed(2)}</div>
-              </div>
-              <div className="stat-card">
-                <h3>Total Expenses</h3>
-                <div className="value red">${stats.totalExpenses.toFixed(2)}</div>
-              </div>
-              <div className="stat-card">
-                <h3>Net Amount</h3>
-                <div className="value">${stats.netAmount.toFixed(2)}</div>
-              </div>
-            </div>
-
-            {/* Spending by Category */}
-            {analytics?.spending_by_category && analytics.spending_by_category.length > 0 && (
-              <div className="category-section">
-                <h3>Spending by Category</h3>
-                <div className="category-list">
-                  {analytics.spending_by_category.map((item, index) => (
-                    <div key={index} className="category-item">
-                      <span>{item.category}</span>
-                      <span className="red">
-                        ${item.total.toFixed(2)} ({item.percentage}%)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Transactions */}
-            <div className="recent-transactions-section">
-              <h3>Recent Transactions</h3>
-              <TransactionList 
-                transactions={transactions.slice(0, 10)} 
-                onDelete={handleDeleteTransaction}
+        {/* Views */}
+        {selectedAccount ? (
+          <>
+            {view === 'dashboard' && (
+              <DashboardView
+                analytics={analytics}
+                transactions={transactions}
+                onDeleteTransaction={handleDeleteTransaction}
               />
-            </div>
-          </div>
-        )}
-
-        {/* Transactions View */}
-        {view === 'transactions' && selectedAccount && (
-          <div className="transactions-view">
-            <div className="view-header">
-              <h2>Transactions</h2>
-              <div style={{display: 'flex', gap: '10px'}}>
-                <button 
-                  className="secondary-btn" 
-                  onClick={() => setShowCSVImport(true)}
-                >
-                  Import CSV
-                </button>
-              </div>
-            </div>
-            <div className="transactions-header">
-              <h2>All Transactions</h2>
-              <button 
-                onClick={() => setShowTransactionForm(!showTransactionForm)}
-                className="add-btn"
-              >
-                {showTransactionForm ? 'Cancel' : '+ Add Transaction'}
-              </button>
-            </div>
-
-            {showTransactionForm && (
-              <form onSubmit={handleAddTransaction} className="transaction-form">
-                <div className="form-group">
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={transactionFormData.date}
-                    onChange={(e) => setTransactionFormData({...transactionFormData, date: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Vendor</label>
-                  <input
-                    type="text"
-                    value={transactionFormData.vendor}
-                    onChange={(e) => setTransactionFormData({...transactionFormData, vendor: e.target.value})}
-                    placeholder="e.g., Grocery Store"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Category</label>
-                  <input
-                    type="text"
-                    value={transactionFormData.category}
-                    onChange={(e) => setTransactionFormData({...transactionFormData, category: e.target.value})}
-                    placeholder="e.g., Food, Transport"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Amount</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={transactionFormData.amount}
-                    onChange={(e) => setTransactionFormData({...transactionFormData, amount: e.target.value})}
-                    placeholder="Positive for income, negative for expenses"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Notes (optional)</label>
-                  <input
-                    type="text"
-                    value={transactionFormData.notes}
-                    onChange={(e) => setTransactionFormData({...transactionFormData, notes: e.target.value})}
-                  />
-                </div>
-                <button type="submit" className="submit-btn">Add Transaction</button>
-              </form>
             )}
 
-            <TransactionList 
-              transactions={transactions} 
-              onDelete={handleDeleteTransaction}
-              showAll={true}
-            />
-          </div>
-        )}
-
-        {/* CSV Import Modal */}
-        {showCSVImport && (
-          <div className="modal-overlay" onClick={() => setShowCSVImport(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Import Transactions from CSV</h3>
-              
-              <form onSubmit={handleCSVImport}>
-                <div style={{background: '#f8f9fa', padding: '15px', borderRadius: '5px', marginBottom: '20px'}}>
-                  <p><strong>Expected CSV Format:</strong></p>
-                  <p style={{fontSize: '0.9em'}}>date, vendor, category, amount, account, notes</p>
-                  <p style={{fontSize: '0.85em', color: '#666', marginTop: '10px'}}>
-                    • Date: MM/DD/YYYY or YYYY-MM-DD<br/>
-                    • Amount: negative for expenses, positive for income
-                  </p>
+            {view === 'transactions' && (
+              <div className="transactions-view">
+                <div className="view-header">
+                  <h2>Transactions</h2>
+                  <button className="secondary-btn" onClick={() => setShowCSVImport(true)}>
+                    Import CSV
+                  </button>
                 </div>
-                
-                <div className="form-group">
-                  <label>Select CSV File:</label>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleCSVFileChange}
-                    required
+                <div className="transactions-header">
+                  <h2>All Transactions</h2>
+                  <button
+                    onClick={() => setShowTransactionForm(!showTransactionForm)}
+                    className="add-btn"
+                  >
+                    {showTransactionForm ? 'Cancel' : '+ Add Transaction'}
+                  </button>
+                </div>
+                {showTransactionForm && (
+                  <TransactionForm
+                    onSubmit={handleAddTransaction}
+                    onCancel={() => setShowTransactionForm(false)}
                   />
-                  {csvFile && (
-                    <p style={{color: 'green', fontSize: '0.9em', marginTop: '5px'}}>
-                      ✓ Selected: {csvFile.name}
-                    </p>
-                  )}
-                </div>
-                
-                <div className="form-actions">
-                  <button 
-                    type="submit" 
-                    className="primary-btn"
-                    disabled={!csvFile || loading}
-                  >
-                    {loading ? 'Importing...' : 'Import'}
-                  </button>
-                  <button 
-                    type="button" 
-                    className="secondary-btn" 
-                    onClick={() => {
-                      setShowCSVImport(false);
-                      setCSVFile(null);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+                )}
+                <TransactionList
+                  transactions={transactions}
+                  onDelete={handleDeleteTransaction}
+                  showAll={true}
+                />
+              </div>
+            )}
 
-        {/* Analytics View */}
-        {view === 'analytics' && selectedAccount && (
-          <AnalyticsDashboard analytics={analytics} />
-        )}
+            {view === 'analytics' && <AnalyticsDashboard analytics={analytics} />}
 
-        {/* Recurring Transactions View */}
-        {view === 'recurring' && selectedAccount && (
-          <div className="recurring-view">
-            <h2>Recurring Transactions</h2>
-            <div className="recurring-list">
-              {recurringTransactions.length === 0 ? (
-                <p>No recurring transactions found</p>
-              ) : (
-                recurringTransactions.map(recurring => (
-                  <div key={recurring.id} className="recurring-item">
-                    <div className="recurring-info">
-                      <strong>{recurring.vendor}</strong>
-                      <span>{recurring.category}</span>
-                      <span>Every {recurring.frequency} days</span>
-                    </div>
-                    <div className="recurring-amount">
-                      ${Math.abs(recurring.amount).toFixed(2)}
-                    </div>
-                    <div className="recurring-dates">
-                      <small>Next: {recurring.next_date}</small>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {!selectedAccount && (
+            {view === 'recurring' && (
+              <RecurringView recurringTransactions={recurringTransactions} />
+            )}
+          </>
+        ) : (
           <div className="no-account-message">
             <h2>No Account Selected</h2>
             <p>Please select an account or create a new one to get started.</p>
           </div>
         )}
+
+        {showCSVImport && (
+          <CSVImportModal
+            onImport={handleCSVImport}
+            onClose={() => setShowCSVImport(false)}
+            loading={loading}
+          />
+        )}
       </header>
-    </div>
-  );
-}
-
-// Auth Screen Component
-function AuthScreen({ onLogin, onRegister, error }) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: ''
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (isLogin) {
-      onLogin(formData.username, formData.password);
-    } else {
-      onRegister(formData.username, formData.email, formData.password);
-    }
-  };
-
-  return (
-    <div className="auth-screen">
-      <div className="auth-container">
-        <h1>💰 Money Tracker</h1>
-        <h2>{isLogin ? 'Login' : 'Register'}</h2>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Username</label>
-            <input
-              type="text"
-              value={formData.username}
-              onChange={(e) => setFormData({...formData, username: e.target.value})}
-              required
-            />
-          </div>
-          
-          {!isLogin && (
-            <div className="form-group">
-              <label>Email</label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                required
-              />
-            </div>
-          )}
-          
-          <div className="form-group">
-            <label>Password</label>
-            <input
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-              required
-            />
-          </div>
-          
-          <button type="submit" className="submit-btn">
-            {isLogin ? 'Login' : 'Register'}
-          </button>
-        </form>
-        
-        <p className="toggle-auth">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => setIsLogin(!isLogin)}>
-            {isLogin ? 'Register' : 'Login'}
-          </button>
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// Transaction List Component
-function TransactionList({ transactions, onDelete, showAll = false }) {
-  if (!transactions || transactions.length === 0) {
-    return <p className="no-data">No transactions found</p>;
-  }
-
-  return (
-    <div className="transaction-list">
-      {transactions.map(transaction => (
-        <div key={transaction.id} className="transaction-item">
-          <div className="transaction-info">
-            <strong>{transaction.vendor}</strong>
-            <span>{transaction.category} • {transaction.date}</span>
-            {transaction.notes && <small>{transaction.notes}</small>}
-          </div>
-          <div className="transaction-right">
-            <div className={`transaction-amount ${transaction.amount >= 0 ? 'green' : 'red'}`}>
-              {transaction.amount >= 0 ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
-            </div>
-            {showAll && (
-              <button 
-                onClick={() => onDelete(transaction.id)} 
-                className="delete-btn"
-                title="Delete transaction"
-              >
-                🗑️
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

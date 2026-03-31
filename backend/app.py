@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from datetime import timedelta
 
@@ -33,13 +33,17 @@ def create_app():
         "http://localhost:3000",
         os.getenv("FRONTEND_URL", "")
     ]
-    CORS(app,
-     resources={r"/api/*": {
-         "origins": [o for o in allowed_origins if o],
-         "allow_headers": ["Content-Type", "Authorization"],
-         "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-     }},
-     supports_credentials=True)
+    CORS(app, supports_credentials=True)
+    
+    @app.after_request
+    def add_cors_headers(response):
+        origin = request.headers.get('Origin')
+        if origin in allowed_origins:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
 
     # Register blueprints
     from routes.auth import auth_bp
