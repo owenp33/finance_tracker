@@ -54,15 +54,19 @@ class AccountService:
             if 'notes' in data:
                 update_fields['notes'] = data['notes']
 
-            old_amount = trans.amount
+            old_amount_cents = trans.amount_cents
+            
             for key, value in update_fields.items():
                 if hasattr(trans, key) and key != 'id':
-                    setattr(trans, key, value)
+                    if key == 'amount':
+                        trans.amount = value  # Property setter converts dollars to cents
+                    else:
+                        setattr(trans, key, value)
 
-            if 'amount' in update_fields and update_fields['amount'] != old_amount:
+            if 'amount' in update_fields:
                 account = db_service.get_account(trans.account_id)
                 if account:
-                    account.balance += (update_fields['amount'] - old_amount)
+                    account.balance_cents += (trans.amount_cents - old_amount_cents)
 
             db.session.commit()
             return trans, None
@@ -81,7 +85,7 @@ class AccountService:
 
         account = db_service.get_account(t.account_id)
         if account:
-            account.balance -= t.amount
+            account.balance_cents -= t.amount_cents
 
         db.session.delete(t)
         db.session.commit()
@@ -103,7 +107,10 @@ class AccountService:
         updatable_fields = ['start_date', 'vendor', 'category', 'amount', 'notes', 'next_date', 'frequency', 'number']
         for field in updatable_fields:
             if field in kwargs:
-                setattr(rec, field, kwargs[field])
+                if field == 'amount':
+                    rec.amount = kwargs[field]  # Property converts dollars to cents
+                else:
+                    setattr(rec, field, kwargs[field])
 
         new_number = rec.number
         number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
@@ -119,7 +126,7 @@ class AccountService:
             for t in excess_transactions:
                 account = db_service.get_account(t.account_id)
                 if account:
-                    account.balance -= t.amount
+                    account.balance_cents -= t.amount_cents
                 db.session.delete(t)
 
             remaining_count = TransactionModel.query.filter(
