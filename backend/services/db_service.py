@@ -77,6 +77,14 @@ class DbService:
     def get_transaction(self, transaction_id):
         return TransactionModel.query.get(transaction_id)
 
+    def transaction_exists(self, account_id, date_obj, vendor, amount_cents):
+        return TransactionModel.query.filter_by(
+            account_id=account_id,
+            date=date_obj,
+            vendor=vendor,
+            amount_cents=amount_cents
+        ).first() is not None
+
     def get_account_transactions(self, account_id):
         return TransactionModel.query.filter_by(account_id=account_id).order_by(TransactionModel.date.desc()).all()
 
