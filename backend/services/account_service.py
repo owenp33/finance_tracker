@@ -153,7 +153,7 @@ class AccountService:
             for t in transactions:
                 account = db_service.get_account(t.account_id)
                 if account:
-                    account.balance -= t.amount
+                    account.balance_cents -= t.amount_cents
                 db.session.delete(t)
         else:
             TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})
@@ -198,8 +198,8 @@ class AccountService:
         """Audit helper to ensure balance matches sum of transaction history"""
         account = db_service.get_account(account_id)
         if account:
-            total = sum(t.amount for t in account.transactions)
-            account.balance = total
+            total_cents = sum(t.amount_cents for t in account.transactions)
+            account.balance_cents = total_cents
             db.session.commit()
-            return total
+            return total_cents / 100.0
         return 0

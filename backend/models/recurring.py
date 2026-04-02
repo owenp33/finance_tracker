@@ -34,7 +34,6 @@ class RecurringModel(db.Model):
         self.amount_cents = int(round(dollars * 100))
     
     @property
-    @property
     def advance_to_next(self):
         """Calculate next occurrence date"""
         return self.next_date + timedelta(days=self.frequency)

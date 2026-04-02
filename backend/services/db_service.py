@@ -42,7 +42,7 @@ class DbService:
             user_id=user_id,
             acct_id_str=acct_id_str,
             acct_name=display_name,
-            balance=0.0
+            balance_cents=0
         )
         db.session.add(acc)
         db.session.commit()
