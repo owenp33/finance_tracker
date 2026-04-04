@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import { fetchAPI, uploadFile } from './api/client';
 import AuthScreen from './components/AuthScreen';
-import TransactionList from './components/TransactionList';
-import TransactionForm from './components/TransactionForm';
-import CSVImportModal from './components/CSVImportModal';
+import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
-import RecurringView from './components/RecurringView';
+import TransactionsView from './components/TransactionsView';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import RecurringView from './components/RecurringView';
+import CSVImportModal from './components/CSVImportModal';
 
 function App() {
   // Auth state
@@ -15,7 +15,7 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [user, setUser] = useState(null);
 
-  // App state
+  // Data state
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -229,64 +229,24 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <div className="header-content">
-          <h1>💰 Money Tracker</h1>
-          <div className="header-actions">
-            <span>Welcome, {user?.username}!</span>
-            <button onClick={handleLogout} className="logout-btn">Logout</button>
-          </div>
-        </div>
+      <AppHeader
+        user={user}
+        accounts={accounts}
+        selectedAccount={selectedAccount}
+        onSelectAccount={setSelectedAccount}
+        onCreateAccount={() => {
+          const accountId = prompt('Enter account ID:');
+          const accountName = prompt('Enter account name:');
+          if (accountId && accountName) handleCreateAccount(accountId, accountName);
+        }}
+        onLogout={handleLogout}
+        view={view}
+        onViewChange={setView}
+        error={error}
+        onDismissError={() => setError(null)}
+      />
 
-        {/* Account Selector */}
-        <div className="account-selector">
-          <select
-            value={selectedAccount || ''}
-            onChange={(e) => setSelectedAccount(parseInt(e.target.value))}
-          >
-            <option value="">Select Account</option>
-            {accounts.map(account => (
-              <option key={account.id} value={account.id}>
-                {account.account_name} - Balance: ${account.balance?.toFixed(2) || '0.00'}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => {
-              const accountId = prompt('Enter account ID:');
-              const accountName = prompt('Enter account name:');
-              if (accountId && accountName) handleCreateAccount(accountId, accountName);
-            }}
-            className="add-account-btn"
-          >
-            + Add Account
-          </button>
-        </div>
-
-        {/* Navigation */}
-        <nav className="view-nav">
-          {['dashboard', 'transactions', 'analytics', 'recurring'].map(v => (
-            <button
-              key={v}
-              className={view === v ? 'active' : ''}
-              onClick={() => setView(v)}
-            >
-              {v === 'dashboard' && '📊 Dashboard'}
-              {v === 'transactions' && '💳 Transactions'}
-              {v === 'analytics' && '📈 Analytics'}
-              {v === 'recurring' && '🔄 Recurring'}
-            </button>
-          ))}
-        </nav>
-
-        {error && (
-          <div className="error-message">
-            {error}
-            <button onClick={() => setError(null)}>×</button>
-          </div>
-        )}
-
-        {/* Views */}
+      <main className="App-main">
         {selectedAccount ? (
           <>
             {view === 'dashboard' && (
@@ -296,40 +256,17 @@ function App() {
                 onDeleteTransaction={handleDeleteTransaction}
               />
             )}
-
             {view === 'transactions' && (
-              <div className="transactions-view">
-                <div className="view-header">
-                  <h2>Transactions</h2>
-                  <button className="secondary-btn" onClick={() => setShowCSVImport(true)}>
-                    Import CSV
-                  </button>
-                </div>
-                <div className="transactions-header">
-                  <h2>All Transactions</h2>
-                  <button
-                    onClick={() => setShowTransactionForm(!showTransactionForm)}
-                    className="add-btn"
-                  >
-                    {showTransactionForm ? 'Cancel' : '+ Add Transaction'}
-                  </button>
-                </div>
-                {showTransactionForm && (
-                  <TransactionForm
-                    onSubmit={handleAddTransaction}
-                    onCancel={() => setShowTransactionForm(false)}
-                  />
-                )}
-                <TransactionList
-                  transactions={transactions}
-                  onDelete={handleDeleteTransaction}
-                  showAll={true}
-                />
-              </div>
+              <TransactionsView
+                transactions={transactions}
+                onAdd={handleAddTransaction}
+                onDelete={handleDeleteTransaction}
+                onImportCSV={() => setShowCSVImport(true)}
+                showForm={showTransactionForm}
+                onToggleForm={() => setShowTransactionForm(f => !f)}
+              />
             )}
-
             {view === 'analytics' && <AnalyticsDashboard analytics={analytics} />}
-
             {view === 'recurring' && (
               <RecurringView recurringTransactions={recurringTransactions} />
             )}
@@ -348,7 +285,7 @@ function App() {
             loading={loading}
           />
         )}
-      </header>
+      </main>
     </div>
   );
 }
