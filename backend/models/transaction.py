@@ -17,6 +17,8 @@ class TransactionModel(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'account_id': self.account_id,
+            'account_name': self.account.acct_name if self.account else None,
             'date': self.date.isoformat(),
             'vendor': self.vendor,
             'category': self.category,

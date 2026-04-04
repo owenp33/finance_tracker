@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 
-function TransactionForm({ onSubmit, onCancel }) {
+function TransactionForm({ onSubmit, onCancel, accounts }) {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     vendor: '',
     category: '',
     amount: '',
-    notes: ''
+    notes: '',
+    account_id: accounts?.[0]?.id || ''
   });
 
   const handleSubmit = (e) => {
@@ -17,12 +18,26 @@ function TransactionForm({ onSubmit, onCancel }) {
       vendor: '',
       category: '',
       amount: '',
-      notes: ''
+      notes: '',
+      account_id: accounts?.[0]?.id || ''
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="transaction-form">
+      <div className="form-group">
+        <label>Account</label>
+        <select
+          value={formData.account_id}
+          onChange={(e) => setFormData({ ...formData, account_id: parseInt(e.target.value) })}
+          required
+        >
+          <option value="">— select account —</option>
+          {accounts?.map(a => (
+            <option key={a.id} value={a.id}>{a.account_name}</option>
+          ))}
+        </select>
+      </div>
       <div className="form-group">
         <label>Date</label>
         <input

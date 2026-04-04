@@ -11,7 +11,7 @@ function TransactionList({ transactions, onDelete, showAll = false }) {
         <div key={transaction.id} className="transaction-item">
           <div className="transaction-info">
             <strong>{transaction.vendor}</strong>
-            <span>{transaction.category} • {transaction.date}</span>
+            <span>{transaction.category} • {transaction.date}{transaction.account_name ? ` • ${transaction.account_name}` : ''}</span>
             {transaction.notes && <small>{transaction.notes}</small>}
           </div>
           <div className="transaction-right">

@@ -88,6 +88,13 @@ class DbService:
     def get_account_transactions(self, account_id):
         return TransactionModel.query.filter_by(account_id=account_id).order_by(TransactionModel.date.desc()).all()
 
+    def get_all_user_transactions(self, user_id):
+        return (TransactionModel.query
+                .join(AccountModel)
+                .filter(AccountModel.user_id == user_id)
+                .order_by(TransactionModel.date.desc())
+                .all())
+
     # RECURRING OPERATIONS ======================================================
 
     def add_recurring(self, account_id, start_date, vendor, category, amount, next_date, frequency, number=-1, notes=""):

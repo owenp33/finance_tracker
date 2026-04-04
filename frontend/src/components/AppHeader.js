@@ -5,9 +5,10 @@ const NAV_LABELS = {
   transactions: '💳 Transactions',
   analytics: '📈 Analytics',
   recurring: '🔄 Recurring',
+  accounts: '🏦 Accounts',
 };
 
-function AppHeader({ user, accounts, selectedAccount, onSelectAccount, onCreateAccount, onLogout, view, onViewChange, error, onDismissError }) {
+function AppHeader({ user, onLogout, view, onViewChange, error, onDismissError }) {
   return (
     <header className="App-header">
       <div className="header-content">
@@ -16,23 +17,6 @@ function AppHeader({ user, accounts, selectedAccount, onSelectAccount, onCreateA
           <span>Welcome, {user?.username}!</span>
           <button onClick={onLogout} className="logout-btn">Logout</button>
         </div>
-      </div>
-
-      <div className="account-selector">
-        <select
-          value={selectedAccount || ''}
-          onChange={(e) => onSelectAccount(parseInt(e.target.value))}
-        >
-          <option value="">Select Account</option>
-          {accounts.map(account => (
-            <option key={account.id} value={account.id}>
-              {account.account_name} - Balance: ${account.balance?.toFixed(2) || '0.00'}
-            </option>
-          ))}
-        </select>
-        <button onClick={onCreateAccount} className="add-account-btn">
-          + Add Account
-        </button>
       </div>
 
       <nav className="view-nav">

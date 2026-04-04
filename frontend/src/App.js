@@ -7,6 +7,7 @@ import DashboardView from './components/DashboardView';
 import TransactionsView from './components/TransactionsView';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import RecurringView from './components/RecurringView';
+import AccountsView from './components/AccountsView';
 import CSVImportModal from './components/CSVImportModal';
 
 function App() {
@@ -17,7 +18,7 @@ function App() {
 
   // Data state
   const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [selectedAccount, setSelectedAccount] = useState(null); // used only by analytics/recurring
   const [transactions, setTransactions] = useState([]);
   const [recurringTransactions, setRecurringTransactions] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -83,16 +84,15 @@ function App() {
       setAccounts(data.accounts);
       if (data.accounts.length > 0 && !selectedAccount) {
         setSelectedAccount(data.accounts[0].id);
-        loadAnalytics(data.accounts[0].id);
       }
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const loadTransactions = async (accountId) => {
+  const loadTransactions = async () => {
     try {
-      const data = await fetchAPI(`/api/accounts/${accountId}/transactions`);
+      const data = await fetchAPI('/api/accounts/all-transactions');
       setTransactions(data.transactions);
     } catch (err) {
       setError(err.message);
@@ -120,21 +120,22 @@ function App() {
 
   const refreshAccountData = async (accountId) => {
     await Promise.all([
-      loadTransactions(accountId),
+      loadTransactions(),
       loadAccounts(),
-      loadAnalytics(accountId),
+      loadAnalytics(accountId || selectedAccount),
     ]);
   };
 
   // ACTION HANDLERS ===========================================================
 
   const handleAddTransaction = async (formData) => {
+    const { account_id, ...rest } = formData;
     try {
-      await fetchAPI(`/api/accounts/${selectedAccount}/transactions`, {
+      await fetchAPI(`/api/accounts/${account_id}/transactions`, {
         method: 'POST',
-        body: JSON.stringify(formData),
+        body: JSON.stringify(rest),
       });
-      await refreshAccountData(selectedAccount);
+      await refreshAccountData(account_id);
       setShowTransactionForm(false);
       alert('Transaction added successfully!');
     } catch (err) {
@@ -146,7 +147,7 @@ function App() {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
     try {
       await fetchAPI(`/api/transactions/${transactionId}`, { method: 'DELETE' });
-      await refreshAccountData(selectedAccount);
+      await refreshAccountData();
       alert('Transaction deleted successfully!');
     } catch (err) {
       setError(err.message);
@@ -155,22 +156,44 @@ function App() {
 
   const handleCreateAccount = async (accountId, accountName) => {
     try {
-      await fetchAPI('/api/accounts', {
+      const data = await fetchAPI('/api/accounts', {
         method: 'POST',
         body: JSON.stringify({ account_id: accountId, account_name: accountName }),
       });
       await loadAccounts();
-      alert('Account created successfully!');
+      return data.account;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const handleEditAccount = async (id, fields) => {
+    try {
+      await fetchAPI(`/api/accounts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(fields),
+      });
+      await loadAccounts();
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const handleCSVImport = async (file) => {
+  const handleDeleteAccount = async (id) => {
+    try {
+      await fetchAPI(`/api/accounts/${id}`, { method: 'DELETE' });
+      await Promise.all([loadAccounts(), loadTransactions()]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCSVImport = async (file, accountId) => {
     try {
       setLoading(true);
-      const data = await uploadFile(`/api/csv/accounts/${selectedAccount}/import-csv`, file);
-      await refreshAccountData(selectedAccount);
+      const data = await uploadFile(`/api/csv/accounts/${accountId}/import-csv`, file);
+      await refreshAccountData(accountId);
       setShowCSVImport(false);
       alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
     } catch (err) {
@@ -199,12 +222,14 @@ function App() {
   }, [token]);
 
   useEffect(() => {
-    if (isAuthenticated) loadAccounts();
+    if (isAuthenticated) {
+      loadAccounts();
+      loadTransactions();
+    }
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (selectedAccount) {
-      loadTransactions(selectedAccount);
       loadRecurringTransactions(selectedAccount);
       loadAnalytics(selectedAccount);
     }
@@ -227,18 +252,23 @@ function App() {
     return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} error={error} />;
   }
 
+  // Inline account picker for views that still need a single account (analytics/recurring)
+  const AccountPicker = () => (
+    <div className="account-picker-inline">
+      <label>Account: </label>
+      <select value={selectedAccount || ''} onChange={e => setSelectedAccount(parseInt(e.target.value))}>
+        <option value="">— select —</option>
+        {accounts.map(a => (
+          <option key={a.id} value={a.id}>{a.account_name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   return (
     <div className="App">
       <AppHeader
         user={user}
-        accounts={accounts}
-        selectedAccount={selectedAccount}
-        onSelectAccount={setSelectedAccount}
-        onCreateAccount={() => {
-          const accountId = prompt('Enter account ID:');
-          const accountName = prompt('Enter account name:');
-          if (accountId && accountName) handleCreateAccount(accountId, accountName);
-        }}
         onLogout={handleLogout}
         view={view}
         onViewChange={setView}
@@ -247,41 +277,51 @@ function App() {
       />
 
       <main className="App-main">
-        {selectedAccount ? (
+        {view === 'dashboard' && (
+          <DashboardView
+            analytics={analytics}
+            transactions={transactions}
+            onDeleteTransaction={handleDeleteTransaction}
+          />
+        )}
+        {view === 'transactions' && (
+          <TransactionsView
+            transactions={transactions}
+            accounts={accounts}
+            onAdd={handleAddTransaction}
+            onDelete={handleDeleteTransaction}
+            onImportCSV={() => setShowCSVImport(true)}
+            showForm={showTransactionForm}
+            onToggleForm={() => setShowTransactionForm(f => !f)}
+          />
+        )}
+        {view === 'analytics' && (
           <>
-            {view === 'dashboard' && (
-              <DashboardView
-                analytics={analytics}
-                transactions={transactions}
-                onDeleteTransaction={handleDeleteTransaction}
-              />
-            )}
-            {view === 'transactions' && (
-              <TransactionsView
-                transactions={transactions}
-                onAdd={handleAddTransaction}
-                onDelete={handleDeleteTransaction}
-                onImportCSV={() => setShowCSVImport(true)}
-                showForm={showTransactionForm}
-                onToggleForm={() => setShowTransactionForm(f => !f)}
-              />
-            )}
-            {view === 'analytics' && <AnalyticsDashboard analytics={analytics} />}
-            {view === 'recurring' && (
-              <RecurringView recurringTransactions={recurringTransactions} />
-            )}
+            <AccountPicker />
+            <AnalyticsDashboard analytics={analytics} />
           </>
-        ) : (
-          <div className="no-account-message">
-            <h2>No Account Selected</h2>
-            <p>Please select an account or create a new one to get started.</p>
-          </div>
+        )}
+        {view === 'recurring' && (
+          <>
+            <AccountPicker />
+            <RecurringView recurringTransactions={recurringTransactions} />
+          </>
+        )}
+        {view === 'accounts' && (
+          <AccountsView
+            accounts={accounts}
+            onCreateAccount={handleCreateAccount}
+            onEditAccount={handleEditAccount}
+            onDeleteAccount={handleDeleteAccount}
+          />
         )}
 
         {showCSVImport && (
           <CSVImportModal
             onImport={handleCSVImport}
             onClose={() => setShowCSVImport(false)}
+            onCreateAccount={handleCreateAccount}
+            accounts={accounts}
             loading={loading}
           />
         )}
