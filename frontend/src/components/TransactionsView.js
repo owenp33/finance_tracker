@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 
-function TransactionsView({ transactions, accounts, onAdd, onDelete, onImportCSV, showForm, onToggleForm }) {
+function TransactionsView({ transactions, accounts, onAdd, onAddRecurring, onEdit, onDelete, onImportCSV, showForm, onToggleForm }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -88,9 +88,14 @@ function TransactionsView({ transactions, accounts, onAdd, onDelete, onImportCSV
       </div>
 
       {showForm && (
-        <TransactionForm onSubmit={onAdd} onCancel={onToggleForm} accounts={accounts} />
+        <TransactionForm
+          onSubmit={onAdd}
+          onSubmitRecurring={onAddRecurring}
+          onCancel={onToggleForm}
+          accounts={accounts}
+        />
       )}
-      <TransactionList transactions={filtered} onDelete={onDelete} showAll={true} />
+      <TransactionList transactions={filtered} accounts={accounts} onEdit={onEdit} onDelete={onDelete} showAll={true} />
     </div>
   );
 }

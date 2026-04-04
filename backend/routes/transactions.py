@@ -19,7 +19,10 @@ account_service = AccountService()
 def update_transaction(transaction_id):
     """Update an existing transaction"""
     data = request.get_json()
-    updated = account_service.update_transaction(transaction_id, **data)
+    updated, error = account_service.update_transaction(transaction_id, data)
+
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
 
     return jsonify({
         'success': True,

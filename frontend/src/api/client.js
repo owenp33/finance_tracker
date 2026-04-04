@@ -26,10 +26,11 @@ export const fetchAPI = async (endpoint, options = {}) => {
   return response.json();
 };
 
-export const uploadFile = async (endpoint, file) => {
+export const uploadFile = async (endpoint, file, extraFields = {}) => {
   const token = localStorage.getItem('token');
   const formData = new FormData();
   formData.append('file', file);
+  Object.entries(extraFields).forEach(([k, v]) => formData.append(k, v));
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
     method: 'POST',

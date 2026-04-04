@@ -55,15 +55,26 @@ class AccountService:
                 update_fields['notes'] = data['notes']
 
             old_amount_cents = trans.amount_cents
-            
+            old_account_id = trans.account_id
+
             for key, value in update_fields.items():
                 if hasattr(trans, key) and key != 'id':
                     if key == 'amount':
-                        trans.amount = value  # Property setter converts dollars to cents
+                        trans.amount = value
                     else:
                         setattr(trans, key, value)
 
-            if 'amount' in update_fields:
+            # Handle account change: reverse from old account, apply to new account
+            new_account_id = int(data['account_id']) if 'account_id' in data else old_account_id
+            if new_account_id != old_account_id:
+                old_account = db_service.get_account(old_account_id)
+                new_account = db_service.get_account(new_account_id)
+                if old_account:
+                    old_account.balance_cents -= old_amount_cents
+                if new_account:
+                    new_account.balance_cents += trans.amount_cents
+                trans.account_id = new_account_id
+            elif 'amount' in update_fields:
                 account = db_service.get_account(trans.account_id)
                 if account:
                     account.balance_cents += (trans.amount_cents - old_amount_cents)

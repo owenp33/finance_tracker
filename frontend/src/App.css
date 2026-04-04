@@ -483,6 +483,139 @@ body {
   font-size: 1.1rem;
 }
 
+/* CSV Import Modal */
+.csv-format-info {
+  background: #f8f9fa;
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.8;
+}
+
+.csv-format-note {
+  color: #888;
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+.file-selected {
+  color: #2f9e44;
+  font-size: 0.88rem;
+  margin-top: 5px;
+}
+
+.csv-account-list {
+  margin-bottom: 18px;
+}
+
+.csv-account-list-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.csv-account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  border: 1.5px solid #e9ecef;
+}
+
+.csv-account-row.matched   { background: #f3fff6; border-color: #b2f2bb; }
+.csv-account-row.unmatched { background: #fffbf0; border-color: #ffe066; }
+
+.csv-account-name { font-weight: 500; color: #333; }
+
+.csv-match-status.matched { color: #2f9e44; font-size: 0.88rem; font-weight: 600; }
+
+.csv-warning {
+  color: #e67700;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+/* Recurring toggle in TransactionForm */
+.recurring-toggle-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  padding: 10px 0 4px;
+  border-top: 1.5px solid #e9ecef;
+  margin-top: 4px;
+}
+
+.recurring-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #495057;
+  cursor: pointer;
+  user-select: none;
+}
+
+.recurring-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #667eea;
+  cursor: pointer;
+}
+
+.recurring-extra-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  background: #f0f3ff;
+  border: 1.5px solid #c5cff5;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+/* Transaction inline edit */
+.transaction-edit-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transaction-edit-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.transaction-edit-fields input {
+  flex: 1;
+  min-width: 120px;
+  padding: 7px 10px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 7px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+}
+
+.transaction-edit-fields input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.transaction-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* Analytics View */
 .analytics-view {
   background: white;

@@ -143,6 +143,33 @@ function App() {
     }
   };
 
+  const handleEditTransaction = async (transactionId, formData) => {
+    try {
+      await fetchAPI(`/api/transactions/${transactionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(formData),
+      });
+      await refreshAccountData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleAddRecurring = async (formData) => {
+    const { account_id, ...rest } = formData;
+    try {
+      await fetchAPI(`/api/accounts/${account_id}/recurring`, {
+        method: 'POST',
+        body: JSON.stringify(rest),
+      });
+      await loadAccounts();
+      setShowTransactionForm(false);
+      alert('Recurring transaction added successfully!');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleDeleteTransaction = async (transactionId) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
     try {
@@ -189,13 +216,14 @@ function App() {
     }
   };
 
-  const handleCSVImport = async (file, accountId) => {
+  const handleCSVImport = async (file, fallbackAccountId) => {
     try {
       setLoading(true);
-      const data = await uploadFile(`/api/csv/accounts/${accountId}/import-csv`, file);
-      await refreshAccountData(accountId);
+      const extraFields = fallbackAccountId ? { account_id: fallbackAccountId } : {};
+      const data = await uploadFile('/api/csv/import', file, extraFields);
+      await Promise.all([loadTransactions(), loadAccounts()]);
       setShowCSVImport(false);
-      alert(`${data.message}\nNew balance: $${data.new_balance.toFixed(2)}`);
+      alert(data.message);
     } catch (err) {
       alert(`Import failed: ${err.message}`);
     } finally {
@@ -289,6 +317,8 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             onAdd={handleAddTransaction}
+            onAddRecurring={handleAddRecurring}
+            onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
             onImportCSV={() => setShowCSVImport(true)}
             showForm={showTransactionForm}
