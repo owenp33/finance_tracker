@@ -11,7 +11,7 @@ class RecurringModel(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     vendor = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
+    amount_cents = db.Column(db.Integer, nullable=False)
     notes = db.Column(db.Text)
     
     # Recurring attributes
@@ -24,6 +24,14 @@ class RecurringModel(db.Model):
                                             foreign_keys='TransactionModel.recurring_id',
                                             backref='recurring_source',
                                             cascade="all, delete-orphan")
+    
+    @property
+    def amount(self):
+        return self.amount_cents / 100.0
+    
+    @amount.setter
+    def amount(self, dollars):
+        self.amount_cents = int(round(dollars * 100))
     
     @property
     def advance_to_next(self):

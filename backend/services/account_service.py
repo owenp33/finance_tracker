@@ -54,15 +54,30 @@ class AccountService:
             if 'notes' in data:
                 update_fields['notes'] = data['notes']
 
-            old_amount = trans.amount
+            old_amount_cents = trans.amount_cents
+            old_account_id = trans.account_id
+
             for key, value in update_fields.items():
                 if hasattr(trans, key) and key != 'id':
-                    setattr(trans, key, value)
+                    if key == 'amount':
+                        trans.amount = value
+                    else:
+                        setattr(trans, key, value)
 
-            if 'amount' in update_fields and update_fields['amount'] != old_amount:
+            # Handle account change: reverse from old account, apply to new account
+            new_account_id = int(data['account_id']) if 'account_id' in data else old_account_id
+            if new_account_id != old_account_id:
+                old_account = db_service.get_account(old_account_id)
+                new_account = db_service.get_account(new_account_id)
+                if old_account:
+                    old_account.balance_cents -= old_amount_cents
+                if new_account:
+                    new_account.balance_cents += trans.amount_cents
+                trans.account_id = new_account_id
+            elif 'amount' in update_fields:
                 account = db_service.get_account(trans.account_id)
                 if account:
-                    account.balance += (update_fields['amount'] - old_amount)
+                    account.balance_cents += (trans.amount_cents - old_amount_cents)
 
             db.session.commit()
             return trans, None
@@ -75,15 +90,15 @@ class AccountService:
         Delete a transaction and reverse its effect on the account balance.
         Returns (success, error_message).
         """
-        t = db_service.get_transaction(transaction_id)
-        if not t:
+        trans = db_service.get_transaction(transaction_id)
+        if not trans:
             return False, 'Transaction not found'
 
-        account = db_service.get_account(t.account_id)
+        account = db_service.get_account(trans.account_id)
         if account:
-            account.balance -= t.amount
+            account.balance_cents -= trans.amount_cents
 
-        db.session.delete(t)
+        db.session.delete(trans)
         db.session.commit()
         return True, None
 
@@ -103,7 +118,10 @@ class AccountService:
         updatable_fields = ['start_date', 'vendor', 'category', 'amount', 'notes', 'next_date', 'frequency', 'number']
         for field in updatable_fields:
             if field in kwargs:
-                setattr(rec, field, kwargs[field])
+                if field == 'amount':
+                    rec.amount = kwargs[field]  # Property converts dollars to cents
+                else:
+                    setattr(rec, field, kwargs[field])
 
         new_number = rec.number
         number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
@@ -116,11 +134,11 @@ class AccountService:
                 TransactionModel.date >= cutoff_date
             ).all()
 
-            for t in excess_transactions:
-                account = db_service.get_account(t.account_id)
+            for trans in excess_transactions:
+                account = db_service.get_account(trans.account_id)
                 if account:
-                    account.balance -= t.amount
-                db.session.delete(t)
+                    account.balance_cents -= trans.amount_cents
+                db.session.delete(trans)
 
             remaining_count = TransactionModel.query.filter(
                 TransactionModel.recurring_id == recurring_id
@@ -143,11 +161,11 @@ class AccountService:
 
         if delete_generated:
             transactions = TransactionModel.query.filter_by(recurring_id=recurring_id).all()
-            for t in transactions:
-                account = db_service.get_account(t.account_id)
+            for trans in transactions:
+                account = db_service.get_account(trans.account_id)
                 if account:
-                    account.balance -= t.amount
-                db.session.delete(t)
+                    account.balance_cents -= trans.amount_cents
+                db.session.delete(trans)
         else:
             TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})
 
@@ -191,8 +209,8 @@ class AccountService:
         """Audit helper to ensure balance matches sum of transaction history"""
         account = db_service.get_account(account_id)
         if account:
-            total = sum(t.amount for t in account.transactions)
-            account.balance = total
+            total_cents = sum(trans.amount_cents for trans in account.transactions)
+            account.balance_cents = total_cents
             db.session.commit()
-            return total
+            return total_cents / 100.0
         return 0

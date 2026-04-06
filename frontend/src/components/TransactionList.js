@@ -1,33 +1,79 @@
-import React from 'react';
+import { useState } from 'react';
 
-function TransactionList({ transactions, onDelete, showAll = false }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false }) {
+  const [editingId, setEditingId] = useState(null);
+  const [editFields, setEditFields] = useState({});
+
   if (!transactions || transactions.length === 0) {
     return <p className="no-data">No transactions found</p>;
   }
 
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setEditFields({
+      date: t.date,
+      vendor: t.vendor,
+      category: t.category,
+      amount: t.amount,
+      notes: t.notes || '',
+      account_id: t.account_id,
+    });
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = async (id) => {
+    await onEdit(id, editFields);
+    setEditingId(null);
+  };
+
+  const set = (field, value) => setEditFields(prev => ({ ...prev, [field]: value }));
+
   return (
     <div className="transaction-list">
-      {transactions.map(transaction => (
-        <div key={transaction.id} className="transaction-item">
-          <div className="transaction-info">
-            <strong>{transaction.vendor}</strong>
-            <span>{transaction.category} • {transaction.date}</span>
-            {transaction.notes && <small>{transaction.notes}</small>}
-          </div>
-          <div className="transaction-right">
-            <div className={`transaction-amount ${transaction.amount >= 0 ? 'green' : 'red'}`}>
-              {transaction.amount >= 0 ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+      {transactions.map(t => (
+        <div key={t.id} className="transaction-item">
+          {editingId === t.id ? (
+            <div className="transaction-edit-form">
+              <div className="transaction-edit-fields">
+                <input type="date" value={editFields.date} onChange={e => set('date', e.target.value)} />
+                <input type="text" value={editFields.vendor} onChange={e => set('vendor', e.target.value)} placeholder="Vendor" />
+                <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="Category" />
+                <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} placeholder="Amount" />
+                <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} placeholder="Notes" />
+                {accounts.length > 0 && (
+                  <select value={editFields.account_id} onChange={e => set('account_id', parseInt(e.target.value))}>
+                    {accounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.account_name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="transaction-edit-actions">
+                <button className="btn btn-primary btn-sm" onClick={() => saveEdit(t.id)}>Save</button>
+                <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
+              </div>
             </div>
-            {showAll && (
-              <button
-                onClick={() => onDelete(transaction.id)}
-                className="delete-btn"
-                title="Delete transaction"
-              >
-                🗑️
-              </button>
-            )}
-          </div>
+          ) : (
+            <>
+              <div className="transaction-info">
+                <strong>{t.vendor}</strong>
+                <span>{t.category} • {t.date}{t.account_name ? ` • ${t.account_name}` : ''}</span>
+                {t.notes && <small>{t.notes}</small>}
+              </div>
+              <div className="transaction-right">
+                <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                  {t.amount >= 0 ? '+' : ''}${Math.abs(t.amount).toFixed(2)}
+                </div>
+                {showAll && (
+                  <>
+                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)}>Edit</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(t.id)}>Delete</button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       ))}
     </div>

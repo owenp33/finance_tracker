@@ -42,7 +42,7 @@ class DbService:
             user_id=user_id,
             acct_id_str=acct_id_str,
             acct_name=display_name,
-            balance=0.0
+            balance_cents=0
         )
         db.session.add(acc)
         db.session.commit()
@@ -62,13 +62,14 @@ class DbService:
             date=date_obj,
             vendor=vendor,
             category=category,
-            amount=amount,
             notes=notes,
             recurring_id=recurring_id
         )
+        transaction.amount = amount
+        
         account = self.get_account(account_id)
         if account:
-            account.balance += amount
+            account.balance_cents += transaction.amount_cents
         db.session.add(transaction)
         db.session.commit()
         return transaction
@@ -76,8 +77,23 @@ class DbService:
     def get_transaction(self, transaction_id):
         return TransactionModel.query.get(transaction_id)
 
+    def transaction_exists(self, account_id, date_obj, vendor, amount_cents):
+        return TransactionModel.query.filter_by(
+            account_id=account_id,
+            date=date_obj,
+            vendor=vendor,
+            amount_cents=amount_cents
+        ).first() is not None
+
     def get_account_transactions(self, account_id):
         return TransactionModel.query.filter_by(account_id=account_id).order_by(TransactionModel.date.desc()).all()
+
+    def get_all_user_transactions(self, user_id):
+        return (TransactionModel.query
+                .join(AccountModel)
+                .filter(AccountModel.user_id == user_id)
+                .order_by(TransactionModel.date.desc())
+                .all())
 
     # RECURRING OPERATIONS ======================================================
 

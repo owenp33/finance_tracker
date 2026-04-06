@@ -123,13 +123,13 @@ class AnalyticsService:
             }
 
         data = [{
-            'id': t.id,
-            'date': t.date,
-            'vendor': t.vendor,
-            'category': t.category,
-            'amount': t.amount,
-            'notes': t.notes
-        } for t in transactions]
+            'id': trans.id,
+            'date': trans.date,
+            'vendor': trans.vendor,
+            'category': trans.category,
+            'amount': trans.amount,
+            'notes': trans.notes
+        } for trans in transactions]
 
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'])
