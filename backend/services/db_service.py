@@ -56,31 +56,6 @@ class DbService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
-        """
-        Raw write: create the transaction row and update the account balance.
-        Flushes to the session so callers can query the new row immediately,
-        but does NOT commit — the caller is responsible for committing.
-        Flag evaluation belongs in account_service.add_transaction.
-        """
-        transaction = TransactionModel(
-            account_id=account_id,
-            date=date_obj,
-            vendor=vendor,
-            category=category,
-            notes=notes,
-            recurring_id=recurring_id
-        )
-        transaction.amount = amount
-
-        account = self.get_account(account_id)
-        if account:
-            account.balance_cents += transaction.amount_cents
-
-        db.session.add(transaction)
-        db.session.flush()
-        return transaction
-
     def _reevaluate_category_flags(self, user_id, category, period):
         """
         Recompute over_budget for every expense transaction in a category/period.
@@ -179,23 +154,6 @@ class DbService:
 
     # RECURRING OPERATIONS ======================================================
 
-    def add_recurring(self, account_id, start_date, vendor, category, amount, next_date, frequency, number=-1, notes=""):
-        rec = RecurringModel(
-            account_id=account_id,
-            start_date=start_date,
-            vendor=vendor,
-            category=category,
-            amount=amount,
-            next_date=next_date,
-            frequency=frequency,
-            number=number,
-            notes=notes,
-            idx=1
-        )
-        db.session.add(rec)
-        db.session.commit()
-        return rec
-
     def get_recurring(self, recurring_id):
         return RecurringModel.query.get(recurring_id)
 
@@ -215,24 +173,3 @@ class DbService:
         from models.budget import BudgetModel
         return BudgetModel.query.get(budget_id)
 
-    def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
-        from models.budget import BudgetModel
-        budget = BudgetModel(
-            user_id=user_id,
-            category=category,
-            period=period,
-            amount_cents=int(round(amount * 100)),
-            rollover=rollover,
-            carried_over_cents=int(round(carried_over * 100)),
-        )
-        db.session.add(budget)
-        db.session.commit()
-        return budget
-
-    def delete_budget(self, budget_id):
-        budget = self.get_budget(budget_id)
-        if budget:
-            db.session.delete(budget)
-            db.session.commit()
-            return True
-        return False

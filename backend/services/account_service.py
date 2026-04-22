@@ -19,22 +19,29 @@ class AccountService:
 
     def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
         """
-        Create a transaction and re-evaluate over_budget flags for its
-        category/period. Single commit for the write + any flag updates.
+        Create a transaction, update the account balance, and re-evaluate
+        over_budget flags for the category/period. Single commit for all writes.
         """
-        transaction = db_service.add_transaction(
+        transaction = TransactionModel(
             account_id=account_id,
-            date_obj=date_obj,
+            date=date_obj,
             vendor=vendor,
             category=category,
-            amount=amount,
             notes=notes,
             recurring_id=recurring_id,
         )
+        transaction.amount = amount
+
+        account = db_service.get_account(account_id)
+        if account:
+            account.balance_cents += transaction.amount_cents
+
+        db.session.add(transaction)
+        db.session.flush()
 
         if transaction.amount_cents < 0:
             db_service._reevaluate_category_flags(
-                user_id=transaction.account.user_id,
+                user_id=account.user_id,
                 category=category,
                 period=date_obj.strftime('%Y-%m'),
             )
@@ -141,6 +148,25 @@ class AccountService:
         return True, None
 
     # RECURRING OPERATIONS ======================================================
+
+    def add_recurring(self, account_id, start_date, vendor, category, amount,
+                      next_date, frequency, number=-1, notes=""):
+        """Create a recurring template and commit."""
+        rec = RecurringModel(
+            account_id=account_id,
+            start_date=start_date,
+            vendor=vendor,
+            category=category,
+            amount=amount,
+            next_date=next_date,
+            frequency=frequency,
+            number=number,
+            notes=notes,
+            idx=1,
+        )
+        db.session.add(rec)
+        db.session.commit()
+        return rec
 
     def update_recurring(self, recurring_id, **kwargs):
         """

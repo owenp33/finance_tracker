@@ -74,7 +74,7 @@ def create_budget():
             'error': f"A budget for '{data['category']}' in {data['period']} already exists.",
         }), 409
 
-    budget = db_service.create_budget(
+    budget = budget_service.create_budget(
         user_id     = user_id,
         category    = data['category'],
         period      = data['period'],
@@ -89,21 +89,11 @@ def create_budget():
 @jwt_required()
 @owns_budget
 def update_budget(budget_id):
-    """Update amount, rollover flag, or carried_over on an allocation."""
-    data   = request.get_json()
-    budget = db_service.get_budget(budget_id)
-
-    if 'amount' in data:
-        budget.amount = float(data['amount'])
-    if 'rollover' in data:
-        budget.rollover = bool(data['rollover'])
-    if 'carried_over' in data:
-        budget.carried_over = float(data['carried_over'])
-    if 'category' in data:
-        budget.category = data['category']
-
-    from extensions import db
-    db.session.commit()
+    """Update amount, rollover flag, carried_over, or category on an allocation."""
+    data = request.get_json()
+    budget, error = budget_service.update_budget(budget_id, data)
+    if error:
+        return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'budget': budget.to_dict()}), 200
 
 
@@ -111,6 +101,6 @@ def update_budget(budget_id):
 @jwt_required()
 @owns_budget
 def delete_budget(budget_id):
-    """Remove a budget allocation."""
-    db_service.delete_budget(budget_id)
+    """Remove a budget allocation and clear related over_budget flags."""
+    budget_service.delete_budget(budget_id)
     return jsonify({'success': True, 'message': 'Budget deleted'}), 200

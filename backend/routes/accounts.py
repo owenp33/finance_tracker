@@ -195,7 +195,7 @@ def add_recurring(account_id):
     start_date = datetime.fromisoformat(data['start_date']).date()
     next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
-    recurring = db_service.add_recurring(
+    recurring = account_service.add_recurring(
         account_id=account_id,
         start_date=start_date,
         vendor=data['vendor'],

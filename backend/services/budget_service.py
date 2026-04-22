@@ -1,14 +1,17 @@
 """
 budget_service.py - Budget Business Logic
 
-Progress calculation: joins budget allocations against actual transaction
-spending for a given period. All other budget mutations (create/update/delete)
-go through db_service to stay consistent with the rest of the codebase.
+Owns all budget mutations (create / update / delete) and the progress
+calculation. Raw reads (get_budget, get_user_budgets) stay in db_service.
 """
 from datetime import date
+from extensions import db
 from models.budget import BudgetModel
 from models.account import AccountModel
 from models.transaction import TransactionModel
+from services.db_service import DbService
+
+db_service = DbService()
 
 
 class BudgetService:
@@ -77,3 +80,90 @@ class BudgetService:
 
         result.sort(key=lambda x: x['category'])
         return result
+
+    # MUTATIONS =================================================================
+
+    def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
+        """
+        Create a budget allocation and immediately re-evaluate flags for the
+        category/period — existing spending may already exceed the new limit.
+        """
+        budget = BudgetModel(
+            user_id=user_id,
+            category=category,
+            period=period,
+            amount_cents=int(round(amount * 100)),
+            rollover=rollover,
+            carried_over_cents=int(round(carried_over * 100)),
+        )
+        db.session.add(budget)
+        db.session.flush()
+        db_service._reevaluate_category_flags(user_id, category, period)
+        db.session.commit()
+        return budget
+
+    def update_budget(self, budget_id, data):
+        """
+        Apply field updates to a budget allocation and re-evaluate flags when
+        the threshold changes (amount, carried_over) or category is renamed.
+        Returns (updated_budget, error_message).
+        """
+        budget = db_service.get_budget(budget_id)
+        if not budget:
+            return None, 'Budget not found'
+
+        old_category = budget.category
+        needs_reevaluation = False
+
+        if 'amount' in data:
+            budget.amount = float(data['amount'])
+            needs_reevaluation = True
+        if 'rollover' in data:
+            budget.rollover = bool(data['rollover'])
+        if 'carried_over' in data:
+            budget.carried_over = float(data['carried_over'])
+            needs_reevaluation = True
+        if 'category' in data:
+            budget.category = data['category']
+            needs_reevaluation = True
+
+        if needs_reevaluation:
+            db.session.flush()
+            # If category was renamed, clear flags on the old name too
+            if budget.category != old_category:
+                db_service._reevaluate_category_flags(budget.user_id, old_category, budget.period)
+            db_service._reevaluate_category_flags(budget.user_id, budget.category, budget.period)
+
+        db.session.commit()
+        return budget, None
+
+    def delete_budget(self, budget_id):
+        """
+        Remove a budget allocation and clear all over_budget flags for its
+        category/period — with no allocation there is nothing to flag against.
+        """
+        budget = db_service.get_budget(budget_id)
+        if not budget:
+            return False
+
+        user_id  = budget.user_id
+        category = budget.category
+        period   = budget.period
+
+        year, month = int(period[:4]), int(period[5:7])
+        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+        # Bulk-clear flags before deleting the budget row
+        (TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.category == category,
+                TransactionModel.date >= date(year, month, 1),
+                TransactionModel.date <  date(next_year, next_month, 1),
+            )
+            .update({'over_budget': False}, synchronize_session='fetch'))
+
+        db.session.delete(budget)
+        db.session.commit()
+        return True
