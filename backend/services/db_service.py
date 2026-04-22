@@ -119,3 +119,38 @@ class DbService:
 
     def get_account_recurring(self, account_id):
         return RecurringModel.query.filter_by(account_id=account_id).all()
+
+    # BUDGET OPERATIONS =========================================================
+
+    def get_user_budgets(self, user_id, period=None):
+        from models.budget import BudgetModel
+        query = BudgetModel.query.filter_by(user_id=user_id)
+        if period:
+            query = query.filter_by(period=period)
+        return query.order_by(BudgetModel.category).all()
+
+    def get_budget(self, budget_id):
+        from models.budget import BudgetModel
+        return BudgetModel.query.get(budget_id)
+
+    def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
+        from models.budget import BudgetModel
+        budget = BudgetModel(
+            user_id=user_id,
+            category=category,
+            period=period,
+            amount_cents=int(round(amount * 100)),
+            rollover=rollover,
+            carried_over_cents=int(round(carried_over * 100)),
+        )
+        db.session.add(budget)
+        db.session.commit()
+        return budget
+
+    def delete_budget(self, budget_id):
+        budget = self.get_budget(budget_id)
+        if budget:
+            db.session.delete(budget)
+            db.session.commit()
+            return True
+        return False
