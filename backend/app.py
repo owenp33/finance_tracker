@@ -53,6 +53,7 @@ def create_app():
     from routes.analytics import analytics_bp
     from routes.csv_import import csv_bp
     from routes.health import health_bp
+    from routes.budgets import budgets_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -61,6 +62,7 @@ def create_app():
     app.register_blueprint(recurring_bp, url_prefix='/api/recurring')
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(csv_bp, url_prefix='/api/csv')
+    app.register_blueprint(budgets_bp, url_prefix='/api/budgets')
 
     from middleware.error_handlers import register_error_handlers
     register_error_handlers(app)
