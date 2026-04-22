@@ -85,8 +85,35 @@ class DbService:
             amount_cents=amount_cents
         ).first() is not None
 
-    def get_account_transactions(self, account_id):
-        return TransactionModel.query.filter_by(account_id=account_id).order_by(TransactionModel.date.desc()).all()
+    def get_account_transactions(self, account_id, start_date=None, end_date=None,
+                                  category=None, over_budget=None, limit=None, offset=None):
+        """
+        Fetch transactions for an account with optional filters.
+
+        start_date / end_date : datetime.date  — inclusive on both ends
+        category              : str            — exact match
+        over_budget           : bool           — filter to flagged rows only
+        limit / offset        : int            — pagination
+        """
+        query = TransactionModel.query.filter_by(account_id=account_id)
+
+        if start_date is not None:
+            query = query.filter(TransactionModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(TransactionModel.date <= end_date)
+        if category is not None:
+            query = query.filter(TransactionModel.category == category)
+        if over_budget is not None:
+            query = query.filter(TransactionModel.over_budget == over_budget)
+
+        query = query.order_by(TransactionModel.date.desc())
+
+        if offset is not None:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+
+        return query.all()
 
     def get_all_user_transactions(self, user_id):
         return (TransactionModel.query

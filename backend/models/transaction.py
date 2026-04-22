@@ -13,6 +13,7 @@ class TransactionModel(db.Model):
     category = db.Column(db.String(50), nullable=False)
     amount_cents = db.Column(db.Integer, nullable=False)
     notes = db.Column(db.Text)
+    over_budget = db.Column(db.Boolean, default=False, nullable=False)
 
     def to_dict(self):
         return {
@@ -25,7 +26,8 @@ class TransactionModel(db.Model):
             'amount': self.amount,
             'amount_cents': self.amount_cents,
             'notes': self.notes,
-            'recurring_id': self.recurring_id
+            'recurring_id': self.recurring_id,
+            'over_budget': self.over_budget,
         }
     
     @property
