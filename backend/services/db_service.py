@@ -66,13 +66,65 @@ class DbService:
             recurring_id=recurring_id
         )
         transaction.amount = amount
-        
+
         account = self.get_account(account_id)
         if account:
             account.balance_cents += transaction.amount_cents
         db.session.add(transaction)
+        db.session.flush()   # assign transaction.id before evaluating the flag
+
+        if transaction.amount_cents < 0:
+            transaction.over_budget = self._evaluate_over_budget(
+                user_id=account.user_id,
+                category=category,
+                period=date_obj.strftime('%Y-%m'),
+                pending_cents=transaction.amount_cents,
+            )
+
         db.session.commit()
         return transaction
+
+    def _evaluate_over_budget(self, user_id, category, period, pending_cents):
+        """
+        Return True if adding pending_cents (a negative expense value) causes
+        total spending in this category/period to exceed the budget allocation.
+        Returns False when no budget exists for the category (no allocation = no flag).
+        """
+        from models.budget import BudgetModel
+
+        budget = BudgetModel.query.filter_by(
+            user_id=user_id,
+            category=category,
+            period=period,
+        ).first()
+
+        if not budget:
+            return False
+
+        # Sum all existing expenses for this category/period across all user accounts
+        from datetime import date
+        year, month = int(period[:4]), int(period[5:7])
+        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+        period_start = date(year, month, 1)
+        period_end   = date(next_year, next_month, 1)
+
+        from models.account import AccountModel
+        existing_cents = db.session.query(
+            db.func.coalesce(db.func.sum(TransactionModel.amount_cents), 0)
+        ).join(
+            AccountModel, TransactionModel.account_id == AccountModel.id
+        ).filter(
+            AccountModel.user_id == user_id,
+            TransactionModel.category == category,
+            TransactionModel.date >= period_start,
+            TransactionModel.date <  period_end,
+            TransactionModel.amount_cents < 0,
+        ).scalar()
+
+        total_allocated_cents = budget.amount_cents + budget.carried_over_cents
+        # pending_cents is negative; adding it increases total spending
+        total_spent_cents = abs(existing_cents) + abs(pending_cents)
+        return total_spent_cents > total_allocated_cents
 
     def get_transaction(self, transaction_id):
         return TransactionModel.query.get(transaction_id)
