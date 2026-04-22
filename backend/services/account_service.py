@@ -17,6 +17,31 @@ class AccountService:
 
     # TRANSACTION OPERATIONS ====================================================
 
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
+        """
+        Create a transaction and re-evaluate over_budget flags for its
+        category/period. Single commit for the write + any flag updates.
+        """
+        transaction = db_service.add_transaction(
+            account_id=account_id,
+            date_obj=date_obj,
+            vendor=vendor,
+            category=category,
+            amount=amount,
+            notes=notes,
+            recurring_id=recurring_id,
+        )
+
+        if transaction.amount_cents < 0:
+            db_service._reevaluate_category_flags(
+                user_id=transaction.account.user_id,
+                category=category,
+                period=date_obj.strftime('%Y-%m'),
+            )
+
+        db.session.commit()
+        return transaction
+
     def get_transaction_authorized(self, transaction_id, user_id):
         """
         Fetch a transaction and verify it belongs to the requesting user.
@@ -87,18 +112,31 @@ class AccountService:
 
     def delete_transaction(self, transaction_id):
         """
-        Delete a transaction and reverse its effect on the account balance.
+        Delete a transaction, reverse its effect on the account balance, and
+        re-evaluate over_budget flags for its category/period so that removing
+        an expense that pushed the budget over clears the flag on remaining rows.
         Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return False, 'Transaction not found'
 
+        # Capture context before deletion — needed for re-evaluation after the row is gone
+        was_expense  = trans.amount_cents < 0
+        user_id      = trans.account.user_id
+        category     = trans.category
+        period       = trans.date.strftime('%Y-%m')
+
         account = db_service.get_account(trans.account_id)
         if account:
             account.balance_cents -= trans.amount_cents
 
         db.session.delete(trans)
+        db.session.flush()   # remove the row from session before re-evaluation queries it
+
+        if was_expense:
+            db_service._reevaluate_category_flags(user_id, category, period)
+
         db.session.commit()
         return True, None
 
@@ -184,7 +222,7 @@ class AccountService:
 
         for rec in recurring_list:
             while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
-                db_service.add_transaction(
+                self.add_transaction(
                     account_id=account_id,
                     date_obj=rec.next_date,
                     vendor=rec.vendor,
@@ -200,7 +238,7 @@ class AccountService:
                 if rec.number != -1 and rec.idx >= rec.number:
                     break
 
-        db.session.commit()
+        db.session.commit()   # persist rec.next_date updates
         return transactions_created
 
     # UTILITY OPERATIONS ========================================================

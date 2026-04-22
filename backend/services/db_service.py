@@ -57,6 +57,12 @@ class DbService:
     # TRANSACTION OPERATIONS ====================================================
 
     def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
+        """
+        Raw write: create the transaction row and update the account balance.
+        Flushes to the session so callers can query the new row immediately,
+        but does NOT commit — the caller is responsible for committing.
+        Flag evaluation belongs in account_service.add_transaction.
+        """
         transaction = TransactionModel(
             account_id=account_id,
             date=date_obj,
@@ -70,27 +76,24 @@ class DbService:
         account = self.get_account(account_id)
         if account:
             account.balance_cents += transaction.amount_cents
+
         db.session.add(transaction)
-        db.session.flush()   # assign transaction.id before evaluating the flag
-
-        if transaction.amount_cents < 0:
-            transaction.over_budget = self._evaluate_over_budget(
-                user_id=account.user_id,
-                category=category,
-                period=date_obj.strftime('%Y-%m'),
-                pending_cents=transaction.amount_cents,
-            )
-
-        db.session.commit()
+        db.session.flush()
         return transaction
 
-    def _evaluate_over_budget(self, user_id, category, period, pending_cents):
+    def _reevaluate_category_flags(self, user_id, category, period):
         """
-        Return True if adding pending_cents (a negative expense value) causes
-        total spending in this category/period to exceed the budget allocation.
-        Returns False when no budget exists for the category (no allocation = no flag).
+        Recompute over_budget for every expense transaction in a category/period.
+
+        Walks transactions chronologically (oldest first), accumulating spending.
+        Flags every transaction from the point cumulative spending first exceeds
+        the allocation. Clears all flags when spending is within budget.
+
+        Does NOT commit — callers are responsible for committing the session.
+        No-op when no budget allocation exists for the category.
         """
         from models.budget import BudgetModel
+        from datetime import date
 
         budget = BudgetModel.query.filter_by(
             user_id=user_id,
@@ -99,32 +102,32 @@ class DbService:
         ).first()
 
         if not budget:
-            return False
+            return
 
-        # Sum all existing expenses for this category/period across all user accounts
-        from datetime import date
         year, month = int(period[:4]), int(period[5:7])
         next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
         period_start = date(year, month, 1)
         period_end   = date(next_year, next_month, 1)
 
-        from models.account import AccountModel
-        existing_cents = db.session.query(
-            db.func.coalesce(db.func.sum(TransactionModel.amount_cents), 0)
-        ).join(
-            AccountModel, TransactionModel.account_id == AccountModel.id
-        ).filter(
-            AccountModel.user_id == user_id,
-            TransactionModel.category == category,
-            TransactionModel.date >= period_start,
-            TransactionModel.date <  period_end,
-            TransactionModel.amount_cents < 0,
-        ).scalar()
+        transactions = (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.category == category,
+                TransactionModel.date >= period_start,
+                TransactionModel.date <  period_end,
+                TransactionModel.amount_cents < 0,
+            )
+            .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
+            .all()
+        )
 
-        total_allocated_cents = budget.amount_cents + budget.carried_over_cents
-        # pending_cents is negative; adding it increases total spending
-        total_spent_cents = abs(existing_cents) + abs(pending_cents)
-        return total_spent_cents > total_allocated_cents
+        allocated_cents = budget.amount_cents + budget.carried_over_cents
+        cumulative = 0
+        for t in transactions:
+            cumulative += abs(t.amount_cents)
+            t.over_budget = cumulative > allocated_cents
 
     def get_transaction(self, transaction_id):
         return TransactionModel.query.get(transaction_id)

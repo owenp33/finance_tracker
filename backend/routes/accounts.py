@@ -99,8 +99,39 @@ def update_account(account_id):
 @jwt_required()
 @owns_account
 def get_transactions(account_id):
-    """Get all transactions for an account"""
-    transactions = db_service.get_account_transactions(account_id)
+    """
+    Get transactions for an account with optional filters.
+
+    Query params:
+      start_date  YYYY-MM-DD  inclusive lower bound on date
+      end_date    YYYY-MM-DD  inclusive upper bound on date
+      category    str         exact category match
+      over_budget true|false  return only flagged / un-flagged rows
+      limit       int         max rows to return
+      offset      int         rows to skip (for pagination)
+    """
+    args = request.args
+
+    start_date  = None
+    end_date    = None
+    over_budget = None
+
+    if args.get('start_date'):
+        start_date = datetime.fromisoformat(args['start_date']).date()
+    if args.get('end_date'):
+        end_date = datetime.fromisoformat(args['end_date']).date()
+    if args.get('over_budget') is not None:
+        over_budget = args['over_budget'].lower() == 'true'
+
+    transactions = db_service.get_account_transactions(
+        account_id,
+        start_date  = start_date,
+        end_date    = end_date,
+        category    = args.get('category'),
+        over_budget = over_budget,
+        limit       = args.get('limit',  type=int),
+        offset      = args.get('offset', type=int),
+    )
 
     return jsonify({
         'success': True,
@@ -119,7 +150,7 @@ def add_transaction(account_id):
     if not all(k in data for k in required):
         return jsonify({'success': False, 'error': f'Missing required fields: {required}'}), 400
 
-    transaction = db_service.add_transaction(
+    transaction = account_service.add_transaction(
         account_id=account_id,
         date_obj=datetime.fromisoformat(data['date']).date(),
         vendor=data['vendor'],

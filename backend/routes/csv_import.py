@@ -87,7 +87,7 @@ def import_csv():
             skipped += 1
             continue
 
-        db_service.add_transaction(
+        account_service.add_transaction(
             account_id=target_id,
             date_obj=row['date'],
             vendor=row['vendor'],
