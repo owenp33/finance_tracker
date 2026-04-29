@@ -4,7 +4,7 @@ account_service.py - Account & Transaction Business Logic
 Orchestrates business rules around accounts, transactions, and recurring items.
 Depends on db_service.py for raw data access.
 """
-from datetime import date, timedelta
+from datetime import date
 from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
@@ -191,23 +191,21 @@ class AccountService:
         number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
 
         if number_was_reduced:
-            cutoff_date = rec.start_date + timedelta(days=rec.frequency * (new_number - 1))
-
-            excess_transactions = TransactionModel.query.filter(
-                TransactionModel.recurring_id == recurring_id,
-                TransactionModel.date >= cutoff_date
-            ).all()
-
-            for trans in excess_transactions:
+            all_generated = (
+                TransactionModel.query
+                .filter_by(recurring_id=recurring_id)
+                .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
+                .all()
+            )
+            excess = all_generated[new_number:]
+            for trans in excess:
                 account = db_service.get_account(trans.account_id)
                 if account:
                     account.balance_cents -= trans.amount_cents
                 db.session.delete(trans)
 
-            remaining_count = TransactionModel.query.filter(
-                TransactionModel.recurring_id == recurring_id
-            ).count()
-            rec.idx = remaining_count + 1
+            kept = min(len(all_generated), new_number)
+            rec.idx = kept + 1
 
         db.session.commit()
         return rec
@@ -259,9 +257,10 @@ class AccountService:
                 )
 
                 rec.next_date = rec.advance_to_next
+                rec.idx += 1
                 transactions_created += 1
 
-                if rec.number != -1 and rec.idx >= rec.number:
+                if rec.number != -1 and rec.idx > rec.number:
                     break
 
         db.session.commit()   # persist rec.next_date updates

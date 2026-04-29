@@ -4,11 +4,21 @@ recurring.py - Recurring transaction routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from datetime import datetime
-from services import AccountService
+from services import DbService, AccountService
 from middleware.ownership import owns_recurring
 
 recurring_bp = Blueprint('recurring', __name__)
+db_service      = DbService()
 account_service = AccountService()
+
+
+@recurring_bp.route('/<int:recurring_id>', methods=['GET'])
+@jwt_required()
+@owns_recurring
+def get_recurring(recurring_id):
+    """Return a single recurring transaction template."""
+    rec = db_service.get_recurring(recurring_id)
+    return jsonify({'success': True, 'recurring': rec.to_dict()}), 200
 
 
 @recurring_bp.route('/<int:recurring_id>', methods=['PUT', 'PATCH'])

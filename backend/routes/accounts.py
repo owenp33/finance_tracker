@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService
 from middleware.ownership import owns_account
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 
 accounts_bp = Blueprint('accounts', __name__)
@@ -166,6 +166,33 @@ def add_transaction(account_id):
         'transaction': transaction.to_dict(),
         'new_balance': acc.balance
     }), 201
+
+
+@accounts_bp.route('/<int:account_id>/upcoming', methods=['GET'])
+@jwt_required()
+@owns_account
+def get_upcoming(account_id):
+    """
+    Return recurring items whose next occurrence falls within the next N days.
+
+    Query params:
+      days  int  look-ahead window in days (default 30)
+
+    Only returns active recurring items (number == -1, or idx hasn't exceeded number).
+    Results are sorted by next_date ascending.
+    """
+    days    = request.args.get('days', default=30, type=int)
+    cutoff  = date.today() + timedelta(days=days)
+
+    recurring = db_service.get_account_recurring(account_id)
+    upcoming  = [
+        r for r in recurring
+        if r.next_date <= cutoff
+        and (r.number == -1 or r.idx <= r.number)
+    ]
+    upcoming.sort(key=lambda r: r.next_date)
+
+    return jsonify({'success': True, 'upcoming': [r.to_dict() for r in upcoming]}), 200
 
 
 @accounts_bp.route('/<int:account_id>/recurring', methods=['GET'])
