@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService
 from middleware.ownership import owns_account
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 
 accounts_bp = Blueprint('accounts', __name__)
@@ -69,11 +69,10 @@ def get_account(account_id):
 @jwt_required()
 @owns_account
 def delete_account(account_id):
-    """Delete account and all associated transactions"""
-    from extensions import db
-    acc = db_service.get_account(account_id)
-    db.session.delete(acc)
-    db.session.commit()
+    """Delete account and all associated transactions and recurring items."""
+    success, error = account_service.delete_account(account_id)
+    if not success:
+        return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True}), 200
 
 
@@ -81,17 +80,11 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string"""
+    """Update account name or id string."""
     data = request.get_json()
-    acc = db_service.get_account(account_id)
-
-    if 'account_name' in data:
-        acc.acct_name = data['account_name']
-    if 'account_id' in data:
-        acc.acct_id_str = data['account_id']
-
-    from extensions import db
-    db.session.commit()
+    acc, error = account_service.update_account(account_id, data)
+    if error:
+        return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'account': acc.to_dict()}), 200
 
 
@@ -99,8 +92,39 @@ def update_account(account_id):
 @jwt_required()
 @owns_account
 def get_transactions(account_id):
-    """Get all transactions for an account"""
-    transactions = db_service.get_account_transactions(account_id)
+    """
+    Get transactions for an account with optional filters.
+
+    Query params:
+      start_date  YYYY-MM-DD  inclusive lower bound on date
+      end_date    YYYY-MM-DD  inclusive upper bound on date
+      category    str         exact category match
+      over_budget true|false  return only flagged / un-flagged rows
+      limit       int         max rows to return
+      offset      int         rows to skip (for pagination)
+    """
+    args = request.args
+
+    start_date  = None
+    end_date    = None
+    over_budget = None
+
+    if args.get('start_date'):
+        start_date = datetime.fromisoformat(args['start_date']).date()
+    if args.get('end_date'):
+        end_date = datetime.fromisoformat(args['end_date']).date()
+    if args.get('over_budget') is not None:
+        over_budget = args['over_budget'].lower() == 'true'
+
+    transactions = db_service.get_account_transactions(
+        account_id,
+        start_date  = start_date,
+        end_date    = end_date,
+        category    = args.get('category'),
+        over_budget = over_budget,
+        limit       = args.get('limit',  type=int),
+        offset      = args.get('offset', type=int),
+    )
 
     return jsonify({
         'success': True,
@@ -119,7 +143,7 @@ def add_transaction(account_id):
     if not all(k in data for k in required):
         return jsonify({'success': False, 'error': f'Missing required fields: {required}'}), 400
 
-    transaction = db_service.add_transaction(
+    transaction = account_service.add_transaction(
         account_id=account_id,
         date_obj=datetime.fromisoformat(data['date']).date(),
         vendor=data['vendor'],
@@ -135,6 +159,33 @@ def add_transaction(account_id):
         'transaction': transaction.to_dict(),
         'new_balance': acc.balance
     }), 201
+
+
+@accounts_bp.route('/<int:account_id>/upcoming', methods=['GET'])
+@jwt_required()
+@owns_account
+def get_upcoming(account_id):
+    """
+    Return recurring items whose next occurrence falls within the next N days.
+
+    Query params:
+      days  int  look-ahead window in days (default 30)
+
+    Only returns active recurring items (number == -1, or idx hasn't exceeded number).
+    Results are sorted by next_date ascending.
+    """
+    days    = request.args.get('days', default=30, type=int)
+    cutoff  = date.today() + timedelta(days=days)
+
+    recurring = db_service.get_account_recurring(account_id)
+    upcoming  = [
+        r for r in recurring
+        if r.next_date <= cutoff
+        and (r.number == -1 or r.idx <= r.number)
+    ]
+    upcoming.sort(key=lambda r: r.next_date)
+
+    return jsonify({'success': True, 'upcoming': [r.to_dict() for r in upcoming]}), 200
 
 
 @accounts_bp.route('/<int:account_id>/recurring', methods=['GET'])
@@ -164,7 +215,7 @@ def add_recurring(account_id):
     start_date = datetime.fromisoformat(data['start_date']).date()
     next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
-    recurring = db_service.add_recurring(
+    recurring = account_service.add_recurring(
         account_id=account_id,
         start_date=start_date,
         vendor=data['vendor'],

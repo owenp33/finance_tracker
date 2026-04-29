@@ -4,7 +4,7 @@ account_service.py - Account & Transaction Business Logic
 Orchestrates business rules around accounts, transactions, and recurring items.
 Depends on db_service.py for raw data access.
 """
-from datetime import date, timedelta
+from datetime import date
 from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
@@ -15,7 +15,72 @@ db_service = DbService()
 
 class AccountService:
 
+    # ACCOUNT OPERATIONS ========================================================
+
+    def update_account(self, account_id, data: dict):
+        """
+        Apply field updates to an account.
+        Returns (updated_account, error_message).
+        """
+        account = db_service.get_account(account_id)
+        if not account:
+            return None, 'Account not found'
+
+        if 'account_name' in data:
+            account.acct_name = data['account_name']
+        if 'account_id' in data:
+            account.acct_id_str = data['account_id']
+
+        db.session.commit()
+        return account, None
+
+    def delete_account(self, account_id):
+        """
+        Delete an account. Cascade rules on the model remove all associated
+        transactions and recurring items automatically.
+        Returns (success, error_message).
+        """
+        account = db_service.get_account(account_id)
+        if not account:
+            return False, 'Account not found'
+
+        db.session.delete(account)
+        db.session.commit()
+        return True, None
+
     # TRANSACTION OPERATIONS ====================================================
+
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
+        """
+        Create a transaction, update the account balance, and re-evaluate
+        over_budget flags for the category/period. Single commit for all writes.
+        """
+        transaction = TransactionModel(
+            account_id=account_id,
+            date=date_obj,
+            vendor=vendor,
+            category=category,
+            notes=notes,
+            recurring_id=recurring_id,
+        )
+        transaction.amount = amount
+
+        account = db_service.get_account(account_id)
+        if account:
+            account.balance_cents += transaction.amount_cents
+
+        db.session.add(transaction)
+        db.session.flush()
+
+        if transaction.amount_cents < 0:
+            db_service._reevaluate_category_flags(
+                user_id=account.user_id,
+                category=category,
+                period=date_obj.strftime('%Y-%m'),
+            )
+
+        db.session.commit()
+        return transaction
 
     def get_transaction_authorized(self, transaction_id, user_id):
         """
@@ -87,22 +152,54 @@ class AccountService:
 
     def delete_transaction(self, transaction_id):
         """
-        Delete a transaction and reverse its effect on the account balance.
+        Delete a transaction, reverse its effect on the account balance, and
+        re-evaluate over_budget flags for its category/period so that removing
+        an expense that pushed the budget over clears the flag on remaining rows.
         Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return False, 'Transaction not found'
 
+        # Capture context before deletion — needed for re-evaluation after the row is gone
+        was_expense  = trans.amount_cents < 0
+        user_id      = trans.account.user_id
+        category     = trans.category
+        period       = trans.date.strftime('%Y-%m')
+
         account = db_service.get_account(trans.account_id)
         if account:
             account.balance_cents -= trans.amount_cents
 
         db.session.delete(trans)
+        db.session.flush()   # remove the row from session before re-evaluation queries it
+
+        if was_expense:
+            db_service._reevaluate_category_flags(user_id, category, period)
+
         db.session.commit()
         return True, None
 
     # RECURRING OPERATIONS ======================================================
+
+    def add_recurring(self, account_id, start_date, vendor, category, amount,
+                      next_date, frequency, number=-1, notes=""):
+        """Create a recurring template and commit."""
+        rec = RecurringModel(
+            account_id=account_id,
+            start_date=start_date,
+            vendor=vendor,
+            category=category,
+            amount=amount,
+            next_date=next_date,
+            frequency=frequency,
+            number=number,
+            notes=notes,
+            idx=1,
+        )
+        db.session.add(rec)
+        db.session.commit()
+        return rec
 
     def update_recurring(self, recurring_id, **kwargs):
         """
@@ -127,23 +224,21 @@ class AccountService:
         number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
 
         if number_was_reduced:
-            cutoff_date = rec.start_date + timedelta(days=rec.frequency * (new_number - 1))
-
-            excess_transactions = TransactionModel.query.filter(
-                TransactionModel.recurring_id == recurring_id,
-                TransactionModel.date >= cutoff_date
-            ).all()
-
-            for trans in excess_transactions:
+            all_generated = (
+                TransactionModel.query
+                .filter_by(recurring_id=recurring_id)
+                .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
+                .all()
+            )
+            excess = all_generated[new_number:]
+            for trans in excess:
                 account = db_service.get_account(trans.account_id)
                 if account:
                     account.balance_cents -= trans.amount_cents
                 db.session.delete(trans)
 
-            remaining_count = TransactionModel.query.filter(
-                TransactionModel.recurring_id == recurring_id
-            ).count()
-            rec.idx = remaining_count + 1
+            kept = min(len(all_generated), new_number)
+            rec.idx = kept + 1
 
         db.session.commit()
         return rec
@@ -184,7 +279,7 @@ class AccountService:
 
         for rec in recurring_list:
             while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
-                db_service.add_transaction(
+                self.add_transaction(
                     account_id=account_id,
                     date_obj=rec.next_date,
                     vendor=rec.vendor,
@@ -195,12 +290,13 @@ class AccountService:
                 )
 
                 rec.next_date = rec.advance_to_next
+                rec.idx += 1
                 transactions_created += 1
 
-                if rec.number != -1 and rec.idx >= rec.number:
+                if rec.number != -1 and rec.idx > rec.number:
                     break
 
-        db.session.commit()
+        db.session.commit()   # persist rec.next_date updates
         return transactions_created
 
     # UTILITY OPERATIONS ========================================================

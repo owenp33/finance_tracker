@@ -10,7 +10,7 @@ analytics_bp = Blueprint('analytics', __name__)
 db_service = DbService()
 
 
-@analytics_bp.route('/accounts/<int:account_id>/analytics', methods=['GET'])
+@analytics_bp.route('/<int:account_id>', methods=['GET'])
 @jwt_required()
 @owns_account
 def get_analytics(account_id):

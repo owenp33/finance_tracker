@@ -58,3 +58,21 @@ def owns_transaction(f):
 
         return f(*args, **kwargs)
     return decorated
+
+
+def owns_budget(f):
+    """Verify the current user owns the budget_id in the URL"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        budget_id = kwargs.get('budget_id')
+        user_id = get_jwt_identity()
+        budget = db_service.get_budget(budget_id)
+
+        if not budget:
+            return jsonify({'success': False, 'error': 'Budget not found'}), 404
+
+        if int(budget.user_id) != int(user_id):
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        return f(*args, **kwargs)
+    return decorated
