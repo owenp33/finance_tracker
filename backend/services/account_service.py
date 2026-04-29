@@ -15,6 +15,39 @@ db_service = DbService()
 
 class AccountService:
 
+    # ACCOUNT OPERATIONS ========================================================
+
+    def update_account(self, account_id, data: dict):
+        """
+        Apply field updates to an account.
+        Returns (updated_account, error_message).
+        """
+        account = db_service.get_account(account_id)
+        if not account:
+            return None, 'Account not found'
+
+        if 'account_name' in data:
+            account.acct_name = data['account_name']
+        if 'account_id' in data:
+            account.acct_id_str = data['account_id']
+
+        db.session.commit()
+        return account, None
+
+    def delete_account(self, account_id):
+        """
+        Delete an account. Cascade rules on the model remove all associated
+        transactions and recurring items automatically.
+        Returns (success, error_message).
+        """
+        account = db_service.get_account(account_id)
+        if not account:
+            return False, 'Account not found'
+
+        db.session.delete(account)
+        db.session.commit()
+        return True, None
+
     # TRANSACTION OPERATIONS ====================================================
 
     def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):

@@ -69,11 +69,10 @@ def get_account(account_id):
 @jwt_required()
 @owns_account
 def delete_account(account_id):
-    """Delete account and all associated transactions"""
-    from extensions import db
-    acc = db_service.get_account(account_id)
-    db.session.delete(acc)
-    db.session.commit()
+    """Delete account and all associated transactions and recurring items."""
+    success, error = account_service.delete_account(account_id)
+    if not success:
+        return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True}), 200
 
 
@@ -81,17 +80,11 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string"""
+    """Update account name or id string."""
     data = request.get_json()
-    acc = db_service.get_account(account_id)
-
-    if 'account_name' in data:
-        acc.acct_name = data['account_name']
-    if 'account_id' in data:
-        acc.acct_id_str = data['account_id']
-
-    from extensions import db
-    db.session.commit()
+    acc, error = account_service.update_account(account_id, data)
+    if error:
+        return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'account': acc.to_dict()}), 200
 
 
