@@ -13,6 +13,15 @@ db_service = DbService()
 account_service = AccountService()
 
 
+@transactions_bp.route('/<int:transaction_id>', methods=['GET'])
+@jwt_required()
+@owns_transaction
+def get_transaction(transaction_id):
+    """Fetch a single transaction by ID."""
+    trans = db_service.get_transaction(transaction_id)
+    return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
+
+
 @transactions_bp.route('/<int:transaction_id>', methods=['PUT', 'PATCH'])
 @jwt_required()
 @owns_transaction
