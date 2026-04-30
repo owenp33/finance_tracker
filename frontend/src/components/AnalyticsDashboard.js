@@ -3,7 +3,6 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import './AnalyticsDashboard.css';
 
 const AnalyticsDashboard = ({ analytics }) => {
   if (!analytics) {
