@@ -3,9 +3,8 @@ import React from 'react';
 const NAV_LABELS = {
   dashboard: '📊 Dashboard',
   transactions: '💳 Transactions',
-  analytics: '📈 Analytics',
-  recurring: '🔄 Recurring',
-  accounts: '🏦 Accounts',
+  budgeting: '💰 Budgeting',
+  insights: '📈 Insights',
 };
 
 function AppHeader({ user, onLogout, view, onViewChange, error, onDismissError }) {

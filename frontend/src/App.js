@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import { fetchAPI, uploadFile } from './api/client';
+import * as authAPI from './api/auth';
+import * as accountsAPI from './api/accounts';
+import * as transactionsAPI from './api/transactions';
+import * as recurringAPI from './api/recurring';
+import { useAccounts } from './hooks/useAccounts';
+import { useTransactions } from './hooks/useTransactions';
+import { useBudgets } from './hooks/useBudgets';
+import { useAnalytics } from './hooks/useAnalytics';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
 import TransactionsView from './components/TransactionsView';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
-import RecurringView from './components/RecurringView';
-import AccountsView from './components/AccountsView';
-import CSVImportModal from './components/CSVImportModal';
 
 function App() {
   // Auth state
@@ -16,28 +20,30 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [user, setUser] = useState(null);
 
-  // Data state
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState(null); // used only by analytics/recurring
-  const [transactions, setTransactions] = useState([]);
-  const [recurringTransactions, setRecurringTransactions] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
-
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('dashboard');
-  const [showCSVImport, setShowCSVImport] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+
+  // Domain hooks
+  const { accounts, selectedAccount, loadAccounts } = useAccounts({ setError });
+  const { transactions, loadTransactions } = useTransactions({ setError });
+  const { budgetData, loadBudgetProgress } = useBudgets({ setError });
+  const { analytics, loadAnalytics } = useAnalytics({ setError });
 
   // AUTH HANDLERS =============================================================
 
+  const handleLogout = useCallback(() => {
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+  }, []);
+
   const handleLogin = async (username, password) => {
     try {
-      const data = await fetchAPI('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ username, password }),
-      });
+      const data = await authAPI.login(username, password);
       const userData = typeof data.user === 'string' ? JSON.parse(data.user) : data.user;
       setToken(data.access_token);
       setUser(userData);
@@ -53,10 +59,7 @@ function App() {
 
   const handleRegister = async (username, email, password) => {
     try {
-      const data = await fetchAPI('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ username, email, password }),
-      });
+      const data = await authAPI.register(username, email, password);
       const userData = typeof data.user === 'object' ? data.user : JSON.parse(data.user);
       setToken(data.access_token);
       setUser(userData);
@@ -67,89 +70,39 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    setToken(null);
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem('token');
-    setAccounts([]);
-    setSelectedAccount(null);
-  };
+  // REFRESH ===================================================================
 
-  // DATA LOADERS ==============================================================
-
-  const loadAccounts = async () => {
-    try {
-      const data = await fetchAPI('/api/accounts');
-      setAccounts(data.accounts);
-      if (data.accounts.length > 0 && !selectedAccount) {
-        setSelectedAccount(data.accounts[0].id);
-      }
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const loadTransactions = async () => {
-    try {
-      const data = await fetchAPI('/api/accounts/all-transactions');
-      setTransactions(data.transactions);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const loadRecurringTransactions = async (accountId) => {
-    try {
-      const data = await fetchAPI(`/api/accounts/${accountId}/recurring`);
-      setRecurringTransactions(data.recurring);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const loadAnalytics = async (accountId) => {
-    if (!accountId) return;
-    try {
-      const data = await fetchAPI(`/api/analytics/accounts/${accountId}/analytics`);
-      setAnalytics(data);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const refreshAccountData = async (accountId) => {
-    await Promise.all([
-      loadTransactions(),
-      loadAccounts(),
-      loadAnalytics(accountId || selectedAccount),
-    ]);
-  };
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
 
   // ACTION HANDLERS ===========================================================
 
   const handleAddTransaction = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
-      await fetchAPI(`/api/accounts/${account_id}/transactions`, {
-        method: 'POST',
-        body: JSON.stringify(rest),
-      });
-      await refreshAccountData(account_id);
+      await transactionsAPI.addTransaction(account_id, rest);
+      await refreshAll();
       setShowTransactionForm(false);
-      alert('Transaction added successfully!');
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const handleEditTransaction = async (transactionId, formData) => {
+  const handleEditTransaction = async (id, body) => {
     try {
-      await fetchAPI(`/api/transactions/${transactionId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(formData),
-      });
-      await refreshAccountData();
+      await transactionsAPI.updateTransaction(id, body);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteTransaction = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    try {
+      await transactionsAPI.deleteTransaction(id);
+      await refreshAll();
     } catch (err) {
       setError(err.message);
     }
@@ -158,24 +111,8 @@ function App() {
   const handleAddRecurring = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
-      await fetchAPI(`/api/accounts/${account_id}/recurring`, {
-        method: 'POST',
-        body: JSON.stringify(rest),
-      });
+      await recurringAPI.addRecurring(account_id, rest);
       await loadAccounts();
-      setShowTransactionForm(false);
-      alert('Recurring transaction added successfully!');
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleDeleteTransaction = async (transactionId) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
-    try {
-      await fetchAPI(`/api/transactions/${transactionId}`, { method: 'DELETE' });
-      await refreshAccountData();
-      alert('Transaction deleted successfully!');
     } catch (err) {
       setError(err.message);
     }
@@ -183,12 +120,9 @@ function App() {
 
   const handleCreateAccount = async (accountId, accountName) => {
     try {
-      const data = await fetchAPI('/api/accounts', {
-        method: 'POST',
-        body: JSON.stringify({ account_id: accountId, account_name: accountName }),
-      });
+      const account = await accountsAPI.createAccount(accountId, accountName);
       await loadAccounts();
-      return data.account;
+      return account;
     } catch (err) {
       setError(err.message);
       return null;
@@ -197,10 +131,7 @@ function App() {
 
   const handleEditAccount = async (id, fields) => {
     try {
-      await fetchAPI(`/api/accounts/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(fields),
-      });
+      await accountsAPI.updateAccount(id, fields);
       await loadAccounts();
     } catch (err) {
       setError(err.message);
@@ -209,25 +140,10 @@ function App() {
 
   const handleDeleteAccount = async (id) => {
     try {
-      await fetchAPI(`/api/accounts/${id}`, { method: 'DELETE' });
+      await accountsAPI.deleteAccount(id);
       await Promise.all([loadAccounts(), loadTransactions()]);
     } catch (err) {
       setError(err.message);
-    }
-  };
-
-  const handleCSVImport = async (file, fallbackAccountId) => {
-    try {
-      setLoading(true);
-      const extraFields = fallbackAccountId ? { account_id: fallbackAccountId } : {};
-      const data = await uploadFile('/api/csv/import', file, extraFields);
-      await Promise.all([loadTransactions(), loadAccounts()]);
-      setShowCSVImport(false);
-      alert(data.message);
-    } catch (err) {
-      alert(`Import failed: ${err.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -237,7 +153,7 @@ function App() {
     const checkAuth = async () => {
       if (token) {
         try {
-          const data = await fetchAPI('/api/auth/me');
+          const data = await authAPI.me();
           setUser(data.user);
           setIsAuthenticated(true);
         } catch {
@@ -247,21 +163,21 @@ function App() {
       setLoading(false);
     };
     checkAuth();
-  }, [token]);
+  }, [token, handleLogout]);
 
   useEffect(() => {
     if (isAuthenticated) {
       loadAccounts();
       loadTransactions();
+      loadBudgetProgress();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
 
   useEffect(() => {
     if (selectedAccount) {
-      loadRecurringTransactions(selectedAccount);
       loadAnalytics(selectedAccount);
     }
-  }, [selectedAccount]);
+  }, [selectedAccount, loadAnalytics]);
 
   // RENDER ====================================================================
 
@@ -280,19 +196,6 @@ function App() {
     return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} error={error} />;
   }
 
-  // Inline account picker for views that still need a single account (analytics/recurring)
-  const AccountPicker = () => (
-    <div className="account-picker-inline">
-      <label>Account: </label>
-      <select value={selectedAccount || ''} onChange={e => setSelectedAccount(parseInt(e.target.value))}>
-        <option value="">— select —</option>
-        {accounts.map(a => (
-          <option key={a.id} value={a.id}>{a.account_name}</option>
-        ))}
-      </select>
-    </div>
-  );
-
   return (
     <div className="App">
       <AppHeader
@@ -309,6 +212,8 @@ function App() {
           <DashboardView
             analytics={analytics}
             transactions={transactions}
+            budgetData={budgetData}
+            onNavigate={setView}
             onDeleteTransaction={handleDeleteTransaction}
           />
         )}
@@ -320,40 +225,21 @@ function App() {
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
-            onImportCSV={() => setShowCSVImport(true)}
+            onCreateAccount={handleCreateAccount}
+            onEditAccount={handleEditAccount}
+            onDeleteAccount={handleDeleteAccount}
             showForm={showTransactionForm}
             onToggleForm={() => setShowTransactionForm(f => !f)}
           />
         )}
-        {view === 'analytics' && (
-          <>
-            <AccountPicker />
-            <AnalyticsDashboard analytics={analytics} />
-          </>
+        {view === 'budgeting' && (
+          <div className="placeholder-view">
+            <h2>Budgeting</h2>
+            <p>Set allocations, track spending by category, and manage rollovers.</p>
+          </div>
         )}
-        {view === 'recurring' && (
-          <>
-            <AccountPicker />
-            <RecurringView recurringTransactions={recurringTransactions} />
-          </>
-        )}
-        {view === 'accounts' && (
-          <AccountsView
-            accounts={accounts}
-            onCreateAccount={handleCreateAccount}
-            onEditAccount={handleEditAccount}
-            onDeleteAccount={handleDeleteAccount}
-          />
-        )}
-
-        {showCSVImport && (
-          <CSVImportModal
-            onImport={handleCSVImport}
-            onClose={() => setShowCSVImport(false)}
-            onCreateAccount={handleCreateAccount}
-            accounts={accounts}
-            loading={loading}
-          />
+        {view === 'insights' && (
+          <AnalyticsDashboard analytics={analytics} />
         )}
       </main>
     </div>
