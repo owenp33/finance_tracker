@@ -24,7 +24,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [view, setView] = useState('dashboard');
-  const [showTransactionForm, setShowTransactionForm] = useState(false);
+
+  // Recurring state (all accounts)
+  const [recurringTransactions, setRecurringTransactions] = useState([]);
 
   // Domain hooks
   const { accounts, selectedAccount, loadAccounts } = useAccounts({ setError });
@@ -70,6 +72,20 @@ function App() {
     }
   };
 
+  // RECURRING =================================================================
+
+  const loadAllRecurring = useCallback(async (accountList) => {
+    if (!accountList || accountList.length === 0) return;
+    try {
+      const results = await Promise.all(
+        accountList.map(a => recurringAPI.getAccountRecurring(a.id))
+      );
+      setRecurringTransactions(results.flat());
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [setError]);
+
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
@@ -83,7 +99,6 @@ function App() {
     try {
       await transactionsAPI.addTransaction(account_id, rest);
       await refreshAll();
-      setShowTransactionForm(false);
     } catch (err) {
       setError(err.message);
     }
@@ -112,7 +127,25 @@ function App() {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await loadAccounts();
+      await loadAllRecurring(accounts);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleEditRecurring = async (id, fields) => {
+    try {
+      await recurringAPI.updateRecurring(id, fields);
+      await loadAllRecurring(accounts);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteRecurring = async (id) => {
+    try {
+      await recurringAPI.deleteRecurring(id);
+      await loadAllRecurring(accounts);
     } catch (err) {
       setError(err.message);
     }
@@ -179,6 +212,10 @@ function App() {
     }
   }, [selectedAccount, loadAnalytics]);
 
+  useEffect(() => {
+    loadAllRecurring(accounts);
+  }, [accounts, loadAllRecurring]);
+
   // RENDER ====================================================================
 
   if (loading) {
@@ -221,15 +258,14 @@ function App() {
           <TransactionsView
             transactions={transactions}
             accounts={accounts}
+            recurringTransactions={recurringTransactions}
             onAdd={handleAddTransaction}
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
-            onCreateAccount={handleCreateAccount}
-            onEditAccount={handleEditAccount}
-            onDeleteAccount={handleDeleteAccount}
-            showForm={showTransactionForm}
-            onToggleForm={() => setShowTransactionForm(f => !f)}
+            onEditRecurring={handleEditRecurring}
+            onDeleteRecurring={handleDeleteRecurring}
+            onImportDone={refreshAll}
           />
         )}
         {view === 'budgeting' && (
