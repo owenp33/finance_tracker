@@ -1520,3 +1520,154 @@ body {
 
 /* === Orange utility ======================================== */
 .orange { color: #e67700; }
+
+/* === Section header (title + link side-by-side) ============ */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header h3 {
+  color: #333;
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.link-btn:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+/* === Budget Progress ======================================== */
+.budget-progress-section {
+  background: white;
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.budget-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.budget-progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.budget-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.budget-category {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.budget-amounts {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.budget-bar-track {
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  background: #667eea;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.budget-bar-fill.over-budget {
+  background: #ff6b6b;
+}
+
+.budget-over-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #ff6b6b;
+  text-align: right;
+}
+
+/* === Upcoming Section ======================================= */
+.upcoming-section {
+  background: white;
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.upcoming-section h3 {
+  color: #333;
+  font-size: 1.3rem;
+  margin-bottom: 20px;
+}
+
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upcoming-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.upcoming-item:hover {
+  background: #e9ecef;
+  transform: translateX(5px);
+}
+
+.upcoming-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.upcoming-info strong {
+  color: #333;
+  font-size: 1rem;
+}
+
+.upcoming-info span {
+  color: #666;
+  font-size: 0.88rem;
+}
+
+.upcoming-amount {
+  font-size: 1.1rem;
+  font-weight: 700;
+}

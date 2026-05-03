@@ -7,6 +7,7 @@ import * as recurringAPI from './api/recurring';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
+import { useUpcoming } from './hooks/useUpcoming';
 import { useAnalytics } from './hooks/useAnalytics';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
@@ -32,6 +33,7 @@ function App() {
   const { accounts, selectedAccount, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
+  const { upcoming, loadUpcoming } = useUpcoming({ setError });
   const { analytics, loadAnalytics } = useAnalytics({ setError });
 
   // AUTH HANDLERS =============================================================
@@ -127,7 +129,7 @@ function App() {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await loadAllRecurring(accounts);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
     } catch (err) {
       setError(err.message);
     }
@@ -136,7 +138,7 @@ function App() {
   const handleEditRecurring = async (id, fields) => {
     try {
       await recurringAPI.updateRecurring(id, fields);
-      await loadAllRecurring(accounts);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
     } catch (err) {
       setError(err.message);
     }
@@ -145,7 +147,7 @@ function App() {
   const handleDeleteRecurring = async (id) => {
     try {
       await recurringAPI.deleteRecurring(id);
-      await loadAllRecurring(accounts);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
     } catch (err) {
       setError(err.message);
     }
@@ -214,7 +216,8 @@ function App() {
 
   useEffect(() => {
     loadAllRecurring(accounts);
-  }, [accounts, loadAllRecurring]);
+    loadUpcoming(accounts);
+  }, [accounts, loadAllRecurring, loadUpcoming]);
 
   // RENDER ====================================================================
 
@@ -250,8 +253,8 @@ function App() {
             analytics={analytics}
             transactions={transactions}
             budgetData={budgetData}
+            upcoming={upcoming}
             onNavigate={setView}
-            onDeleteTransaction={handleDeleteTransaction}
           />
         )}
         {view === 'transactions' && (
