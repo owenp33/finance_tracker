@@ -13,6 +13,7 @@ import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
 import TransactionsView from './components/TransactionsView';
+import BudgetingView from './components/BudgetingView';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 
 function App() {
@@ -272,10 +273,10 @@ function App() {
           />
         )}
         {view === 'budgeting' && (
-          <div className="placeholder-view">
-            <h2>Budgeting</h2>
-            <p>Set allocations, track spending by category, and manage rollovers.</p>
-          </div>
+          <BudgetingView
+            transactions={transactions}
+            onBudgetChange={loadBudgetProgress}
+          />
         )}
         {view === 'insights' && (
           <AnalyticsDashboard analytics={analytics} />
