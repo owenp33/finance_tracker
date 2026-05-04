@@ -61,7 +61,7 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
         )}
       </div>
 
-      <BudgetProgressBar item={item} />
+      <BudgetProgressBar item={item} showCategory={false} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-function BudgetProgressBar({ item }) {
+function BudgetProgressBar({ item, showCategory = true }) {
   const { category, allocated, carried_over, spent, remaining, over_budget } = item;
   const total = allocated + (carried_over || 0);
   const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
@@ -6,7 +6,7 @@ function BudgetProgressBar({ item }) {
   return (
     <div className="budget-progress-item">
       <div className="budget-progress-header">
-        <span className="budget-category">{category}</span>
+        {showCategory && <span className="budget-category">{category}</span>}
         <span className={`budget-amounts${over_budget ? ' red' : ''}`}>
           ${spent.toFixed(2)} / ${total.toFixed(2)}
         </span>

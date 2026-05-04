@@ -14,7 +14,7 @@ import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
 import TransactionsView from './components/TransactionsView';
 import BudgetingView from './components/BudgetingView';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
+import InsightsView from './components/InsightsView';
 
 function App() {
   // Auth state
@@ -279,7 +279,7 @@ function App() {
           />
         )}
         {view === 'insights' && (
-          <AnalyticsDashboard analytics={analytics} />
+          <InsightsView analytics={analytics} />
         )}
       </main>
     </div>
