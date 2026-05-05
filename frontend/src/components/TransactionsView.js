@@ -399,6 +399,16 @@ function TransactionsView({
                   <span className="count-badge">{importSelected.size} selected</span>
                 </div>
               )}
+              <div className="form-actions import-actions-top">
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirm}
+                  disabled={importSelected.size === 0 || importLoading}
+                >
+                  {importLoading ? 'Importing…' : `Import ${importSelected.size} row${importSelected.size !== 1 ? 's' : ''}`}
+                </button>
+                <button className="btn btn-ghost" onClick={resetImport}>← Back</button>
+              </div>
               <div className="import-table-wrap">
                 <table className="import-table">
                   <thead>
