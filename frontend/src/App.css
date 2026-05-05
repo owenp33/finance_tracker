@@ -1899,6 +1899,21 @@ body {
   gap: 8px;
 }
 
+/* ── Load more bar ─────────────────────────────────────────────────────────── */
+.load-more-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 4px 4px;
+  border-top: 1px solid #e9ecef;
+  margin-top: 4px;
+}
+
+.load-more-label {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
 /* ── Filter panel ──────────────────────────────────────────────────────────── */
 .filter-btn-active {
   border-color: #667eea;
