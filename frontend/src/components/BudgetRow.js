@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import BudgetProgressBar from './BudgetProgressBar';
 
-function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveError }) {
+function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveError, monthlyIncome }) {
   const [localAmount, setLocalAmount] = useState(item.allocated.toFixed(2));
 
   // Sync displayed value if the server response changes the allocation
@@ -56,6 +56,11 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
           aria-label={`Monthly allocation for ${item.category}`}
         />
         <span className="budget-amount-suffix">/ month</span>
+        {monthlyIncome > 0 && (
+          <span className="budget-income-pct">
+            {((item.allocated / monthlyIncome) * 100).toFixed(0)}%
+          </span>
+        )}
         {hasSaveError && (
           <span className="budget-save-error">Save failed — try again</span>
         )}
