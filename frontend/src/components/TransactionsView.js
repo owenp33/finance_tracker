@@ -79,6 +79,7 @@ function TransactionsView({
       frequency: r.frequency,
       next_date: r.next_date,
       notes: r.notes || '',
+      number: r.number ?? -1,
     });
   };
 
@@ -282,6 +283,23 @@ function TransactionsView({
                         </select>
                         <input type="date" value={recurringEditFields.next_date} onChange={e => setRF('next_date', e.target.value)} />
                         <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} placeholder="Notes" />
+                        <label className="recurring-number-label">
+                          <input
+                            type="checkbox"
+                            checked={recurringEditFields.number !== -1}
+                            onChange={e => setRF('number', e.target.checked ? 1 : -1)}
+                          />
+                          Limit occurrences
+                        </label>
+                        {recurringEditFields.number !== -1 && (
+                          <input
+                            type="number"
+                            min="1"
+                            value={recurringEditFields.number}
+                            onChange={e => setRF('number', parseInt(e.target.value) || 1)}
+                            placeholder="Max occurrences"
+                          />
+                        )}
                       </div>
                       <div className="recurring-edit-actions">
                         <button className="btn btn-primary btn-sm" onClick={() => saveEditRecurring(r.id)}>Save</button>
