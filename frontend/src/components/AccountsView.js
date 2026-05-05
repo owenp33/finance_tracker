@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 
 function AccountsView({ accounts, onCreateAccount, onEditAccount, onDeleteAccount }) {
   const [editingId, setEditingId] = useState(null);
@@ -103,8 +104,8 @@ function AccountsView({ accounts, onCreateAccount, onEditAccount, onDeleteAccoun
                   <span className={`account-balance ${account.balance >= 0 ? 'green' : 'red'}`}>
                     ${account.balance?.toFixed(2) || '0.00'}
                   </span>
-                  <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(account)}>✏</button>
-                  <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDelete(account)}>✕</button>
+                  <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(account)}><Pencil size={14} /></button>
+                  <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDelete(account)}><Trash2 size={14} /></button>
                 </div>
               </div>
             )}

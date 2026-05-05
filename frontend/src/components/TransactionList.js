@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 
 const formatDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -109,8 +110,8 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
                 </div>
                 {showAll && (
                   <>
-                    <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}>✏</button>
-                    <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}>✕</button>
+                    <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>
+                    <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}><Trash2 size={14} /></button>
                   </>
                 )}
               </div>

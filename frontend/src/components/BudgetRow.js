@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
 const PRESETS = [
@@ -108,7 +109,7 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
         onClick={() => onDelete(item)}
         aria-label={`Remove ${item.category} budget`}
       >
-        ✕
+        <Trash2 size={13} />
       </button>
     </div>
   );
