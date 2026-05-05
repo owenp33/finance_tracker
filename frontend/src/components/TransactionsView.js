@@ -267,6 +267,7 @@ function TransactionsView({
             onDelete={onDelete}
             showAll={true}
             resetSignal={showForm}
+            onStartEdit={() => setShowForm(false)}
           />
         </>
       )}
@@ -654,6 +655,7 @@ function TransactionsView({
               onDelete={onDelete}
               showAll={true}
               resetSignal={showForm}
+              onStartEdit={() => setShowForm(false)}
             />
           )}
         </div>

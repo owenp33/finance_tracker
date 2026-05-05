@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
 
@@ -14,6 +14,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
   }
 
   const startEdit = (t) => {
+    onStartEdit?.();
     setEditingId(t.id);
     setEditFields({
       date: t.date,
