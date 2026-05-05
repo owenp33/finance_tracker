@@ -1914,3 +1914,77 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
 }
+
+/* ── Budget summary cards ──────────────────────────────────────────────────── */
+.budget-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 16px 0 24px;
+}
+
+.budget-summary-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.budget-summary-card.income-card {
+  cursor: pointer;
+  border-color: #c7d2fe;
+  background: #f5f7ff;
+}
+
+.budget-summary-card.income-card:hover {
+  border-color: #818cf8;
+}
+
+.budget-summary-card.muted {
+  opacity: 0.45;
+}
+
+.budget-summary-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.budget-summary-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  line-height: 1.1;
+}
+
+.budget-summary-value.green { color: #16a34a; }
+.budget-summary-value.red   { color: #dc2626; }
+
+.budget-summary-sub {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.income-hint {
+  font-size: 0.78rem;
+  color: #818cf8;
+  margin-top: 2px;
+}
+
+.income-inline-input {
+  width: 100%;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  border: none;
+  border-bottom: 2px solid #818cf8;
+  background: transparent;
+  outline: none;
+  padding: 2px 0;
+}

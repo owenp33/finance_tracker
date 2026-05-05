@@ -47,11 +47,43 @@ function BudgetingView({ transactions, onBudgetChange }) {
   // Map of budget id → true for rows whose last auto-save failed
   const [saveErrors, setSaveErrors] = useState(new Map());
 
+  // Monthly income
+  const [monthlyIncome, setMonthlyIncome] = useState(() => {
+    const saved = localStorage.getItem('budget_monthly_income');
+    return saved ? parseFloat(saved) : 0;
+  });
+  const [isEditingIncome, setIsEditingIncome] = useState(false);
+  const [incomeInput, setIncomeInput] = useState('');
+
   // Add-category form
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [adding, setAdding] = useState(false);
+
+  // ── Derived: income summary ────────────────────────────────────────────────
+  const totalAllocated = progress.reduce((sum, item) => sum + item.allocated, 0);
+  const unallocated = monthlyIncome - totalAllocated;
+  const incomeSet = monthlyIncome > 0;
+
+  const openIncomeEdit = () => {
+    setIncomeInput(incomeSet ? monthlyIncome.toFixed(2) : '');
+    setIsEditingIncome(true);
+  };
+
+  const saveIncome = () => {
+    const parsed = parseFloat(incomeInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setMonthlyIncome(parsed);
+      localStorage.setItem('budget_monthly_income', String(parsed));
+    }
+    setIsEditingIncome(false);
+  };
+
+  const handleIncomeKeyDown = (e) => {
+    if (e.key === 'Enter') saveIncome();
+    if (e.key === 'Escape') setIsEditingIncome(false);
+  };
 
   // ── Derived: category suggestions ──────────────────────────────────────────
   // Unique categories from all transactions, minus any already budgeted this period
@@ -223,6 +255,56 @@ function BudgetingView({ transactions, onBudgetChange }) {
         <button className="btn btn-ghost" onClick={() => setPeriod(p => getNextPeriod(p))}>
           →
         </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="budget-summary-cards">
+        <div className={`budget-summary-card income-card`} onClick={!isEditingIncome ? openIncomeEdit : undefined}>
+          <div className="budget-summary-label">Monthly Income</div>
+          {isEditingIncome ? (
+            <input
+              className="income-inline-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={incomeInput}
+              placeholder="0.00"
+              autoFocus
+              onChange={e => setIncomeInput(e.target.value)}
+              onBlur={saveIncome}
+              onKeyDown={handleIncomeKeyDown}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <div className="budget-summary-value">
+              ${monthlyIncome.toFixed(2)}
+            </div>
+          )}
+          {!incomeSet && !isEditingIncome && (
+            <div className="income-hint">Click to set your income</div>
+          )}
+        </div>
+
+        <div className={`budget-summary-card${!incomeSet ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Allocated</div>
+          <div className="budget-summary-value">${totalAllocated.toFixed(2)}</div>
+          {incomeSet && (
+            <div className="budget-summary-sub">
+              {((totalAllocated / monthlyIncome) * 100).toFixed(0)}% of income
+            </div>
+          )}
+        </div>
+
+        <div className={`budget-summary-card${!incomeSet ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Unallocated</div>
+          <div className={`budget-summary-value${incomeSet ? (unallocated >= 0 ? ' green' : ' red') : ''}`}>
+            ${Math.abs(unallocated).toFixed(2)}
+            {incomeSet && unallocated < 0 && ' over'}
+          </div>
+          {incomeSet && (
+            <div className="budget-summary-sub">remaining to allocate</div>
+          )}
+        </div>
       </div>
 
       {error && (
