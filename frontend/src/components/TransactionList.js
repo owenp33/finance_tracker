@@ -109,8 +109,8 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
                 </div>
                 {showAll && (
                   <>
-                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)}>Edit</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => { setEditingId(null); onDelete(t.id); }}>Delete</button>
+                    <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}>✏</button>
+                    <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}>✕</button>
                   </>
                 )}
               </div>

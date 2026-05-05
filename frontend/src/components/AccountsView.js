@@ -103,8 +103,8 @@ function AccountsView({ accounts, onCreateAccount, onEditAccount, onDeleteAccoun
                   <span className={`account-balance ${account.balance >= 0 ? 'green' : 'red'}`}>
                     ${account.balance?.toFixed(2) || '0.00'}
                   </span>
-                  <button className="btn btn-ghost btn-sm" onClick={() => startEdit(account)}>Edit</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(account)}>Delete</button>
+                  <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(account)}>✏</button>
+                  <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDelete(account)}>✕</button>
                 </div>
               </div>
             )}

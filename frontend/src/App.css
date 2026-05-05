@@ -975,6 +975,12 @@ body {
   font-size: 0.85rem;
 }
 
+.icon-btn {
+  padding: 4px 8px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 /* === View Header ================================================= */
 .view-header {
   display: flex;

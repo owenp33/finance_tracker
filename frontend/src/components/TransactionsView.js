@@ -428,8 +428,8 @@ function TransactionsView({
                       <div className="recurring-amount">${Math.abs(r.amount).toFixed(2)}</div>
                       <div className="recurring-dates"><small>Next: {r.next_date}</small></div>
                       <div className="recurring-actions">
-                        <button className="btn btn-ghost btn-sm" onClick={() => startEditRecurring(r)}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteRecurring(r.id)}>Delete</button>
+                        <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}>✏</button>
+                        <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}>✕</button>
                       </div>
                     </>
                   )}
@@ -585,8 +585,8 @@ function TransactionsView({
                       <div className="account-info"><strong>{a.account_name}</strong><small>{a.account_id}</small></div>
                       <div className="account-balance">${a.balance?.toFixed(2) ?? '0.00'}</div>
                       <div className="account-actions">
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}>Delete</button>
+                        <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}>✏</button>
+                        <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}>✕</button>
                       </div>
                     </>
                   )}
