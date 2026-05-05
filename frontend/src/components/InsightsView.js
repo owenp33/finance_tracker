@@ -21,12 +21,12 @@ const InsightsView = ({ analytics }) => {
     value: cat.total,
   })) || [];
 
-  const monthlyTrendData = analytics.monthly_summary?.map(month => ({
+  const monthlyTrendData = (analytics.monthly_summary?.map(month => ({
     month: month.month,
     income: month.income,
     expenses: month.expenses,
     net: month.net,
-  })) || [];
+  })) || []).slice().reverse();
 
   const topVendorsData = analytics.top_vendors?.slice(0, 10) || [];
 
