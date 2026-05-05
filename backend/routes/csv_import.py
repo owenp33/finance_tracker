@@ -76,9 +76,10 @@ def preview_csv():
         amount       = round(float(row['amount']), 2)
         amount_cents = int(round(amount * 100))
 
+        zero_amount  = amount_cents == 0
         is_duplicate = (
-            account_id is not None
-            and amount_cents != 0
+            not zero_amount
+            and account_id is not None
             and db_service.transaction_exists(account_id, row['date'], row['vendor'], amount_cents)
         )
 
@@ -91,23 +92,25 @@ def preview_csv():
             'account_id':   account_id,
             'account_name': account_name,
             'duplicate':    is_duplicate,
+            'zero_amount':  zero_amount,
         })
 
     importable = sum(
         1 for r in rows
         if not r['duplicate']
+        and not r['zero_amount']
         and r['account_id'] is not None
-        and int(round(r['amount'] * 100)) != 0
     )
 
     return jsonify({
         'success': True,
         'rows':    rows,
         'summary': {
-            'total':      len(rows),
-            'importable': importable,
-            'duplicates': sum(r['duplicate'] for r in rows),
-            'unmatched':  sum(r['account_id'] is None for r in rows),
+            'total':        len(rows),
+            'importable':   importable,
+            'duplicates':   sum(r['duplicate']   for r in rows),
+            'unmatched':    sum(r['account_id'] is None for r in rows),
+            'zero_amount':  sum(r['zero_amount'] for r in rows),
         },
         'unmatched_account_names': list(unmatched_names),
     }), 200
