@@ -1,18 +1,24 @@
+const formatDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const formatAmount = (amount) =>
+  `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
+
 function UpcomingList({ items }) {
   if (!items || items.length === 0) {
     return <p className="no-data">No recurring transactions due in the next 7 days.</p>;
   }
 
   return (
-    <div className="upcoming-list">
+    <div className="upcoming-chips">
       {items.map(r => (
-        <div key={r.id} className="upcoming-item">
-          <div className="upcoming-info">
-            <strong>{r.vendor}</strong>
-            <span>{r.category} &bull; {r.next_date}</span>
-          </div>
-          <span className={`upcoming-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
-            {r.amount >= 0 ? '+' : ''}${Math.abs(r.amount).toFixed(2)}
+        <div key={r.id} className="upcoming-chip">
+          <span className="chip-date">{formatDate(r.next_date)}</span>
+          <span className="chip-vendor">{r.vendor}</span>
+          <span className={`chip-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
+            {formatAmount(r.amount)}
           </span>
         </div>
       ))}
