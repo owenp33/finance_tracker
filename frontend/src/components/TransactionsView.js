@@ -130,7 +130,7 @@ function TransactionsView({
       setImportSummary(data.summary);
       setImportSelected(new Set(
         data.rows
-          .map((r, i) => (!r.duplicate && r.account_id !== null ? i : null))
+          .map((r, i) => (!r.duplicate && !r.zero_amount && r.account_id !== null ? i : null))
           .filter(i => i !== null)
       ));
       setImportStep('preview');
@@ -431,6 +431,9 @@ function TransactionsView({
                   {importSummary.unmatched > 0 && (
                     <span className="orange">{importSummary.unmatched} unmatched</span>
                   )}
+                  {importSummary.zero_amount > 0 && (
+                    <span className="orange">{importSummary.zero_amount} zero-amount</span>
+                  )}
                   <span className="count-badge">{importSelected.size} selected</span>
                 </div>
               )}
@@ -461,7 +464,8 @@ function TransactionsView({
                     {importRows.map((row, i) => {
                       const rowClass = [
                         'import-row',
-                        row.duplicate ? 'duplicate' : '',
+                        row.duplicate   ? 'duplicate'    : '',
+                        row.zero_amount ? 'zero-amount'  : '',
                         row.account_id === null ? 'unmatched' : '',
                         !importSelected.has(i) ? 'deselected' : '',
                       ].filter(Boolean).join(' ');
@@ -472,7 +476,7 @@ function TransactionsView({
                               type="checkbox"
                               checked={importSelected.has(i)}
                               onChange={() => toggleImportRow(i)}
-                              disabled={row.account_id === null}
+                              disabled={row.account_id === null || row.zero_amount}
                             />
                           </td>
                           <td>{row.date}</td>

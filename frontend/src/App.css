@@ -1451,6 +1451,13 @@ body {
 
 .import-row.duplicate td:first-child { text-decoration: none; }
 
+.import-row.zero-amount td {
+  color: #bbb;
+  font-style: italic;
+}
+
+.import-row.zero-amount td:first-child { font-style: normal; }
+
 .import-row.deselected td:not(:first-child) { opacity: 0.4; }
 
 .import-row.unmatched { background: #fffbf0; }
