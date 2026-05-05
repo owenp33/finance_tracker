@@ -40,18 +40,11 @@ function DashboardView({ analytics, transactions, budgetData, upcoming, onNaviga
         </div>
       </div>
 
-      {/* Upcoming recurring transactions */}
-      <div className="upcoming-section">
-        <h3>Upcoming</h3>
-        <UpcomingList items={upcoming} />
-      </div>
-
-      {/* Two-column lower section */}
+      {/* Two-column section: spending vs budget + recent transactions */}
       <div className="dashboard-columns">
-        {/* Budget progress */}
         <div className="dashboard-col">
           <div className="section-header">
-            <h3>Budget Progress</h3>
+            <h3>Spending vs Budget</h3>
             <button className="link-btn" onClick={() => onNavigate('budgeting')}>
               Manage →
             </button>
@@ -67,7 +60,6 @@ function DashboardView({ analytics, transactions, budgetData, upcoming, onNaviga
           )}
         </div>
 
-        {/* Recent transactions */}
         <div className="dashboard-col">
           <div className="section-header">
             <h3>Recent Transactions</h3>
@@ -75,8 +67,14 @@ function DashboardView({ analytics, transactions, budgetData, upcoming, onNaviga
               View all →
             </button>
           </div>
-          <TransactionList transactions={recentTransactions} />
+          <TransactionList transactions={recentTransactions} compact />
         </div>
+      </div>
+
+      {/* Upcoming recurring transactions */}
+      <div className="upcoming-section">
+        <h3>Upcoming</h3>
+        <UpcomingList items={upcoming} />
       </div>
 
     </div>
