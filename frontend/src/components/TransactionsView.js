@@ -37,6 +37,7 @@ function TransactionsView({
   const [accountAdding, setAccountAdding] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [editingAccountName, setEditingAccountName] = useState('');
+  const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
 
   // Import tab
   const [importStep, setImportStep] = useState('pick');
@@ -548,15 +549,25 @@ function TransactionsView({
                     <div className="account-edit-form">
                       <input
                         type="text"
+                        value={editingAccountIdStr}
+                        onChange={e => setEditingAccountIdStr(e.target.value)}
+                        placeholder="Account ID"
+                        autoFocus
+                      />
+                      <input
+                        type="text"
                         value={editingAccountName}
                         onChange={e => setEditingAccountName(e.target.value)}
-                        autoFocus
+                        placeholder="Display Name"
                       />
                       <div className="account-edit-actions">
                         <button
                           className="btn btn-primary btn-sm"
                           onClick={async () => {
-                            await onEditAccount(a.id, { account_name: editingAccountName });
+                            await onEditAccount(a.id, {
+                              account_id: editingAccountIdStr,
+                              account_name: editingAccountName,
+                            });
                             setEditingAccountId(null);
                           }}
                         >
@@ -579,7 +590,7 @@ function TransactionsView({
                       <div className="account-actions">
                         <button
                           className="btn btn-ghost btn-sm"
-                          onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); }}
+                          onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}
                         >
                           Edit
                         </button>
