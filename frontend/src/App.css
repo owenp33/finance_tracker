@@ -2036,7 +2036,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  align-items: stretch;
+  align-items: start;
   margin-bottom: 24px;
 }
 
@@ -2047,7 +2047,6 @@ body {
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  max-height: 480px;
 }
 
 .dashboard-col .section-header {
@@ -2056,9 +2055,8 @@ body {
 }
 
 .dashboard-col .budget-progress-list {
-  flex: 1;
+  max-height: 320px;
   overflow-y: auto;
-  min-height: 0;
 }
 
 /* ── Compact transaction list (dashboard recent) ──────────────────────────── */
