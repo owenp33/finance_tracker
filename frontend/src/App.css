@@ -2036,7 +2036,8 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
+  margin-bottom: 24px;
 }
 
 .dashboard-col {
@@ -2044,8 +2045,39 @@ body {
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  max-height: 480px;
 }
 
 .dashboard-col .section-header {
   margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.dashboard-col .budget-progress-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Compact transaction list (dashboard recent) ──────────────────────────── */
+.transaction-list.compact {
+  gap: 0;
+}
+
+.transaction-list.compact .transaction-item {
+  background: none;
+  border-radius: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.transaction-list.compact .transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-list.compact .transaction-item:hover {
+  background: none;
+  transform: none;
 }

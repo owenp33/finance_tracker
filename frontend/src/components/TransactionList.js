@@ -46,7 +46,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
   const set = (field, value) => setEditFields(prev => ({ ...prev, [field]: value }));
 
   return (
-    <div className="transaction-list">
+    <div className={`transaction-list${compact ? ' compact' : ''}`}>
       {transactions.map(t => (
         <div key={t.id} className="transaction-item">
           {editingId === t.id ? (
@@ -90,7 +90,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
             <>
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} | {formatDate(t.date)}</span>
+                <span>{t.category} · {formatDate(t.date)}</span>
               </div>
               <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                 {formatAmount(t.amount)}
