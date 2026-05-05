@@ -2023,3 +2023,22 @@ body {
   margin-left: 4px;
   white-space: nowrap;
 }
+
+/* ── Dashboard two-column lower section ───────────────────────────────────── */
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.dashboard-col {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.dashboard-col .section-header {
+  margin-bottom: 12px;
+}
