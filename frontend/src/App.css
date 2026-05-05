@@ -2093,11 +2093,81 @@ body {
 
 .budget-row-inline:last-child { border-bottom: none; }
 
+.bri-dot-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .bri-dot {
+  display: block;
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.bri-dot:hover {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
+}
+
+.color-picker-popover {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  z-index: 200;
+  background: white;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 148px;
+}
+
+.color-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.color-swatch:hover { transform: scale(1.2); }
+
+.color-swatch.selected {
+  border-color: #1a1a2e;
+  transform: scale(1.15);
+}
+
+.color-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.color-custom-row input[type="color"] {
+  width: 28px;
+  height: 22px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px;
+  cursor: pointer;
+  background: none;
 }
 
 .bri-category {
