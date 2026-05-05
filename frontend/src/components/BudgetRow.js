@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import BudgetProgressBar from './BudgetProgressBar';
 
 function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveError, monthlyIncome }) {
   const [localAmount, setLocalAmount] = useState(item.allocated.toFixed(2));
@@ -66,7 +65,6 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
         )}
       </div>
 
-      <BudgetProgressBar item={item} showCategory={false} />
     </div>
   );
 }
