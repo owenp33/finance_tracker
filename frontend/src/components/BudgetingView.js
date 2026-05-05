@@ -68,12 +68,20 @@ function BudgetingView({ transactions, onBudgetChange }) {
     try {
       const data = await getBudgetProgress(p);
 
-      // Auto-rollover: if this period has no budgets and isn't in the future,
-      // copy rollover=true rows from the immediately preceding month.
-      if (data.length === 0 && p <= getCurrentPeriod()) {
+      // Auto-rollover: if this period is empty, walk back up to 12 months to
+      // find the nearest non-empty period and copy its rollover=true rows.
+      if (data.length === 0) {
         try {
-          const prevBudgets = await getBudgets(getPrevPeriod(p));
-          const toRollover = prevBudgets.filter(b => b.rollover);
+          let searchPeriod = getPrevPeriod(p);
+          let toRollover = [];
+          for (let i = 0; i < 12; i++) {
+            const prevBudgets = await getBudgets(searchPeriod);
+            if (prevBudgets.length > 0) {
+              toRollover = prevBudgets.filter(b => b.rollover);
+              break;
+            }
+            searchPeriod = getPrevPeriod(searchPeriod);
+          }
           if (toRollover.length > 0) {
             await Promise.all(
               toRollover.map(b =>
