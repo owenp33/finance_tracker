@@ -1,13 +1,42 @@
 import { useState, useRef, useEffect } from 'react';
+import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 
-function TransactionsView({ transactions, accounts, onAdd, onAddRecurring, onEdit, onDelete, onImportCSV, showForm, onToggleForm }) {
+function TransactionsView({
+  transactions,
+  accounts,
+  recurringTransactions,
+  onAdd,
+  onAddRecurring,
+  onEdit,
+  onDelete,
+  onEditRecurring,
+  onDeleteRecurring,
+  onImportDone,
+}) {
+  const [tab, setTab] = useState('all');
+  const [showForm, setShowForm] = useState(false);
+
+  // All tab — account filter
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Recurring tab — inline edit
+  const [editingRecurringId, setEditingRecurringId] = useState(null);
+  const [recurringEditFields, setRecurringEditFields] = useState({});
+
+  // Import tab
+  const [importStep, setImportStep] = useState('pick');
+  const [importFile, setImportFile] = useState(null);
+  const [importFallbackId, setImportFallbackId] = useState('');
+  const [importRows, setImportRows] = useState([]);
+  const [importSummary, setImportSummary] = useState(null);
+  const [importSelected, setImportSelected] = useState(new Set());
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSuccessMsg, setImportSuccessMsg] = useState('');
+
   useEffect(() => {
     const handler = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -18,13 +47,14 @@ function TransactionsView({ transactions, accounts, onAdd, onAddRecurring, onEdi
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const toggleAccount = (id) => {
+  // ── All tab ──────────────────────────────────────────────────────────────
+
+  const toggleAccount = (id) =>
     setSelectedIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
 
   const clearFilter = () => setSelectedIds(new Set());
 
@@ -38,64 +68,398 @@ function TransactionsView({ transactions, accounts, onAdd, onAddRecurring, onEdi
       ? accounts.find(a => selectedIds.has(a.id))?.account_name
       : `${selectedIds.size} accounts`;
 
+  // ── Recurring tab ────────────────────────────────────────────────────────
+
+  const startEditRecurring = (r) => {
+    setEditingRecurringId(r.id);
+    setRecurringEditFields({
+      vendor: r.vendor,
+      category: r.category,
+      amount: r.amount,
+      frequency: r.frequency,
+      next_date: r.next_date,
+      notes: r.notes || '',
+    });
+  };
+
+  const setRF = (field, val) =>
+    setRecurringEditFields(prev => ({ ...prev, [field]: val }));
+
+  const saveEditRecurring = async (id) => {
+    await onEditRecurring(id, recurringEditFields);
+    setEditingRecurringId(null);
+  };
+
+  const handleDeleteRecurring = (id) => {
+    if (!window.confirm('Delete this recurring template? Future occurrences will stop being generated.')) return;
+    onDeleteRecurring(id);
+  };
+
+  // ── Import tab ───────────────────────────────────────────────────────────
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file || !file.name.endsWith('.csv')) {
+      alert('Please select a valid CSV file');
+      e.target.value = '';
+      return;
+    }
+    setImportFile(file);
+    setImportSuccessMsg('');
+  };
+
+  const handlePreview = async () => {
+    if (!importFile) return;
+    setImportLoading(true);
+    try {
+      const data = await previewCSV(importFile, importFallbackId || null);
+      setImportRows(data.rows);
+      setImportSummary(data.summary);
+      setImportSelected(new Set(
+        data.rows
+          .map((r, i) => (!r.duplicate && r.account_id !== null ? i : null))
+          .filter(i => i !== null)
+      ));
+      setImportStep('preview');
+    } catch (err) {
+      alert(`Preview failed: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleImportRow = (i) =>
+    setImportSelected(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+
+  const handleConfirm = async () => {
+    const rows = importRows.filter((_, i) => importSelected.has(i));
+    if (rows.length === 0) return;
+    setImportLoading(true);
+    try {
+      const data = await confirmImport(rows);
+      setImportSuccessMsg(data.message);
+      onImportDone();
+      resetImport();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const resetImport = () => {
+    setImportStep('pick');
+    setImportFile(null);
+    setImportFallbackId('');
+    setImportRows([]);
+    setImportSummary(null);
+    setImportSelected(new Set());
+  };
+
+  // ── Flagged tab ──────────────────────────────────────────────────────────
+
+  const flagged = transactions.filter(t => t.over_budget);
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className="transactions-view">
-      <div className="view-header">
-        <h2>Transactions</h2>
-        <div className="view-header-actions">
-          <div className="multi-select-dropdown" ref={dropdownRef}>
-            <button
-              className="dropdown-trigger"
-              onClick={() => setDropdownOpen(o => !o)}
-              type="button"
-            >
-              <span>{filterLabel}</span>
-              <span className="dropdown-arrow">{dropdownOpen ? '▲' : '▼'}</span>
-            </button>
-            {dropdownOpen && (
-              <div className="dropdown-menu">
-                <div className="dropdown-header">
-                  <span>Filter by account</span>
-                  {selectedIds.size > 0 && (
-                    <button className="dropdown-clear" onClick={clearFilter}>Clear</button>
-                  )}
-                </div>
-                {accounts.map(a => (
-                  <label key={a.id} className="dropdown-option">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(a.id)}
-                      onChange={() => toggleAccount(a.id)}
-                    />
-                    <span>{a.account_name}</span>
-                    <span className="dropdown-option-balance">
-                      ${a.balance?.toFixed(2) || '0.00'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          <button className="btn btn-secondary" onClick={onImportCSV}>Import CSV</button>
-        </div>
-      </div>
-
-      <div className="transactions-header">
-        <h2>{filterLabel} <span className="count-badge">{filtered.length}</span></h2>
-        <button className="btn btn-primary" onClick={onToggleForm}>
-          {showForm ? 'Cancel' : '+ Add Transaction'}
+      <div className="tab-bar">
+        <button className={`tab-btn${tab === 'all' ? ' active' : ''}`} onClick={() => setTab('all')}>
+          All
+        </button>
+        <button className={`tab-btn${tab === 'recurring' ? ' active' : ''}`} onClick={() => setTab('recurring')}>
+          Recurring
+        </button>
+        <button className={`tab-btn${tab === 'import' ? ' active' : ''}`} onClick={() => setTab('import')}>
+          Import
+        </button>
+        <button className={`tab-btn${tab === 'flagged' ? ' active' : ''}`} onClick={() => setTab('flagged')}>
+          Flagged
+          {flagged.length > 0 && <span className="count-badge flagged-badge">{flagged.length}</span>}
         </button>
       </div>
 
-      {showForm && (
-        <TransactionForm
-          onSubmit={onAdd}
-          onSubmitRecurring={onAddRecurring}
-          onCancel={onToggleForm}
-          accounts={accounts}
-        />
+      {/* ── All ───────────────────────────────────────────────────────────── */}
+      {tab === 'all' && (
+        <>
+          <div className="view-header">
+            <h2>Transactions</h2>
+            <div className="view-header-actions">
+              <div className="multi-select-dropdown" ref={dropdownRef}>
+                <button
+                  className="dropdown-trigger"
+                  onClick={() => setDropdownOpen(o => !o)}
+                  type="button"
+                >
+                  <span>{filterLabel}</span>
+                  <span className="dropdown-arrow">{dropdownOpen ? '▲' : '▼'}</span>
+                </button>
+                {dropdownOpen && (
+                  <div className="dropdown-menu">
+                    <div className="dropdown-header">
+                      <span>Filter by account</span>
+                      {selectedIds.size > 0 && (
+                        <button className="dropdown-clear" onClick={clearFilter}>Clear</button>
+                      )}
+                    </div>
+                    {accounts.map(a => (
+                      <label key={a.id} className="dropdown-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(a.id)}
+                          onChange={() => toggleAccount(a.id)}
+                        />
+                        <span>{a.account_name}</span>
+                        <span className="dropdown-option-balance">
+                          ${a.balance?.toFixed(2) || '0.00'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="btn btn-secondary" onClick={() => setTab('import')}>
+                Import CSV
+              </button>
+            </div>
+          </div>
+
+          <div className="transactions-header">
+            <h2>{filterLabel} <span className="count-badge">{filtered.length}</span></h2>
+            <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
+              {showForm ? 'Cancel' : '+ Add Transaction'}
+            </button>
+          </div>
+
+          {showForm && (
+            <TransactionForm
+              onSubmit={async (data) => { await onAdd(data); setShowForm(false); }}
+              onSubmitRecurring={async (data) => { await onAddRecurring(data); setShowForm(false); }}
+              onCancel={() => setShowForm(false)}
+              accounts={accounts}
+            />
+          )}
+          <TransactionList
+            transactions={filtered}
+            accounts={accounts}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            showAll={true}
+          />
+        </>
       )}
-      <TransactionList transactions={filtered} accounts={accounts} onEdit={onEdit} onDelete={onDelete} showAll={true} />
+
+      {/* ── Recurring ─────────────────────────────────────────────────────── */}
+      {tab === 'recurring' && (
+        <div className="recurring-view">
+          <div className="view-header">
+            <h2>Recurring Transactions</h2>
+          </div>
+          <div className="recurring-list">
+            {recurringTransactions.length === 0 ? (
+              <p className="no-data">No recurring transactions found</p>
+            ) : (
+              recurringTransactions.map(r => (
+                <div key={r.id} className="recurring-item">
+                  {editingRecurringId === r.id ? (
+                    <div className="recurring-edit-form">
+                      <div className="recurring-edit-fields">
+                        <input type="text" value={recurringEditFields.vendor} onChange={e => setRF('vendor', e.target.value)} placeholder="Vendor" />
+                        <input type="text" value={recurringEditFields.category} onChange={e => setRF('category', e.target.value)} placeholder="Category" />
+                        <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} placeholder="Amount" />
+                        <select value={recurringEditFields.frequency} onChange={e => setRF('frequency', parseInt(e.target.value))}>
+                          <option value={7}>Weekly (7 days)</option>
+                          <option value={14}>Biweekly (14 days)</option>
+                          <option value={30}>Monthly (30 days)</option>
+                          <option value={60}>Every 2 months (60 days)</option>
+                          <option value={90}>Quarterly (90 days)</option>
+                          <option value={365}>Yearly (365 days)</option>
+                        </select>
+                        <input type="date" value={recurringEditFields.next_date} onChange={e => setRF('next_date', e.target.value)} />
+                        <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} placeholder="Notes" />
+                      </div>
+                      <div className="recurring-edit-actions">
+                        <button className="btn btn-primary btn-sm" onClick={() => saveEditRecurring(r.id)}>Save</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingRecurringId(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="recurring-info">
+                        <strong>{r.vendor}</strong>
+                        <span>{r.category} · Every {r.frequency} days</span>
+                        {r.notes && <small>{r.notes}</small>}
+                      </div>
+                      <div className="recurring-amount">
+                        ${Math.abs(r.amount).toFixed(2)}
+                      </div>
+                      <div className="recurring-dates">
+                        <small>Next: {r.next_date}</small>
+                      </div>
+                      <div className="recurring-actions">
+                        <button className="btn btn-ghost btn-sm" onClick={() => startEditRecurring(r)}>Edit</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteRecurring(r.id)}>Delete</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Import ────────────────────────────────────────────────────────── */}
+      {tab === 'import' && (
+        <div>
+          <div className="view-header">
+            <h2>Import CSV</h2>
+          </div>
+
+          {importSuccessMsg && (
+            <div className="import-success">
+              <span>✓ {importSuccessMsg}</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setImportSuccessMsg(''); setTab('all'); }}>
+                View Transactions →
+              </button>
+            </div>
+          )}
+
+          {importStep === 'pick' && (
+            <div className="import-pick">
+              <div className="csv-format-info">
+                <p><strong>Supported formats:</strong></p>
+                <p>date, vendor, category, <em>expense</em>, <em>income</em>, account, notes</p>
+                <p>date, vendor, category, <em>amount</em>, account, notes</p>
+                <p className="csv-format-note">The <em>account</em> column is matched to your existing accounts by name.</p>
+              </div>
+              <div className="form-group">
+                <label>Select CSV File</label>
+                <input type="file" accept=".csv" onChange={handleFileChange} />
+                {importFile && <p className="file-selected">✓ {importFile.name}</p>}
+              </div>
+              {importFile && (
+                <div className="form-group">
+                  <label>Fallback account <small>(only needed if your CSV has no account column)</small></label>
+                  <select value={importFallbackId} onChange={e => setImportFallbackId(e.target.value)}>
+                    <option value="">— CSV has an account column —</option>
+                    {accounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.account_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="form-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={handlePreview}
+                  disabled={!importFile || importLoading}
+                >
+                  {importLoading ? 'Scanning…' : 'Preview'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {importStep === 'preview' && (
+            <div className="import-preview">
+              {importSummary && (
+                <div className="import-summary">
+                  <span>{importSummary.total} total</span>
+                  <span className="green">{importSummary.importable} importable</span>
+                  {importSummary.duplicates > 0 && (
+                    <span className="red">{importSummary.duplicates} duplicate{importSummary.duplicates !== 1 ? 's' : ''}</span>
+                  )}
+                  {importSummary.unmatched > 0 && (
+                    <span className="orange">{importSummary.unmatched} unmatched</span>
+                  )}
+                  <span className="count-badge">{importSelected.size} selected</span>
+                </div>
+              )}
+              <div className="import-table-wrap">
+                <table className="import-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Date</th>
+                      <th>Vendor</th>
+                      <th>Category</th>
+                      <th>Amount</th>
+                      <th>Account</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importRows.map((row, i) => {
+                      const rowClass = [
+                        'import-row',
+                        row.duplicate ? 'duplicate' : '',
+                        row.account_id === null ? 'unmatched' : '',
+                        !importSelected.has(i) ? 'deselected' : '',
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <tr key={i} className={rowClass}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={importSelected.has(i)}
+                              onChange={() => toggleImportRow(i)}
+                              disabled={row.account_id === null}
+                            />
+                          </td>
+                          <td>{row.date}</td>
+                          <td>{row.vendor}</td>
+                          <td>{row.category}</td>
+                          <td className={row.amount >= 0 ? 'green' : 'red'}>
+                            {row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}
+                          </td>
+                          <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
+                          <td><small>{row.notes}</small></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="form-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirm}
+                  disabled={importSelected.size === 0 || importLoading}
+                >
+                  {importLoading ? 'Importing…' : `Import ${importSelected.size} row${importSelected.size !== 1 ? 's' : ''}`}
+                </button>
+                <button className="btn btn-ghost" onClick={resetImport}>← Back</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Flagged ───────────────────────────────────────────────────────── */}
+      {tab === 'flagged' && (
+        <div>
+          <div className="view-header">
+            <h2>Over-Budget Transactions</h2>
+          </div>
+          {flagged.length === 0 ? (
+            <p className="no-data">No over-budget transactions — you're on track!</p>
+          ) : (
+            <TransactionList
+              transactions={flagged}
+              accounts={accounts}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              showAll={true}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

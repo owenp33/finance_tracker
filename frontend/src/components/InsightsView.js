@@ -3,37 +3,31 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import './AnalyticsDashboard.css';
 
-const AnalyticsDashboard = ({ analytics }) => {
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF6B6B'];
+
+const InsightsView = ({ analytics }) => {
   if (!analytics) {
     return <div className="analytics-loading">Loading analytics...</div>;
   }
 
-  // Colors for charts
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF6B6B'];
-
-  // Prepare data for spending by category pie chart
   const spendingPieData = analytics.spending_by_category?.map(cat => ({
     name: cat.category,
-    value: cat.total
+    value: cat.total,
   })) || [];
 
-  // Prepare data for income by category
   const incomePieData = analytics.income_by_category?.map(cat => ({
     name: cat.category,
-    value: cat.total
+    value: cat.total,
   })) || [];
 
-  // Prepare data for monthly trends
   const monthlyTrendData = analytics.monthly_summary?.map(month => ({
     month: month.month,
     income: month.income,
     expenses: month.expenses,
-    net: month.net
+    net: month.net,
   })) || [];
 
-  // Top vendors bar chart data
   const topVendorsData = analytics.top_vendors?.slice(0, 10) || [];
 
   return (
@@ -61,7 +55,7 @@ const AnalyticsDashboard = ({ analytics }) => {
 
       {/* Charts Grid */}
       <div className="charts-grid">
-        
+
         {/* Monthly Trends */}
         <div className="chart-container full-width">
           <h3>Monthly Trends</h3>
@@ -92,7 +86,6 @@ const AnalyticsDashboard = ({ analytics }) => {
                   labelLine={false}
                   label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                   outerRadius={80}
-                  fill="#8884d8"
                   dataKey="value"
                 >
                   {spendingPieData.map((entry, index) => (
@@ -120,7 +113,6 @@ const AnalyticsDashboard = ({ analytics }) => {
                   labelLine={false}
                   label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                   outerRadius={80}
-                  fill="#8884d8"
                   dataKey="value"
                 >
                   {incomePieData.map((entry, index) => (
@@ -182,7 +174,7 @@ const AnalyticsDashboard = ({ analytics }) => {
           </div>
         </div>
 
-        {/* Trends */}
+        {/* Weekly Averages */}
         <div className="chart-container">
           <h3>Weekly Averages</h3>
           <div className="trends-summary">
@@ -197,39 +189,9 @@ const AnalyticsDashboard = ({ analytics }) => {
           </div>
         </div>
 
-        {/* Recent Transactions */}
-        <div className="chart-container full-width">
-          <h3>Recent Transactions</h3>
-          <div className="recent-transactions-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Vendor</th>
-                  <th>Category</th>
-                  <th>Amount</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analytics.recent_transactions?.map((trans) => (
-                  <tr key={trans.id}>
-                    <td>{new Date(trans.date).toLocaleDateString()}</td>
-                    <td>{trans.vendor}</td>
-                    <td>{trans.category}</td>
-                    <td className={trans.amount >= 0 ? 'positive' : 'negative'}>
-                      ${Math.abs(trans.amount).toFixed(2)}
-                    </td>
-                    <td>{trans.notes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     </div>
   );
 };
 
-export default AnalyticsDashboard;
+export default InsightsView;
