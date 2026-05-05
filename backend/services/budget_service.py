@@ -139,8 +139,8 @@ class BudgetService:
 
     def delete_budget(self, budget_id):
         """
-        Remove a budget allocation and clear all over_budget flags for its
-        category/period — with no allocation there is nothing to flag against.
+        Remove a budget allocation and any future rollover copies of it, then
+        clear over_budget flags on transactions for every affected period.
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
@@ -150,20 +150,41 @@ class BudgetService:
         category = budget.category
         period   = budget.period
 
-        year, month = int(period[:4]), int(period[5:7])
-        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+        # Collect the target budget plus all future rollover copies for this category
+        future_rollover = BudgetModel.query.filter(
+            BudgetModel.user_id  == user_id,
+            BudgetModel.category == category,
+            BudgetModel.period   >  period,
+            BudgetModel.rollover == True,
+        ).all()
+        to_delete = [budget] + future_rollover
 
-        # Bulk-clear flags before deleting the budget row
-        (TransactionModel.query
-            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
-            .filter(
-                AccountModel.user_id == user_id,
-                TransactionModel.category == category,
-                TransactionModel.date >= date(year, month, 1),
-                TransactionModel.date <  date(next_year, next_month, 1),
-            )
-            .update({'over_budget': False}, synchronize_session='fetch'))
+        for b in to_delete:
+            b_year, b_month = int(b.period[:4]), int(b.period[5:7])
+            b_next_year, b_next_month = (b_year + 1, 1) if b_month == 12 else (b_year, b_month + 1)
+            period_start = date(b_year,      b_month,      1)
+            period_end   = date(b_next_year, b_next_month, 1)
 
-        db.session.delete(budget)
+            # SELECT ids first — .update() cannot be used with .join()
+            tx_ids = [
+                t.id for t in (
+                    TransactionModel.query
+                    .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+                    .filter(
+                        AccountModel.user_id        == user_id,
+                        TransactionModel.category   == category,
+                        TransactionModel.date       >= period_start,
+                        TransactionModel.date       <  period_end,
+                    )
+                    .all()
+                )
+            ]
+            if tx_ids:
+                TransactionModel.query.filter(
+                    TransactionModel.id.in_(tx_ids)
+                ).update({'over_budget': False}, synchronize_session='fetch')
+
+            db.session.delete(b)
+
         db.session.commit()
         return True

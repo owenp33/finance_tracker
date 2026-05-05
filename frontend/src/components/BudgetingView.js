@@ -202,7 +202,7 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const handleDelete = async (item) => {
     if (
       !window.confirm(
-        `Remove "${item.category}" budget? This will clear over-budget flags on existing transactions.`
+        `Remove "${item.category}" budget? This will also delete all future rollover copies of this category and clear over-budget flags on affected transactions.`
       )
     ) return;
     try {
