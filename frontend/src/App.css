@@ -1988,3 +1988,38 @@ body {
   outline: none;
   padding: 2px 0;
 }
+
+/* ── Category Allocations card ─────────────────────────────────────────────── */
+.category-allocations-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 8px;
+}
+
+.category-allocations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.category-allocations-header h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.budget-income-pct {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
