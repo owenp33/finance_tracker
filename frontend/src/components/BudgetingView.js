@@ -314,76 +314,80 @@ function BudgetingView({ transactions, onBudgetChange }) {
         </div>
       )}
 
-      {/* Budget rows */}
-      {loading ? (
-        <p className="no-data">Loading…</p>
-      ) : progress.length === 0 ? (
-        <p className="no-data">No budgets set for this period. Add a category below.</p>
-      ) : (
-        <div className="budget-rows">
-          {progress.map(item => (
-            <BudgetRow
-              key={item.id}
-              item={item}
-              onAmountBlur={handleAmountBlur}
-              onRolloverToggle={handleRolloverToggle}
-              onDelete={handleDelete}
-              hasSaveError={saveErrors.has(item.id)}
-            />
-          ))}
+      {/* Category Allocations card */}
+      <div className="category-allocations-card">
+        <div className="category-allocations-header">
+          <h3>Category Allocations</h3>
+          {!showAddForm && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowAddForm(true)}>
+              + Add Category
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Add category */}
-      {!showAddForm ? (
-        <button className="btn btn-secondary" onClick={() => setShowAddForm(true)}>
-          + Add Category
-        </button>
-      ) : (
-        <div className="add-budget-form">
-          <div className="form-group">
-            <label>Category</label>
-            <input
-              list="budget-category-suggestions"
-              type="text"
-              value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
-              placeholder="e.g. Groceries"
-              autoFocus
-            />
-            {/* Native datalist gives free-text + suggestions in one element */}
-            <datalist id="budget-category-suggestions">
-              {suggestedCategories.map(c => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+        {showAddForm && (
+          <div className="add-budget-form">
+            <div className="form-group">
+              <label>Category</label>
+              <input
+                list="budget-category-suggestions"
+                type="text"
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                placeholder="e.g. Groceries"
+                autoFocus
+              />
+              <datalist id="budget-category-suggestions">
+                {suggestedCategories.map(c => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
+            <div className="form-group">
+              <label>Monthly Allocation ($)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={newAmount}
+                onChange={e => setNewAmount(e.target.value)}
+                placeholder="0.00"
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              />
+            </div>
+            <div className="form-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleAdd}
+                disabled={adding || !newCategory.trim() || !newAmount}
+              >
+                {adding ? 'Adding…' : 'Add'}
+              </button>
+              <button className="btn btn-ghost" onClick={cancelAdd}>Cancel</button>
+            </div>
           </div>
-          <div className="form-group">
-            <label>Monthly Allocation ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={newAmount}
-              onChange={e => setNewAmount(e.target.value)}
-              placeholder="0.00"
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            />
+        )}
+
+        {loading ? (
+          <p className="no-data">Loading…</p>
+        ) : progress.length === 0 ? (
+          <p className="no-data">No budgets set for this period. Add a category above.</p>
+        ) : (
+          <div className="budget-rows">
+            {progress.map(item => (
+              <BudgetRow
+                key={item.id}
+                item={item}
+                onAmountBlur={handleAmountBlur}
+                onRolloverToggle={handleRolloverToggle}
+                onDelete={handleDelete}
+                hasSaveError={saveErrors.has(item.id)}
+                monthlyIncome={monthlyIncome}
+              />
+            ))}
           </div>
-          <div className="form-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handleAdd}
-              disabled={adding || !newCategory.trim() || !newAmount}
-            >
-              {adding ? 'Adding…' : 'Add'}
-            </button>
-            <button className="btn btn-ghost" onClick={cancelAdd}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
     </div>
   );
