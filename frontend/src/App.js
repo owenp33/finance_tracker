@@ -92,10 +92,8 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    const tasks = [loadAccounts(), loadTransactions(), loadBudgetProgress()];
-    if (selectedAccount) tasks.push(loadAnalytics(selectedAccount));
-    await Promise.all(tasks);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics, selectedAccount]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadAnalytics()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -208,14 +206,9 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
+      loadAnalytics();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAnalytics(selectedAccount);
-    }
-  }, [selectedAccount, loadAnalytics]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
