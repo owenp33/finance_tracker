@@ -2093,6 +2093,13 @@ body {
 
 .budget-row-inline:last-child { border-bottom: none; }
 
+.bri-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .bri-category {
   flex: 1;
   font-weight: 600;

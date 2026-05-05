@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getCategoryColor } from '../categoryColors';
 
 function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveError, monthlyIncome }) {
   const [localAmount, setLocalAmount] = useState(item.allocated.toFixed(2));
@@ -23,6 +24,7 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
 
   return (
     <div className={`budget-row-inline${hasSaveError ? ' has-error' : ''}`}>
+      <span className="bri-dot" style={{ background: getCategoryColor(item.category) }} />
       <span className="bri-category">{item.category}</span>
 
       <div className="bri-amount-wrap">
