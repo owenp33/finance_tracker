@@ -266,6 +266,7 @@ function TransactionsView({
             onEdit={onEdit}
             onDelete={onDelete}
             showAll={true}
+            resetSignal={showForm}
           />
         </>
       )}
@@ -652,6 +653,7 @@ function TransactionsView({
               onEdit={onEdit}
               onDelete={onDelete}
               showAll={true}
+              resetSignal={showForm}
             />
           )}
         </div>

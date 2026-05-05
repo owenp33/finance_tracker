@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
+
+  useEffect(() => {
+    setEditingId(null);
+    setEditFields({});
+  }, [resetSignal]);
 
   if (!transactions || transactions.length === 0) {
     return <p className="no-data">No transactions found</p>;
@@ -84,7 +89,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
                 {showAll && (
                   <>
                     <button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)}>Edit</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(t.id)}>Delete</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => { setEditingId(null); onDelete(t.id); }}>Delete</button>
                   </>
                 )}
               </div>
