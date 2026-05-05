@@ -14,6 +14,9 @@ function TransactionsView({
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
+  onCreateAccount,
+  onEditAccount,
+  onDeleteAccount,
 }) {
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
@@ -26,6 +29,14 @@ function TransactionsView({
   // Recurring tab — inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
+
+  // Accounts tab
+  const [showAddAccountForm, setShowAddAccountForm] = useState(false);
+  const [newAccountId, setNewAccountId] = useState('');
+  const [newAccountName, setNewAccountName] = useState('');
+  const [accountAdding, setAccountAdding] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState(null);
+  const [editingAccountName, setEditingAccountName] = useState('');
 
   // Import tab
   const [importStep, setImportStep] = useState('pick');
@@ -182,6 +193,9 @@ function TransactionsView({
         <button className={`tab-btn${tab === 'flagged' ? ' active' : ''}`} onClick={() => setTab('flagged')}>
           Flagged
           {flagged.length > 0 && <span className="count-badge flagged-badge">{flagged.length}</span>}
+        </button>
+        <button className={`tab-btn${tab === 'accounts' ? ' active' : ''}`} onClick={() => setTab('accounts')}>
+          Accounts
         </button>
       </div>
 
@@ -466,6 +480,125 @@ function TransactionsView({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Accounts ─────────────────────────────────────────────────────── */}
+      {tab === 'accounts' && (
+        <div className="accounts-view">
+          <div className="view-header">
+            <h2>Bank Accounts</h2>
+            {!showAddAccountForm && (
+              <button className="btn btn-primary" onClick={() => setShowAddAccountForm(true)}>
+                + Add Account
+              </button>
+            )}
+          </div>
+
+          {showAddAccountForm && (
+            <div className="account-form">
+              <div className="form-group">
+                <label>Account ID <small>(e.g. checking-1234)</small></label>
+                <input
+                  type="text"
+                  value={newAccountId}
+                  onChange={e => setNewAccountId(e.target.value)}
+                  placeholder="checking-1234"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label>Display Name</label>
+                <input
+                  type="text"
+                  value={newAccountName}
+                  onChange={e => setNewAccountName(e.target.value)}
+                  placeholder="Chase Checking"
+                />
+              </div>
+              <div className="form-actions">
+                <button
+                  className="btn btn-primary"
+                  disabled={!newAccountId.trim() || accountAdding}
+                  onClick={async () => {
+                    setAccountAdding(true);
+                    await onCreateAccount(newAccountId.trim(), newAccountName.trim() || newAccountId.trim());
+                    setNewAccountId('');
+                    setNewAccountName('');
+                    setShowAddAccountForm(false);
+                    setAccountAdding(false);
+                  }}
+                >
+                  {accountAdding ? 'Adding…' : 'Add'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => { setShowAddAccountForm(false); setNewAccountId(''); setNewAccountName(''); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="accounts-list">
+            {accounts.length === 0 ? (
+              <p className="no-data">No accounts yet. Add one above.</p>
+            ) : (
+              accounts.map(a => (
+                <div key={a.id} className="account-item">
+                  {editingAccountId === a.id ? (
+                    <div className="account-edit-form">
+                      <input
+                        type="text"
+                        value={editingAccountName}
+                        onChange={e => setEditingAccountName(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="account-edit-actions">
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={async () => {
+                            await onEditAccount(a.id, { account_name: editingAccountName });
+                            setEditingAccountId(null);
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="account-info">
+                        <strong>{a.account_name}</strong>
+                        <small>{a.account_id}</small>
+                      </div>
+                      <div className="account-balance">
+                        ${a.balance?.toFixed(2) ?? '0.00'}
+                      </div>
+                      <div className="account-actions">
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return;
+                            await onDeleteAccount(a.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 

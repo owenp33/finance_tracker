@@ -1828,3 +1828,97 @@ body {
   font-size: 1.1rem;
   font-weight: 700;
 }
+/* ── Accounts tab ──────────────────────────────────────────────────────────── */
+.accounts-view {
+  padding: 16px 0;
+}
+
+.accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.account-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-info strong {
+  font-size: 1rem;
+  color: #1a1a2e;
+}
+
+.account-info small {
+  color: #888;
+  font-size: 0.82rem;
+}
+
+.account-balance {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #333;
+  min-width: 90px;
+  text-align: right;
+}
+
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.account-form {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 440px;
+}
+
+.account-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.account-edit-form input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.account-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Import confirm at top ─────────────────────────────────────────────────── */
+.import-actions-top {
+  margin-bottom: 12px;
+}
+
+/* ── Recurring number limit ────────────────────────────────────────────────── */
+.recurring-number-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
