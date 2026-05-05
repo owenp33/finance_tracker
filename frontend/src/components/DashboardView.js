@@ -73,7 +73,7 @@ function DashboardView({ analytics, transactions, budgetData, upcoming, onNaviga
 
       {/* Upcoming recurring transactions */}
       <div className="upcoming-section">
-        <h3>Upcoming</h3>
+        <h3>Upcoming This Week</h3>
         <UpcomingList items={upcoming} />
       </div>
 
