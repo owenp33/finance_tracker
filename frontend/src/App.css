@@ -1899,6 +1899,93 @@ body {
   gap: 8px;
 }
 
+/* ── Filter panel ──────────────────────────────────────────────────────────── */
+.filter-btn-active {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f0f3ff;
+}
+
+.filter-panel {
+  background: #f8f9fa;
+  border: 1.5px solid #e9ecef;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.filter-panel-sections {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.filter-clear-btn {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.filter-clear-btn:hover { text-decoration: underline; }
+
+.filter-scroll-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #333;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.filter-option:hover { background: #e9ecef; }
+
+.filter-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #667eea;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.filter-panel-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e9ecef;
+}
+
 /* ── Import confirm at top ─────────────────────────────────────────────────── */
 .import-actions-top {
   margin-bottom: 12px;

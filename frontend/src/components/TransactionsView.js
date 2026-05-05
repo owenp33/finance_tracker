@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -21,10 +21,12 @@ function TransactionsView({
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
 
-  // All tab — account filter
+  // All tab — filters
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  const [selectedCategories, setSelectedCategories] = useState(new Set());
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Recurring tab — inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
@@ -49,17 +51,9 @@ function TransactionsView({
   const [importLoading, setImportLoading] = useState(false);
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
   // ── All tab ──────────────────────────────────────────────────────────────
+
+  const allCategories = [...new Set(transactions.map(t => t.category))].sort();
 
   const toggleAccount = (id) =>
     setSelectedIds(prev => {
@@ -68,17 +62,32 @@ function TransactionsView({
       return next;
     });
 
-  const clearFilter = () => setSelectedIds(new Set());
+  const toggleCategory = (cat) =>
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
 
-  const filtered = selectedIds.size > 0
-    ? transactions.filter(t => selectedIds.has(t.account_id))
-    : transactions;
+  const clearAllFilters = () => {
+    setSelectedIds(new Set());
+    setSelectedCategories(new Set());
+    setDateFrom('');
+    setDateTo('');
+  };
 
-  const filterLabel = selectedIds.size === 0
-    ? 'All Accounts'
-    : selectedIds.size === 1
-      ? accounts.find(a => selectedIds.has(a.id))?.account_name
-      : `${selectedIds.size} accounts`;
+  const activeFilterCount =
+    (selectedIds.size > 0 ? 1 : 0) +
+    (selectedCategories.size > 0 ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0);
+
+  const filtered = transactions.filter(t => {
+    if (selectedIds.size > 0 && !selectedIds.has(t.account_id)) return false;
+    if (selectedCategories.size > 0 && !selectedCategories.has(t.category)) return false;
+    if (dateFrom && t.date < dateFrom) return false;
+    if (dateTo && t.date > dateTo) return false;
+    return true;
+  });
 
   // ── Recurring tab ────────────────────────────────────────────────────────
 
@@ -204,53 +213,93 @@ function TransactionsView({
       {tab === 'all' && (
         <>
           <div className="view-header">
-            <h2>Transactions</h2>
+            <h2>Transactions <span className="count-badge">{filtered.length}</span></h2>
             <div className="view-header-actions">
-              <div className="multi-select-dropdown" ref={dropdownRef}>
-                <button
-                  className="dropdown-trigger"
-                  onClick={() => setDropdownOpen(o => !o)}
-                  type="button"
-                >
-                  <span>{filterLabel}</span>
-                  <span className="dropdown-arrow">{dropdownOpen ? '▲' : '▼'}</span>
-                </button>
-                {dropdownOpen && (
-                  <div className="dropdown-menu">
-                    <div className="dropdown-header">
-                      <span>Filter by account</span>
-                      {selectedIds.size > 0 && (
-                        <button className="dropdown-clear" onClick={clearFilter}>Clear</button>
-                      )}
-                    </div>
-                    {accounts.map(a => (
-                      <label key={a.id} className="dropdown-option">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(a.id)}
-                          onChange={() => toggleAccount(a.id)}
-                        />
-                        <span>{a.account_name}</span>
-                        <span className="dropdown-option-balance">
-                          ${a.balance?.toFixed(2) || '0.00'}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <button
+                className={`btn btn-secondary${activeFilterCount > 0 ? ' filter-btn-active' : ''}`}
+                onClick={() => setShowFilters(f => !f)}
+                type="button"
+              >
+                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? '▲' : '▼'}
+              </button>
               <button className="btn btn-secondary" onClick={() => setTab('import')}>
                 Import CSV
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
+                {showForm ? 'Cancel' : '+ Add Transaction'}
               </button>
             </div>
           </div>
 
-          <div className="transactions-header">
-            <h2>{filterLabel} <span className="count-badge">{filtered.length}</span></h2>
-            <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
-              {showForm ? 'Cancel' : '+ Add Transaction'}
-            </button>
-          </div>
+          {showFilters && (
+            <div className="filter-panel">
+              <div className="filter-panel-sections">
+
+                <div className="filter-section">
+                  <div className="filter-section-header">
+                    <span>Account</span>
+                    {selectedIds.size > 0 && (
+                      <button className="filter-clear-btn" onClick={() => setSelectedIds(new Set())}>Clear</button>
+                    )}
+                  </div>
+                  {accounts.map(a => (
+                    <label key={a.id} className="filter-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(a.id)}
+                        onChange={() => toggleAccount(a.id)}
+                      />
+                      <span>{a.account_name}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="filter-section">
+                  <div className="filter-section-header">
+                    <span>Category</span>
+                    {selectedCategories.size > 0 && (
+                      <button className="filter-clear-btn" onClick={() => setSelectedCategories(new Set())}>Clear</button>
+                    )}
+                  </div>
+                  <div className="filter-scroll-list">
+                    {allCategories.map(cat => (
+                      <label key={cat} className="filter-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedCategories.has(cat)}
+                          onChange={() => toggleCategory(cat)}
+                        />
+                        <span>{cat}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="filter-section">
+                  <div className="filter-section-header">
+                    <span>Date Range</span>
+                    {(dateFrom || dateTo) && (
+                      <button className="filter-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>Clear</button>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label>From</label>
+                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>To</label>
+                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                  </div>
+                </div>
+
+              </div>
+              {activeFilterCount > 0 && (
+                <div className="filter-panel-footer">
+                  <button className="filter-clear-btn" onClick={clearAllFilters}>Clear all filters</button>
+                </div>
+              )}
+            </div>
+          )}
 
           {showForm && (
             <TransactionForm
