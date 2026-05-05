@@ -2082,6 +2082,98 @@ body {
   padding: 2px 0;
 }
 
+/* ── Budget inline row ─────────────────────────────────────────────────────── */
+.budget-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.budget-row-inline:last-child { border-bottom: none; }
+
+.bri-category {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bri-amount-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 3px 8px;
+  transition: border-color 0.2s;
+}
+
+.bri-amount-wrap:focus-within {
+  border-color: #667eea;
+  background: #fff;
+}
+
+.bri-prefix {
+  font-size: 0.88rem;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.bri-amount-input {
+  width: 72px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  outline: none;
+  text-align: right;
+}
+
+.bri-pct {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 32px;
+  text-align: right;
+}
+
+.bri-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.bri-rollover {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bri-rollover input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: #667eea;
+  cursor: pointer;
+}
+
+.bri-delete {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
 /* ── Category Allocations card ─────────────────────────────────────────────── */
 .category-allocations-card {
   background: #fff;
