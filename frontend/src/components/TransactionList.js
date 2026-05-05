@@ -5,8 +5,10 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
   const [editFields, setEditFields] = useState({});
 
   useEffect(() => {
-    setEditingId(null);
-    setEditFields({});
+    if (resetSignal) {
+      setEditingId(null);
+      setEditFields({});
+    }
   }, [resetSignal]);
 
   if (!transactions || transactions.length === 0) {
