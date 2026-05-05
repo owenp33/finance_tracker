@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit }) {
+const formatDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const formatAmount = (amount) =>
+  `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
+
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
 
@@ -78,16 +86,26 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
                 <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
               </div>
             </div>
+          ) : compact ? (
+            <>
+              <div className="transaction-info">
+                <strong>{t.vendor}</strong>
+                <span>{t.category} | {formatDate(t.date)}</span>
+              </div>
+              <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                {formatAmount(t.amount)}
+              </div>
+            </>
           ) : (
             <>
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} • {t.date}{t.account_name ? ` • ${t.account_name}` : ''}</span>
+                <span>{t.category} • {formatDate(t.date)}{t.account_name ? ` • ${t.account_name}` : ''}</span>
                 {t.notes && <small>{t.notes}</small>}
               </div>
               <div className="transaction-right">
                 <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                  {t.amount >= 0 ? '+' : ''}${Math.abs(t.amount).toFixed(2)}
+                  {formatAmount(t.amount)}
                 </div>
                 {showAll && (
                   <>
