@@ -1179,9 +1179,9 @@ body {
 
 .account-edit-form {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
 }
 
 .account-edit-inputs {
@@ -1889,15 +1889,7 @@ body {
   max-width: 440px;
 }
 
-.account-edit-form {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-}
-
 .account-edit-form input {
-  flex: 1;
   padding: 6px 10px;
   border: 1px solid #d1d5db;
   border-radius: 6px;

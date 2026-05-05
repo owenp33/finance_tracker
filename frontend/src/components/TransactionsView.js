@@ -284,10 +284,20 @@ function TransactionsView({
                 <div key={r.id} className="recurring-item">
                   {editingRecurringId === r.id ? (
                     <div className="recurring-edit-form">
-                      <div className="recurring-edit-fields">
-                        <input type="text" value={recurringEditFields.vendor} onChange={e => setRF('vendor', e.target.value)} placeholder="Vendor" />
-                        <input type="text" value={recurringEditFields.category} onChange={e => setRF('category', e.target.value)} placeholder="Category" />
-                        <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} placeholder="Amount" />
+                      <div className="form-group">
+                        <label>Vendor</label>
+                        <input type="text" value={recurringEditFields.vendor} onChange={e => setRF('vendor', e.target.value)} placeholder="e.g., Netflix" />
+                      </div>
+                      <div className="form-group">
+                        <label>Category</label>
+                        <input type="text" value={recurringEditFields.category} onChange={e => setRF('category', e.target.value)} placeholder="e.g., Subscriptions" />
+                      </div>
+                      <div className="form-group">
+                        <label>Amount <small>(negative = expense)</small></label>
+                        <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} />
+                      </div>
+                      <div className="form-group">
+                        <label>Frequency</label>
                         <select value={recurringEditFields.frequency} onChange={e => setRF('frequency', parseInt(e.target.value))}>
                           <option value={7}>Weekly (7 days)</option>
                           <option value={14}>Biweekly (14 days)</option>
@@ -296,8 +306,16 @@ function TransactionsView({
                           <option value={90}>Quarterly (90 days)</option>
                           <option value={365}>Yearly (365 days)</option>
                         </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Next Date</label>
                         <input type="date" value={recurringEditFields.next_date} onChange={e => setRF('next_date', e.target.value)} />
-                        <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} placeholder="Notes" />
+                      </div>
+                      <div className="form-group">
+                        <label>Notes <small>(optional)</small></label>
+                        <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} />
+                      </div>
+                      <div className="form-group">
                         <label className="recurring-number-label">
                           <input
                             type="checkbox"
@@ -316,7 +334,7 @@ function TransactionsView({
                           />
                         )}
                       </div>
-                      <div className="recurring-edit-actions">
+                      <div className="form-actions">
                         <button className="btn btn-primary btn-sm" onClick={() => saveEditRecurring(r.id)}>Save</button>
                         <button className="btn btn-ghost btn-sm" onClick={() => setEditingRecurringId(null)}>Cancel</button>
                       </div>
@@ -547,19 +565,25 @@ function TransactionsView({
                 <div key={a.id} className="account-item">
                   {editingAccountId === a.id ? (
                     <div className="account-edit-form">
-                      <input
-                        type="text"
-                        value={editingAccountIdStr}
-                        onChange={e => setEditingAccountIdStr(e.target.value)}
-                        placeholder="Account ID"
-                        autoFocus
-                      />
-                      <input
-                        type="text"
-                        value={editingAccountName}
-                        onChange={e => setEditingAccountName(e.target.value)}
-                        placeholder="Display Name"
-                      />
+                      <div className="form-group">
+                        <label>Account ID</label>
+                        <input
+                          type="text"
+                          value={editingAccountIdStr}
+                          onChange={e => setEditingAccountIdStr(e.target.value)}
+                          placeholder="e.g., checking-1234"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Display Name</label>
+                        <input
+                          type="text"
+                          value={editingAccountName}
+                          onChange={e => setEditingAccountName(e.target.value)}
+                          placeholder="e.g., Chase Checking"
+                        />
+                      </div>
                       <div className="account-edit-actions">
                         <button
                           className="btn btn-primary btn-sm"
