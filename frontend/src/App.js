@@ -92,8 +92,10 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
+    const tasks = [loadAccounts(), loadTransactions(), loadBudgetProgress()];
+    if (selectedAccount) tasks.push(loadAnalytics(selectedAccount));
+    await Promise.all(tasks);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics, selectedAccount]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -270,6 +272,9 @@ function App() {
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
             onImportDone={refreshAll}
+            onCreateAccount={handleCreateAccount}
+            onEditAccount={handleEditAccount}
+            onDeleteAccount={handleDeleteAccount}
           />
         )}
         {view === 'budgeting' && (
