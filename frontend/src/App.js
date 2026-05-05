@@ -130,7 +130,7 @@ function App() {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
