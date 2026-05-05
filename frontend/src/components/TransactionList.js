@@ -35,21 +35,37 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
         <div key={t.id} className="transaction-item">
           {editingId === t.id ? (
             <div className="transaction-edit-form">
-              <div className="transaction-edit-fields">
-                <input type="date" value={editFields.date} onChange={e => set('date', e.target.value)} />
-                <input type="text" value={editFields.vendor} onChange={e => set('vendor', e.target.value)} placeholder="Vendor" />
-                <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="Category" />
-                <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} placeholder="Amount" />
-                <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} placeholder="Notes" />
-                {accounts.length > 0 && (
+              {accounts.length > 0 && (
+                <div className="form-group">
+                  <label>Account</label>
                   <select value={editFields.account_id} onChange={e => set('account_id', parseInt(e.target.value))}>
                     {accounts.map(a => (
                       <option key={a.id} value={a.id}>{a.account_name}</option>
                     ))}
                   </select>
-                )}
+                </div>
+              )}
+              <div className="form-group">
+                <label>Date</label>
+                <input type="date" value={editFields.date} onChange={e => set('date', e.target.value)} />
               </div>
-              <div className="transaction-edit-actions">
+              <div className="form-group">
+                <label>Vendor</label>
+                <input type="text" value={editFields.vendor} onChange={e => set('vendor', e.target.value)} placeholder="e.g., Netflix" />
+              </div>
+              <div className="form-group">
+                <label>Category</label>
+                <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="e.g., Subscriptions" />
+              </div>
+              <div className="form-group">
+                <label>Amount <small>(negative = expense)</small></label>
+                <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Notes <small>(optional)</small></label>
+                <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} />
+              </div>
+              <div className="form-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => saveEdit(t.id)}>Save</button>
                 <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
               </div>
