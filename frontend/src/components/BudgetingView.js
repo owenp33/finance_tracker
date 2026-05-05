@@ -100,34 +100,34 @@ function BudgetingView({ transactions, onBudgetChange }) {
     try {
       const data = await getBudgetProgress(p);
 
-      // Auto-rollover: if this period is empty, walk back up to 12 months to
-      // find the nearest non-empty period and copy its rollover=true rows.
-      if (data.length === 0) {
-        try {
-          let searchPeriod = getPrevPeriod(p);
-          let toRollover = [];
-          for (let i = 0; i < 12; i++) {
-            const prevBudgets = await getBudgets(searchPeriod);
-            if (prevBudgets.length > 0) {
-              toRollover = prevBudgets.filter(b => b.rollover);
-              break;
-            }
-            searchPeriod = getPrevPeriod(searchPeriod);
+      // Auto-rollover: walk back up to 12 months to find the nearest non-empty
+      // period, then create any rollover=true categories missing from this period.
+      try {
+        let searchPeriod = getPrevPeriod(p);
+        let toRollover = [];
+        for (let i = 0; i < 12; i++) {
+          const prevBudgets = await getBudgets(searchPeriod);
+          if (prevBudgets.length > 0) {
+            toRollover = prevBudgets.filter(b => b.rollover);
+            break;
           }
-          if (toRollover.length > 0) {
-            await Promise.all(
-              toRollover.map(b =>
-                createBudget({ category: b.category, period: p, amount: b.amount, rollover: true })
-              )
-            );
-            const fresh = await getBudgetProgress(p);
-            setProgress(fresh);
-            onBudgetChange?.();
-            return;
-          }
-        } catch {
-          // Rollover failed — user can add categories manually
+          searchPeriod = getPrevPeriod(searchPeriod);
         }
+        const existing = new Set(data.map(b => b.category));
+        const missing = toRollover.filter(b => !existing.has(b.category));
+        if (missing.length > 0) {
+          await Promise.all(
+            missing.map(b =>
+              createBudget({ category: b.category, period: p, amount: b.amount, rollover: true })
+            )
+          );
+          const fresh = await getBudgetProgress(p);
+          setProgress(fresh);
+          onBudgetChange?.();
+          return;
+        }
+      } catch {
+        // Rollover failed — user can add categories manually
       }
 
       setProgress(data);
