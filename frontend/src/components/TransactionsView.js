@@ -242,6 +242,18 @@ function TransactionsView({
                       <button className="filter-clear-btn" onClick={() => setSelectedIds(new Set())}>Clear</button>
                     )}
                   </div>
+                  <label className="filter-option filter-select-all">
+                    <input
+                      type="checkbox"
+                      checked={accounts.length > 0 && selectedIds.size === accounts.length}
+                      onChange={() =>
+                        selectedIds.size === accounts.length
+                          ? setSelectedIds(new Set())
+                          : setSelectedIds(new Set(accounts.map(a => a.id)))
+                      }
+                    />
+                    <span>Select All</span>
+                  </label>
                   {accounts.map(a => (
                     <label key={a.id} className="filter-option">
                       <input
@@ -262,6 +274,18 @@ function TransactionsView({
                     )}
                   </div>
                   <div className="filter-scroll-list">
+                    <label className="filter-option filter-select-all">
+                      <input
+                        type="checkbox"
+                        checked={allCategories.length > 0 && selectedCategories.size === allCategories.length}
+                        onChange={() =>
+                          selectedCategories.size === allCategories.length
+                            ? setSelectedCategories(new Set())
+                            : setSelectedCategories(new Set(allCategories))
+                        }
+                      />
+                      <span>Select All</span>
+                    </label>
                     {allCategories.map(cat => (
                       <label key={cat} className="filter-option">
                         <input

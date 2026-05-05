@@ -1972,6 +1972,14 @@ body {
 
 .filter-option:hover { background: #e9ecef; }
 
+.filter-select-all {
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+
 .filter-option input[type="checkbox"] {
   width: 14px;
   height: 14px;
