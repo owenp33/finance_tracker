@@ -104,7 +104,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
               <span className="tx-cat-dot" style={{ background: getColor(t.category) }} title={t.category} />
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{formatDate(t.date)}{t.notes ? ` · ${t.notes}` : ''}</span>
+                <span>{t.category} · {formatDate(t.date)}{t.notes ? ` · ${t.notes}` : ''}</span>
               </div>
               <div className="transaction-right">
                 {t.over_budget && <span className="tx-over-chip">Over budget</span>}
