@@ -31,7 +31,7 @@ function App() {
   const [recurringTransactions, setRecurringTransactions] = useState([]);
 
   // Domain hooks
-  const { accounts, selectedAccount, loadAccounts } = useAccounts({ setError });
+  const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
   const { upcoming, loadUpcoming } = useUpcoming({ setError });

@@ -289,20 +289,6 @@ body {
   font-weight: 700;
 }
 
-/* Recent Transactions Section */
-.recent-transactions-section {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-}
-
-.recent-transactions-section h3 {
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 1.3rem;
-}
-
 /* Transactions View */
 .transactions-view {
   background: white;
@@ -311,34 +297,6 @@ body {
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
 }
 
-.transactions-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-}
-
-.transactions-header h2 {
-  color: #333;
-  font-size: 1.8rem;
-}
-
-.add-btn {
-  background: #667eea;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.add-btn:hover {
-  background: #5568d3;
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-}
 
 /* Transaction Form */
 .transaction-form {
@@ -1030,107 +988,6 @@ body {
   vertical-align: middle;
 }
 
-/* === Multi-select Dropdown ================================================== */
-.multi-select-dropdown {
-  position: relative;
-}
-
-.dropdown-trigger {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: white;
-  border: 1.5px solid #dee2e6;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #333;
-  cursor: pointer;
-  min-width: 160px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.dropdown-trigger:hover {
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.dropdown-arrow {
-  font-size: 0.7rem;
-  color: #999;
-  margin-left: auto;
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: white;
-  border: 1.5px solid #dee2e6;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  min-width: 240px;
-  z-index: 100;
-  overflow: hidden;
-}
-
-.dropdown-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.dropdown-clear {
-  background: none;
-  border: none;
-  color: #667eea;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
-
-.dropdown-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.95rem;
-  color: #333;
-}
-
-.dropdown-option:hover {
-  background: #f8f9fa;
-}
-
-.dropdown-option input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #667eea;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.dropdown-option span:nth-child(2) {
-  flex: 1;
-}
-
-.dropdown-option-balance {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #999;
-}
 
 /* === Accounts View ============================================ */
 .accounts-view {
