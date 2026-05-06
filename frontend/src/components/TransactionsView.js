@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
+
+const formatDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const frequencyLabel = (days) => {
+  const map = { 7: 'Weekly', 14: 'Biweekly', 30: 'Monthly', 60: 'Every 2 months', 90: 'Quarterly', 365: 'Yearly' };
+  return map[days] || `Every ${days} days`;
+};
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -423,12 +433,13 @@ function TransactionsView({
                     <>
                       <div className="recurring-info">
                         <strong>{r.vendor}</strong>
-                        <span>{r.category} · Every {r.frequency} days</span>
+                        <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
                         {r.notes && <small>{r.notes}</small>}
                       </div>
-                      <div className="recurring-amount">${Math.abs(r.amount).toFixed(2)}</div>
-                      <div className="recurring-dates"><small>Next: {r.next_date}</small></div>
-                      <div className="recurring-actions">
+                      <div className="transaction-right">
+                        <span className={`transaction-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
+                          {r.amount >= 0 ? '+' : '-'}${Math.abs(r.amount).toFixed(2)}
+                        </span>
                         <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}><Pencil size={14} /></button>
                         <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}><Trash2 size={14} /></button>
                       </div>
