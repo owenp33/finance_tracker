@@ -77,6 +77,11 @@ function TransactionsView({
   // All tab — pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
+  // Sorting
+  const [allSort,       setAllSort]       = useState('date-desc');
+  const [recurringSort, setRecurringSort] = useState('date-asc');
+  const [flaggedSort,   setFlaggedSort]   = useState('date-desc');
+
   // Recurring tab — inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
@@ -138,6 +143,19 @@ function TransactionsView({
     setDateTo(periodTo);
   };
 
+  const sortList = (list, sort, dateKey = 'date') => {
+    const s = [...list];
+    switch (sort) {
+      case 'date-desc':   return s.sort((a, b) => b[dateKey].localeCompare(a[dateKey]));
+      case 'date-asc':    return s.sort((a, b) => a[dateKey].localeCompare(b[dateKey]));
+      case 'amount-desc': return s.sort((a, b) => b.amount - a.amount);
+      case 'amount-asc':  return s.sort((a, b) => a.amount - b.amount);
+      case 'vendor-asc':  return s.sort((a, b) => a.vendor.localeCompare(b.vendor));
+      case 'vendor-desc': return s.sort((a, b) => b.vendor.localeCompare(a.vendor));
+      default: return s;
+    }
+  };
+
   const filtered = transactions.filter(t => {
     if (selectedIds.size > 0 && !selectedIds.has(t.account_id)) return false;
     if (selectedCategories.size > 0 && !selectedCategories.has(t.category)) return false;
@@ -146,7 +164,8 @@ function TransactionsView({
     return true;
   });
 
-  const visible = filtered.slice(0, visibleCount);
+  const sortedFiltered = sortList(filtered, allSort);
+  const visible = sortedFiltered.slice(0, visibleCount);
 
   // ── Recurring tab ────────────────────────────────────────────────────────
 
@@ -219,7 +238,8 @@ function TransactionsView({
 
   // ── Flagged tab ──────────────────────────────────────────────────────────
 
-  const flagged = transactions.filter(t => t.over_budget);
+  const flagged = sortList(transactions.filter(t => t.over_budget), flaggedSort);
+  const sortedRecurring = sortList(recurringTransactions, recurringSort, 'next_date');
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -248,6 +268,14 @@ function TransactionsView({
               >
                 Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? '▲' : '▼'}
               </button>
+              <select className="sort-select" value={allSort} onChange={e => { setAllSort(e.target.value); setVisibleCount(PAGE_SIZE); }}>
+                <option value="date-desc">Date (newest)</option>
+                <option value="date-asc">Date (oldest)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
+              </select>
               <button className="btn btn-secondary" onClick={() => setTab('import')}>Import CSV</button>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
                 {showForm ? 'Cancel' : '+ Add Transaction'}
@@ -375,12 +403,35 @@ function TransactionsView({
       {/* ── Recurring ─────────────────────────────────────────────────────── */}
       {tab === 'recurring' && (
         <div className="recurring-view">
-          <div className="view-header"><h2>Recurring Transactions</h2></div>
+          <div className="view-header">
+            <h2>Recurring Transactions <span className="count-badge">{recurringTransactions.length}</span></h2>
+            <div className="view-header-actions">
+              <select className="sort-select" value={recurringSort} onChange={e => setRecurringSort(e.target.value)}>
+                <option value="date-asc">Next date (soonest)</option>
+                <option value="date-desc">Next date (latest)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
+              </select>
+              <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
+                {showForm ? 'Cancel' : '+ Add Recurring'}
+              </button>
+            </div>
+          </div>
+          {showForm && (
+            <TransactionForm
+              onSubmit={async (data) => { await onAdd(data); setShowForm(false); }}
+              onSubmitRecurring={async (data) => { await onAddRecurring(data); setShowForm(false); }}
+              onCancel={() => setShowForm(false)}
+              accounts={accounts}
+            />
+          )}
           <div className="recurring-list">
             {recurringTransactions.length === 0 ? (
               <p className="no-data">No recurring transactions found</p>
             ) : (
-              recurringTransactions.map(r => (
+              sortedRecurring.map(r => (
                 <div key={r.id} className="recurring-item">
                   {editingRecurringId === r.id ? (
                     <div className="recurring-edit-form">
@@ -612,7 +663,19 @@ function TransactionsView({
       {/* ── Flagged ───────────────────────────────────────────────────────── */}
       {tab === 'flagged' && (
         <div>
-          <div className="view-header"><h2>Over-Budget Transactions</h2></div>
+          <div className="view-header">
+            <h2>Over-Budget Transactions <span className="count-badge flagged-badge">{flagged.length}</span></h2>
+            <div className="view-header-actions">
+              <select className="sort-select" value={flaggedSort} onChange={e => setFlaggedSort(e.target.value)}>
+                <option value="date-desc">Date (newest)</option>
+                <option value="date-asc">Date (oldest)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
+              </select>
+            </div>
+          </div>
           {flagged.length === 0 ? (
             <p className="no-data">No over-budget transactions — you're on track!</p>
           ) : (

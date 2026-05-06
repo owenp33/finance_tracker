@@ -956,6 +956,22 @@ body {
   line-height: 1;
 }
 
+.sort-select {
+  padding: 6px 10px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: white;
+  color: #495057;
+  cursor: pointer;
+  height: 36px;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
 /* === View Header ================================================= */
 .view-header {
   display: flex;
