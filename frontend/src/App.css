@@ -402,22 +402,37 @@ body {
 .transaction-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .transaction-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 10px;
-  transition: all 0.3s ease;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9ecef;
+  gap: 10px;
 }
 
-.transaction-item:hover {
-  background: #e9ecef;
-  transform: translateX(5px);
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.tx-cat-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tx-over-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e03131;
+  background: #ffe3e3;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
 }
 
 .transaction-info {
@@ -2335,23 +2350,4 @@ body {
   overflow-y: auto;
 }
 
-/* ── Compact transaction list (dashboard recent) ──────────────────────────── */
-.transaction-list.compact {
-  gap: 0;
-}
-
-.transaction-list.compact .transaction-item {
-  background: none;
-  border-radius: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.transaction-list.compact .transaction-item:last-child {
-  border-bottom: none;
-}
-
-.transaction-list.compact .transaction-item:hover {
-  background: none;
-  transform: none;
-}
+/* compact variant has no additional overrides needed — base style is already line-based */

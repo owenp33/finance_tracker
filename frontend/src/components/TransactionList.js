@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
+import { useCategoryColors } from '../CategoryColorContext';
 
 const formatDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -12,6 +13,7 @@ const formatAmount = (amount) =>
 function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
+  const { getColor } = useCategoryColors();
 
   useEffect(() => {
     if (resetSignal) {
@@ -99,12 +101,13 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
             </>
           ) : (
             <>
+              <span className="tx-cat-dot" style={{ background: getColor(t.category) }} title={t.category} />
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} • {formatDate(t.date)}{t.account_name ? ` • ${t.account_name}` : ''}</span>
-                {t.notes && <small>{t.notes}</small>}
+                <span>{formatDate(t.date)}{t.notes ? ` · ${t.notes}` : ''}</span>
               </div>
               <div className="transaction-right">
+                {t.over_budget && <span className="tx-over-chip">Over budget</span>}
                 <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                   {formatAmount(t.amount)}
                 </div>
