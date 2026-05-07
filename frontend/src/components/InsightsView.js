@@ -3,10 +3,25 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { useCategoryColors } from '../CategoryColorContext';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF6B6B'];
+function PieLegend({ data, getColor }) {
+  return (
+    <div className="pie-legend">
+      {data.map((entry) => (
+        <div key={entry.name} className="pie-legend-item">
+          <span className="pie-legend-dot" style={{ background: getColor(entry.name) }} />
+          <span className="pie-legend-name">{entry.name}</span>
+          <span className="pie-legend-value">${entry.value.toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const InsightsView = ({ analytics }) => {
+  const { getColor } = useCategoryColors();
+
   if (!analytics) {
     return <div className="analytics-loading">Loading analytics...</div>;
   }
@@ -77,24 +92,19 @@ const InsightsView = ({ analytics }) => {
         <div className="chart-container">
           <h3>Spending by Category</h3>
           {spendingPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={spendingPieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  dataKey="value"
-                >
-                  {spendingPieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="pie-chart-row">
+              <ResponsiveContainer width={220} height={220}>
+                <PieChart>
+                  <Pie data={spendingPieData} cx="50%" cy="50%" outerRadius={90} dataKey="value" labelLine={false}>
+                    {spendingPieData.map((entry) => (
+                      <Cell key={entry.name} fill={getColor(entry.name)} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                </PieChart>
+              </ResponsiveContainer>
+              <PieLegend data={spendingPieData} getColor={getColor} />
+            </div>
           ) : (
             <p className="no-data">No expense data available</p>
           )}
@@ -104,24 +114,19 @@ const InsightsView = ({ analytics }) => {
         <div className="chart-container">
           <h3>Income by Category</h3>
           {incomePieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={incomePieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  dataKey="value"
-                >
-                  {incomePieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="pie-chart-row">
+              <ResponsiveContainer width={220} height={220}>
+                <PieChart>
+                  <Pie data={incomePieData} cx="50%" cy="50%" outerRadius={90} dataKey="value" labelLine={false}>
+                    {incomePieData.map((entry) => (
+                      <Cell key={entry.name} fill={getColor(entry.name)} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                </PieChart>
+              </ResponsiveContainer>
+              <PieLegend data={incomePieData} getColor={getColor} />
+            </div>
           ) : (
             <p className="no-data">No income data available</p>
           )}

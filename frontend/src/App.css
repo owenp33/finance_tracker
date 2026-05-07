@@ -1175,6 +1175,49 @@ body {
 
 .chart-container.full-width { grid-column: 1 / -1; }
 
+.pie-chart-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pie-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 220px;
+}
+
+.pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.83rem;
+}
+
+.pie-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pie-legend-name {
+  flex: 1;
+  color: #495057;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pie-legend-value {
+  color: #212529;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .chart-container h3 {
   margin: 0 0 20px 0;
   color: #333;
