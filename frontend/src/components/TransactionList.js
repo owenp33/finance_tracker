@@ -10,7 +10,7 @@ const formatDate = (dateStr) => {
 const formatAmount = (amount) =>
   `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -101,6 +101,15 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
             </>
           ) : (
             <>
+              {onToggle && (
+                <input
+                  type="checkbox"
+                  className="tx-checkbox"
+                  checked={selectedIds?.has(t.id) ?? false}
+                  onChange={() => onToggle(t.id)}
+                  onClick={e => e.stopPropagation()}
+                />
+              )}
               <span className="tx-cat-dot" style={{ background: getColor(t.category) }} title={t.category} />
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>

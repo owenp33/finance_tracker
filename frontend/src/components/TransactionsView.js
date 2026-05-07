@@ -54,6 +54,7 @@ function TransactionsView({
   onAddRecurring,
   onEdit,
   onDelete,
+  onDeleteMany,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -76,6 +77,9 @@ function TransactionsView({
 
   // All tab — pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // All tab — bulk selection
+  const [selectedTxIds, setSelectedTxIds] = useState(new Set());
 
   // Sorting
   const [allSort,       setAllSort]       = useState('date-desc');
@@ -105,8 +109,11 @@ function TransactionsView({
   const [importLoading, setImportLoading] = useState(false);
   const [importSuccessMsg, setImportSuccessMsg] = useState('');
 
-  // Reset pagination whenever filters or date range change
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [selectedIds, selectedCategories, dateFrom, dateTo]);
+  // Reset pagination and selection whenever filters or date range change
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    setSelectedTxIds(new Set());
+  }, [selectedIds, selectedCategories, dateFrom, dateTo]);
 
   // ── All tab ──────────────────────────────────────────────────────────────
 
@@ -141,6 +148,20 @@ function TransactionsView({
     setSelectedCategories(new Set());
     setDateFrom(periodFrom);
     setDateTo(periodTo);
+  };
+
+  const toggleSelectTx = (id) =>
+    setSelectedTxIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const allFilteredSelected = sortedFiltered.length > 0 && sortedFiltered.every(t => selectedTxIds.has(t.id));
+
+  const toggleSelectAllTx = () =>
+    setSelectedTxIds(allFilteredSelected ? new Set() : new Set(sortedFiltered.map(t => t.id)));
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedTxIds);
+    await onDeleteMany(ids);
+    setSelectedTxIds(new Set());
   };
 
   const sortList = (list, sort, dateKey = 'date') => {
@@ -374,6 +395,26 @@ function TransactionsView({
             />
           )}
 
+          {/* Bulk action bar */}
+          {sortedFiltered.length > 0 && (
+            <div className="bulk-action-bar">
+              <label className="bulk-select-all">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  ref={el => { if (el) el.indeterminate = selectedTxIds.size > 0 && !allFilteredSelected; }}
+                  onChange={toggleSelectAllTx}
+                />
+                <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${sortedFiltered.length}`}</span>
+              </label>
+              {selectedTxIds.size > 0 && (
+                <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                  Delete {selectedTxIds.size} selected
+                </button>
+              )}
+            </div>
+          )}
+
           <TransactionList
             transactions={visible}
             accounts={accounts}
@@ -382,6 +423,8 @@ function TransactionsView({
             showAll={true}
             resetSignal={showForm}
             onStartEdit={() => setShowForm(false)}
+            selectedIds={selectedTxIds}
+            onToggle={toggleSelectTx}
           />
 
           {/* Load more / count bar */}
@@ -391,9 +434,16 @@ function TransactionsView({
                 Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} transactions
               </span>
               {visibleCount < filtered.length && (
-                <button className="btn btn-ghost btn-sm" onClick={() => setVisibleCount(n => n + PAGE_SIZE)}>
-                  Load more
-                </button>
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setVisibleCount(n => n + PAGE_SIZE)}>
+                    Load more
+                  </button>
+                  {filtered.length > 20 && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setVisibleCount(filtered.length)}>
+                      Load all ({filtered.length})
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}

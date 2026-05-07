@@ -126,6 +126,16 @@ function App() {
     }
   };
 
+  const handleDeleteManyTransactions = async (ids) => {
+    if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
+    try {
+      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleAddRecurring = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
@@ -262,6 +272,7 @@ function App() {
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
+            onDeleteMany={handleDeleteManyTransactions}
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
             onImportDone={refreshAll}

@@ -1843,6 +1843,39 @@ body {
   gap: 8px;
 }
 
+/* ── Bulk action bar ───────────────────────────────────────────────────────── */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 4px;
+}
+
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #495057;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bulk-select-all input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.tx-checkbox {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 /* ── Load more bar ─────────────────────────────────────────────────────────── */
 .load-more-bar {
   display: flex;
@@ -1851,6 +1884,14 @@ body {
   padding: 12px 4px 4px;
   border-top: 1px solid #e9ecef;
   margin-top: 4px;
+}
+
+.load-more-bar > * + * {
+  margin-left: 8px;
+}
+
+.load-more-bar > :last-child {
+  margin-left: auto;
 }
 
 .load-more-label {
