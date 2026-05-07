@@ -11,7 +11,7 @@ function AppHeader({ user, onLogout, view, onViewChange, error, onDismissError }
   return (
     <header className="App-header">
       <div className="header-content">
-        <h1>💰 Money Tracker</h1>
+        <h1>💲 Personal Finance Dashboard 💵</h1>
         <div className="header-actions">
           <span>Welcome, {user?.username}!</span>
           <button onClick={onLogout} className="logout-btn">Logout</button>

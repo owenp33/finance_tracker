@@ -20,7 +20,7 @@ function AuthScreen({ onLogin, onRegister, error }) {
   return (
     <div className="auth-screen">
       <div className="auth-container">
-        <h1>💰 Money Tracker</h1>
+        <h1>💲 Personal Finance Dashboard 💵</h1>
         <h2>{isLogin ? 'Login' : 'Register'}</h2>
 
         {error && <div className="error-message">{error}</div>}
