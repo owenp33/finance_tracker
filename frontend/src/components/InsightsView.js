@@ -67,7 +67,7 @@ const InsightsView = ({ analytics }) => {
           <h3>Net Amount</h3>
           <div className="amount">${analytics.summary.net_amount.toLocaleString()}</div>
           <div className="subtitle">
-            {analytics.summary.net_amount >= 0 ? '✓ Positive' : '⚠ Negative'}
+            {analytics.summary.net_amount >= 0 ? '+ Positive' : '- Negative'}
           </div>
         </div>
       </div>

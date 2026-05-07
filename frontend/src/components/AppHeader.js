@@ -1,17 +1,18 @@
 import React from 'react';
+import { LayoutDashboard, ArrowLeftRight, Wallet, TrendingUp } from 'lucide-react';
 
-const NAV_LABELS = {
-  dashboard: '📊 Dashboard',
-  transactions: '💳 Transactions',
-  budgeting: '💰 Budgeting',
-  insights: '📈 Insights',
-};
+const NAV_ITEMS = [
+  { key: 'dashboard',    label: 'Dashboard',    Icon: LayoutDashboard },
+  { key: 'transactions', label: 'Transactions', Icon: ArrowLeftRight  },
+  { key: 'budgeting',    label: 'Budgeting',    Icon: Wallet          },
+  { key: 'insights',     label: 'Insights',     Icon: TrendingUp      },
+];
 
 function AppHeader({ user, onLogout, view, onViewChange, error, onDismissError }) {
   return (
     <header className="App-header">
       <div className="header-content">
-        <h1>💲 Personal Finance Dashboard 💵</h1>
+        <h1>Personal Finance Dashboard</h1>
         <div className="header-actions">
           <span>Welcome, {user?.username}!</span>
           <button onClick={onLogout} className="logout-btn">Logout</button>
@@ -19,12 +20,13 @@ function AppHeader({ user, onLogout, view, onViewChange, error, onDismissError }
       </div>
 
       <nav className="view-nav">
-        {Object.entries(NAV_LABELS).map(([key, label]) => (
+        {NAV_ITEMS.map(({ key, label, Icon }) => (
           <button
             key={key}
             className={view === key ? 'active' : ''}
             onClick={() => onViewChange(key)}
           >
+            <Icon size={16} />
             {label}
           </button>
         ))}

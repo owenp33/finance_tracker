@@ -231,7 +231,7 @@ function App() {
     return (
       <div className="App">
         <div className="loading-screen">
-          <h1>💲 Personal Finance Dashboard 💵</h1>
+          <h1>Personal Finance Dashboard</h1>
           <p>Loading...</p>
         </div>
       </div>
