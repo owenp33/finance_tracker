@@ -1481,6 +1481,51 @@ body {
 /* === Orange utility ======================================== */
 .orange { color: #e67700; }
 
+/* === Insights Filters ====================================== */
+.insights-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: #f8f9fa;
+  padding: 14px 18px;
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+
+.insights-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.insights-filter-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+}
+
+.insights-filter-group input[type="date"] {
+  padding: 8px 10px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.insights-filter-group input[type="date"]:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.insights-category-menu {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
 /* === Budgeting View ========================================= */
 .budgeting-view {
   background: white;

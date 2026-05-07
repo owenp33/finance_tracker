@@ -288,7 +288,7 @@ function App() {
           />
         )}
         {view === 'insights' && (
-          <InsightsView analytics={analytics} />
+          <InsightsView transactions={transactions} accounts={accounts} />
         )}
       </main>
     </div>
