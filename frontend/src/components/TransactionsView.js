@@ -150,20 +150,6 @@ function TransactionsView({
     setDateTo(periodTo);
   };
 
-  const toggleSelectTx = (id) =>
-    setSelectedTxIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const allFilteredSelected = sortedFiltered.length > 0 && sortedFiltered.every(t => selectedTxIds.has(t.id));
-
-  const toggleSelectAllTx = () =>
-    setSelectedTxIds(allFilteredSelected ? new Set() : new Set(sortedFiltered.map(t => t.id)));
-
-  const handleBulkDelete = async () => {
-    const ids = Array.from(selectedTxIds);
-    await onDeleteMany(ids);
-    setSelectedTxIds(new Set());
-  };
-
   const sortList = (list, sort, dateKey = 'date') => {
     const s = [...list];
     switch (sort) {
@@ -187,6 +173,20 @@ function TransactionsView({
 
   const sortedFiltered = sortList(filtered, allSort);
   const visible = sortedFiltered.slice(0, visibleCount);
+
+  const toggleSelectTx = (id) =>
+    setSelectedTxIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const allFilteredSelected = sortedFiltered.length > 0 && sortedFiltered.every(t => selectedTxIds.has(t.id));
+
+  const toggleSelectAllTx = () =>
+    setSelectedTxIds(allFilteredSelected ? new Set() : new Set(sortedFiltered.map(t => t.id)));
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedTxIds);
+    await onDeleteMany(ids);
+    setSelectedTxIds(new Set());
+  };
 
   // ── Recurring tab ────────────────────────────────────────────────────────
 
