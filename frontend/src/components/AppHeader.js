@@ -1,9 +1,9 @@
 import React from 'react';
-import { LayoutDashboard, ArrowLeftRight, Wallet, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Receipt, Wallet, TrendingUp } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'dashboard',    label: 'Dashboard',    Icon: LayoutDashboard },
-  { key: 'transactions', label: 'Transactions', Icon: ArrowLeftRight  },
+  { key: 'transactions', label: 'Transactions', Icon: Receipt  },
   { key: 'budgeting',    label: 'Budgeting',    Icon: Wallet          },
   { key: 'insights',     label: 'Insights',     Icon: TrendingUp      },
 ];
