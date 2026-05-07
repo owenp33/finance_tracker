@@ -19,6 +19,11 @@ body {
   padding: 20px;
 }
 
+.App-main {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
 /* Loading Screen */
 .loading-screen {
   display: flex;
