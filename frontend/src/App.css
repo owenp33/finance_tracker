@@ -1113,7 +1113,7 @@ body {
 
 /* === InsightsView / AnalyticsDashboard =================================== */
 .analytics-dashboard {
-  padding: 20px;
+  padding: 0;
 }
 
 .analytics-loading {
