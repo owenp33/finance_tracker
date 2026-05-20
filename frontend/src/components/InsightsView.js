@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -114,6 +114,26 @@ function PieLegend({ data, getColor }) {
   );
 }
 
+const PRESETS = [
+  ['all', 'All Time'],
+  ['1m',  '1M'],
+  ['3m',  '3M'],
+  ['6m',  '6M'],
+  ['ytd', 'YTD'],
+];
+
+const toISO = d => d.toISOString().slice(0, 10);
+
+function presetDates(preset) {
+  const today = new Date();
+  if (preset === 'all')  return { start: '', end: '' };
+  if (preset === 'ytd')  return { start: `${today.getFullYear()}-01-01`, end: toISO(today) };
+  const months = { '1m': 1, '3m': 3, '6m': 6 }[preset];
+  const d = new Date(today);
+  d.setMonth(d.getMonth() - months);
+  return { start: toISO(d), end: toISO(today) };
+}
+
 const InsightsView = ({ transactions = [], accounts = [] }) => {
   const { getColor } = useCategoryColors();
 
@@ -122,25 +142,20 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
   const [endDate,            setEndDate]            = useState('');
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
-  const [accountOpen,        setAccountOpen]        = useState(false);
-  const [categoryOpen,       setCategoryOpen]       = useState(false);
-  const accountRef  = useRef(null);
-  const categoryRef = useRef(null);
-
-  // Close dropdowns on outside click
-  useEffect(() => {
-    const handler = (e) => {
-      if (accountRef.current  && !accountRef.current.contains(e.target))  setAccountOpen(false);
-      if (categoryRef.current && !categoryRef.current.contains(e.target)) setCategoryOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  const [datePreset,         setDatePreset]         = useState('all');
+  const [filtersOpen,        setFiltersOpen]        = useState(false);
 
   const allCategories = useMemo(
     () => [...new Set(transactions.map(t => t.category))].sort(),
     [transactions],
   );
+
+  const applyPreset = (preset) => {
+    const { start, end } = presetDates(preset);
+    setDatePreset(preset);
+    setStartDate(start);
+    setEndDate(end);
+  };
 
   const toggle = (setter, val) => setter(prev => {
     const next = new Set(prev);
@@ -149,25 +164,32 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
   });
 
   const clearFilters = () => {
-    setStartDate('');
-    setEndDate('');
+    applyPreset('all');
     setSelectedAccountIds(new Set());
     setSelectedCategories(new Set());
   };
 
-  const hasFilters = startDate || endDate || selectedAccountIds.size > 0 || selectedCategories.size > 0;
+  const dateActive   = !!(startDate || endDate);
+  const activeFilterCount =
+    (dateActive ? 1 : 0) +
+    (selectedAccountIds.size > 0 ? 1 : 0) +
+    (selectedCategories.size > 0 ? 1 : 0);
 
-  const accountLabel = selectedAccountIds.size === 0
-    ? 'All Accounts'
-    : selectedAccountIds.size === 1
-      ? accounts.find(a => selectedAccountIds.has(a.id))?.account_name ?? '1 account'
-      : `${selectedAccountIds.size} accounts`;
-
-  const categoryLabel = selectedCategories.size === 0
-    ? 'All Categories'
-    : selectedCategories.size === 1
-      ? [...selectedCategories][0]
-      : `${selectedCategories.size} categories`;
+  // Human-readable period for the header
+  const fmtDate = (d) => d
+    ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : null;
+  const periodLabel = (() => {
+    const labels = { '1m': 'Last month', '3m': 'Last 3 months', '6m': 'Last 6 months', ytd: 'Year to date' };
+    if (labels[datePreset]) return labels[datePreset];
+    const s = fmtDate(startDate);
+    const e = fmtDate(endDate);
+    if (s && e && s !== e) return `${s} – ${e}`;
+    if (s && e)            return s;
+    if (s)                 return `From ${s}`;
+    if (e)                 return `Until ${e}`;
+    return 'All time';
+  })();
 
   // ── Derived data ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => transactions.filter(t => {
@@ -180,85 +202,145 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
 
   const analytics = useMemo(() => computeAnalytics(filtered), [filtered]);
 
-  // ── Filter bar (always rendered) ─────────────────────────────────────────
-  const filterBar = (
-    <div className="insights-filters">
-      <div className="insights-filter-group">
-        <label>From</label>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-      </div>
-      <div className="insights-filter-group">
-        <label>To</label>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+  // ── Header + filter panel ─────────────────────────────────────────────────
+  const header = (
+    <>
+      <div className="view-header">
+        <div className="insights-title-row">
+          <h2>Insights</h2>
+          <span className="insights-period-label">{periodLabel}</span>
+        </div>
+        <div className="view-header-actions">
+          <button
+            className={`btn btn-secondary${activeFilterCount > 0 ? ' filter-btn-active' : ''}`}
+            onClick={() => setFiltersOpen(f => !f)}
+          >
+            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {filtersOpen ? '▲' : '▼'}
+          </button>
+        </div>
       </div>
 
-      {/* Account multi-select */}
-      <div className="multi-select-dropdown" ref={accountRef}>
-        <button className="dropdown-trigger" onClick={() => setAccountOpen(o => !o)} type="button">
-          <span>{accountLabel}</span>
-          <span className="dropdown-arrow">{accountOpen ? '▲' : '▼'}</span>
-        </button>
-        {accountOpen && (
-          <div className="dropdown-menu">
-            <div className="dropdown-header">
-              <span>Filter by account</span>
-              {selectedAccountIds.size > 0 && (
-                <button className="dropdown-clear" onClick={() => setSelectedAccountIds(new Set())}>Clear</button>
-              )}
+      {filtersOpen && (
+        <div className="filter-panel">
+          <div className="filter-panel-sections">
+
+            {/* Period */}
+            <div className="filter-section">
+              <div className="filter-section-header">
+                <span>Period</span>
+                {dateActive && (
+                  <button className="filter-clear-btn" onClick={() => applyPreset('all')}>Clear</button>
+                )}
+              </div>
+              <div className="preset-pills">
+                {PRESETS.map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`preset-pill${datePreset === key ? ' active' : ''}`}
+                    onClick={() => applyPreset(key)}
+                  >{label}</button>
+                ))}
+              </div>
+              <div className="form-group" style={{ marginTop: 10 }}>
+                <label>From</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => { setStartDate(e.target.value); setDatePreset('custom'); }}
+                />
+              </div>
+              <div className="form-group">
+                <label>To</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={e => { setEndDate(e.target.value); setDatePreset('custom'); }}
+                />
+              </div>
             </div>
-            {accounts.map(a => (
-              <label key={a.id} className="dropdown-option">
+
+            {/* Account */}
+            <div className="filter-section">
+              <div className="filter-section-header">
+                <span>Account</span>
+                {selectedAccountIds.size > 0 && (
+                  <button className="filter-clear-btn" onClick={() => setSelectedAccountIds(new Set())}>Clear</button>
+                )}
+              </div>
+              <label className="filter-option filter-select-all">
                 <input
                   type="checkbox"
-                  checked={selectedAccountIds.has(a.id)}
-                  onChange={() => toggle(setSelectedAccountIds, a.id)}
+                  checked={accounts.length > 0 && selectedAccountIds.size === accounts.length}
+                  onChange={() =>
+                    selectedAccountIds.size === accounts.length
+                      ? setSelectedAccountIds(new Set())
+                      : setSelectedAccountIds(new Set(accounts.map(a => a.id)))
+                  }
                 />
-                <span>{a.account_name}</span>
+                <span>Select All</span>
               </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Category multi-select */}
-      <div className="multi-select-dropdown" ref={categoryRef}>
-        <button className="dropdown-trigger" onClick={() => setCategoryOpen(o => !o)} type="button">
-          <span>{categoryLabel}</span>
-          <span className="dropdown-arrow">{categoryOpen ? '▲' : '▼'}</span>
-        </button>
-        {categoryOpen && (
-          <div className="dropdown-menu insights-category-menu">
-            <div className="dropdown-header">
-              <span>Filter by category</span>
-              {selectedCategories.size > 0 && (
-                <button className="dropdown-clear" onClick={() => setSelectedCategories(new Set())}>Clear</button>
-              )}
+              {accounts.map(a => (
+                <label key={a.id} className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedAccountIds.has(a.id)}
+                    onChange={() => toggle(setSelectedAccountIds, a.id)}
+                  />
+                  <span>{a.account_name}</span>
+                </label>
+              ))}
             </div>
-            {allCategories.map(cat => (
-              <label key={cat} className="dropdown-option">
-                <input
-                  type="checkbox"
-                  checked={selectedCategories.has(cat)}
-                  onChange={() => toggle(setSelectedCategories, cat)}
-                />
-                <span>{cat}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {hasFilters && (
-        <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear filters</button>
+            {/* Category */}
+            <div className="filter-section">
+              <div className="filter-section-header">
+                <span>Category</span>
+                {selectedCategories.size > 0 && (
+                  <button className="filter-clear-btn" onClick={() => setSelectedCategories(new Set())}>Clear</button>
+                )}
+              </div>
+              <div className="filter-scroll-list">
+                <label className="filter-option filter-select-all">
+                  <input
+                    type="checkbox"
+                    checked={allCategories.length > 0 && selectedCategories.size === allCategories.length}
+                    onChange={() =>
+                      selectedCategories.size === allCategories.length
+                        ? setSelectedCategories(new Set())
+                        : setSelectedCategories(new Set(allCategories))
+                    }
+                  />
+                  <span>Select All</span>
+                </label>
+                {allCategories.map(cat => (
+                  <label key={cat} className="filter-option">
+                    <input
+                      type="checkbox"
+                      checked={selectedCategories.has(cat)}
+                      onChange={() => toggle(setSelectedCategories, cat)}
+                    />
+                    <span>{cat}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+          </div>
+          {activeFilterCount > 0 && (
+            <div className="filter-panel-footer">
+              <button className="filter-clear-btn" onClick={clearFilters}>Clear all filters</button>
+            </div>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 
   // ── Empty / loading states ────────────────────────────────────────────────
   if (!analytics) {
     return (
       <div className="analytics-dashboard">
-        {filterBar}
+        {header}
         <div className="analytics-loading">
           {transactions.length === 0
             ? 'No transaction data available.'
@@ -268,7 +350,7 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
     );
   }
 
-  // ── Chart data (same as before) ───────────────────────────────────────────
+  // ── Chart data ────────────────────────────────────────────────────────────
   const spendingPieData = analytics.spending_by_category?.map(cat => ({
     name: cat.category, value: cat.total,
   })) || [];
@@ -288,7 +370,7 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
 
   return (
     <div className="analytics-dashboard">
-      {filterBar}
+      {header}
 
       {/* Summary Cards */}
       <div className="summary-cards">
