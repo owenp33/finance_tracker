@@ -75,6 +75,7 @@ function TransactionsView({
   const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
+  const [datePreset, setDatePreset] = useState('');
 
   // All tab — pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -126,6 +127,20 @@ function TransactionsView({
     const [first, last] = getMonthRange(next);
     setDateFrom(first);
     setDateTo(last);
+    setDatePreset('');
+  };
+
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const today = new Date();
+    const toISO = d => d.toISOString().slice(0, 10);
+    if (preset === 'all') { setDateFrom(''); setDateTo(''); return; }
+    if (preset === 'ytd') { setDateFrom(`${today.getFullYear()}-01-01`); setDateTo(toISO(today)); return; }
+    const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[preset];
+    const d = new Date(today);
+    d.setMonth(d.getMonth() - months);
+    setDateFrom(toISO(d));
+    setDateTo(toISO(today));
   };
 
   const allCategories = [...new Set(transactions.map(t => t.category))].sort();
@@ -149,6 +164,7 @@ function TransactionsView({
     setSelectedCategories(new Set());
     setDateFrom(periodFrom);
     setDateTo(periodTo);
+    setDatePreset('');
   };
 
   const sortList = (list, sort, dateKey = 'date') => {
@@ -327,10 +343,13 @@ function TransactionsView({
               onCategoryClear={() => setSelectedCategories(new Set())}
               startDate={dateFrom}
               endDate={dateTo}
-              onStartDateChange={setDateFrom}
-              onEndDateChange={setDateTo}
+              onStartDateChange={(val) => { setDateFrom(val); setDatePreset('custom'); }}
+              onEndDateChange={(val) => { setDateTo(val); setDatePreset('custom'); }}
               showDateClear={dateFilterModified}
-              onDateClear={() => { setDateFrom(periodFrom); setDateTo(periodTo); }}
+              onDateClear={() => { setDateFrom(periodFrom); setDateTo(periodTo); setDatePreset(''); }}
+              presets={[['all','All Time'],['1m','1M'],['3m','3M'],['6m','6M'],['1y','1Y'],['ytd','YTD']]}
+              datePreset={datePreset}
+              onPresetChange={applyPreset}
               activeFilterCount={activeFilterCount}
               onClearAll={clearAllFilters}
             />

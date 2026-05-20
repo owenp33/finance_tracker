@@ -120,6 +120,7 @@ const PRESETS = [
   ['1m',  '1M'],
   ['3m',  '3M'],
   ['6m',  '6M'],
+  ['1y',  '1Y'],
   ['ytd', 'YTD'],
 ];
 
@@ -129,7 +130,7 @@ function presetDates(preset) {
   const today = new Date();
   if (preset === 'all')  return { start: '', end: '' };
   if (preset === 'ytd')  return { start: `${today.getFullYear()}-01-01`, end: toISO(today) };
-  const months = { '1m': 1, '3m': 3, '6m': 6 }[preset];
+  const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[preset];
   const d = new Date(today);
   d.setMonth(d.getMonth() - months);
   return { start: toISO(d), end: toISO(today) };
@@ -176,20 +177,18 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
     (selectedAccountIds.size > 0 ? 1 : 0) +
     (selectedCategories.size > 0 ? 1 : 0);
 
-  // Human-readable period for the header
+  // Human-readable period for the header — shows range like "Feb 2026 – May 2026"
   const fmtDate = (d) => d
     ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     : null;
   const periodLabel = (() => {
-    const labels = { '1m': 'Last month', '3m': 'Last 3 months', '6m': 'Last 6 months', ytd: 'Year to date' };
-    if (labels[datePreset]) return labels[datePreset];
     const s = fmtDate(startDate);
     const e = fmtDate(endDate);
-    if (s && e && s !== e) return `${s} – ${e}`;
-    if (s && e)            return s;
-    if (s)                 return `From ${s}`;
-    if (e)                 return `Until ${e}`;
-    return 'All time';
+    if (!s && !e)  return 'All Time';
+    if (s && e && s === e) return s;
+    if (s && e)    return `${s} – ${e}`;
+    if (s)         return `From ${s}`;
+    return `Until ${e}`;
   })();
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -205,12 +204,9 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
 
   // ── Header + filter panel ─────────────────────────────────────────────────
   const header = (
-    <>
+    <div className="insights-header-card">
       <div className="view-header">
-        <div className="insights-title-row">
-          <h2>Insights</h2>
-          <span className="insights-period-label">{periodLabel}</span>
-        </div>
+        <h2>{periodLabel}</h2>
         <div className="view-header-actions">
           <button
             className={`btn btn-secondary${activeFilterCount > 0 ? ' filter-btn-active' : ''}`}
@@ -247,7 +243,7 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
           onClearAll={clearFilters}
         />
       )}
-    </>
+    </div>
   );
 
   // ── Empty / loading states ────────────────────────────────────────────────

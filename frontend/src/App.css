@@ -1481,18 +1481,32 @@ body {
 /* === Orange utility ======================================== */
 .orange { color: #e67700; }
 
-/* === Insights header title + period label =================== */
-.insights-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+/* === Insights header card =================================== */
+.insights-header-card {
+  background: white;
+  padding: 24px 30px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
 }
 
-.insights-period-label {
-  font-size: 0.85rem;
-  color: #9ca3af;
-  font-weight: 500;
+.insights-header-card .view-header {
+  margin-bottom: 0;
 }
+
+/* Filter panel sits flush inside the card — override its own background/border */
+.insights-header-card .filter-panel {
+  margin-top: 20px;
+  margin-bottom: 0;
+  border-top: 1.5px solid #e9ecef;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0;
+  padding: 18px 0 0;
+}
+
 
 /* === Preset period pills ==================================== */
 .preset-pills {
