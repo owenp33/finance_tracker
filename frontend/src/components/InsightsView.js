@@ -4,6 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { useCategoryColors } from '../CategoryColorContext';
+import FilterPanel from './FilterPanel';
 
 // Derives the same analytics shape the backend produces, from a raw transactions array.
 function computeAnalytics(transactions) {
@@ -221,117 +222,30 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
       </div>
 
       {filtersOpen && (
-        <div className="filter-panel">
-          <div className="filter-panel-sections">
-
-            {/* Period */}
-            <div className="filter-section">
-              <div className="filter-section-header">
-                <span>Period</span>
-                {dateActive && (
-                  <button className="filter-clear-btn" onClick={() => applyPreset('all')}>Clear</button>
-                )}
-              </div>
-              <div className="preset-pills">
-                {PRESETS.map(([key, label]) => (
-                  <button
-                    key={key}
-                    className={`preset-pill${datePreset === key ? ' active' : ''}`}
-                    onClick={() => applyPreset(key)}
-                  >{label}</button>
-                ))}
-              </div>
-              <div className="form-group" style={{ marginTop: 10 }}>
-                <label>From</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => { setStartDate(e.target.value); setDatePreset('custom'); }}
-                />
-              </div>
-              <div className="form-group">
-                <label>To</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => { setEndDate(e.target.value); setDatePreset('custom'); }}
-                />
-              </div>
-            </div>
-
-            {/* Account */}
-            <div className="filter-section">
-              <div className="filter-section-header">
-                <span>Account</span>
-                {selectedAccountIds.size > 0 && (
-                  <button className="filter-clear-btn" onClick={() => setSelectedAccountIds(new Set())}>Clear</button>
-                )}
-              </div>
-              <label className="filter-option filter-select-all">
-                <input
-                  type="checkbox"
-                  checked={accounts.length > 0 && selectedAccountIds.size === accounts.length}
-                  onChange={() =>
-                    selectedAccountIds.size === accounts.length
-                      ? setSelectedAccountIds(new Set())
-                      : setSelectedAccountIds(new Set(accounts.map(a => a.id)))
-                  }
-                />
-                <span>Select All</span>
-              </label>
-              {accounts.map(a => (
-                <label key={a.id} className="filter-option">
-                  <input
-                    type="checkbox"
-                    checked={selectedAccountIds.has(a.id)}
-                    onChange={() => toggle(setSelectedAccountIds, a.id)}
-                  />
-                  <span>{a.account_name}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Category */}
-            <div className="filter-section">
-              <div className="filter-section-header">
-                <span>Category</span>
-                {selectedCategories.size > 0 && (
-                  <button className="filter-clear-btn" onClick={() => setSelectedCategories(new Set())}>Clear</button>
-                )}
-              </div>
-              <div className="filter-scroll-list">
-                <label className="filter-option filter-select-all">
-                  <input
-                    type="checkbox"
-                    checked={allCategories.length > 0 && selectedCategories.size === allCategories.length}
-                    onChange={() =>
-                      selectedCategories.size === allCategories.length
-                        ? setSelectedCategories(new Set())
-                        : setSelectedCategories(new Set(allCategories))
-                    }
-                  />
-                  <span>Select All</span>
-                </label>
-                {allCategories.map(cat => (
-                  <label key={cat} className="filter-option">
-                    <input
-                      type="checkbox"
-                      checked={selectedCategories.has(cat)}
-                      onChange={() => toggle(setSelectedCategories, cat)}
-                    />
-                    <span>{cat}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-          </div>
-          {activeFilterCount > 0 && (
-            <div className="filter-panel-footer">
-              <button className="filter-clear-btn" onClick={clearFilters}>Clear all filters</button>
-            </div>
-          )}
-        </div>
+        <FilterPanel
+          accounts={accounts}
+          selectedAccountIds={selectedAccountIds}
+          onAccountToggle={(id) => toggle(setSelectedAccountIds, id)}
+          onAccountSelectAll={() => setSelectedAccountIds(new Set(accounts.map(a => a.id)))}
+          onAccountClear={() => setSelectedAccountIds(new Set())}
+          allCategories={allCategories}
+          selectedCategories={selectedCategories}
+          onCategoryToggle={(cat) => toggle(setSelectedCategories, cat)}
+          onCategorySelectAll={() => setSelectedCategories(new Set(allCategories))}
+          onCategoryClear={() => setSelectedCategories(new Set())}
+          dateSectionLabel="Period"
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={(val) => { setStartDate(val); setDatePreset('custom'); }}
+          onEndDateChange={(val) => { setEndDate(val); setDatePreset('custom'); }}
+          showDateClear={dateActive}
+          onDateClear={() => applyPreset('all')}
+          presets={PRESETS}
+          datePreset={datePreset}
+          onPresetChange={applyPreset}
+          activeFilterCount={activeFilterCount}
+          onClearAll={clearFilters}
+        />
       )}
     </>
   );

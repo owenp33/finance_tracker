@@ -3,6 +3,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
+import FilterPanel from './FilterPanel';
 
 const formatDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -313,77 +314,26 @@ function TransactionsView({
 
           {/* Filter panel */}
           {showFilters && (
-            <div className="filter-panel">
-              <div className="filter-panel-sections">
-
-                <div className="filter-section">
-                  <div className="filter-section-header">
-                    <span>Account</span>
-                    {selectedIds.size > 0 && <button className="filter-clear-btn" onClick={() => setSelectedIds(new Set())}>Clear</button>}
-                  </div>
-                  <label className="filter-option filter-select-all">
-                    <input
-                      type="checkbox"
-                      checked={accounts.length > 0 && selectedIds.size === accounts.length}
-                      onChange={() => selectedIds.size === accounts.length ? setSelectedIds(new Set()) : setSelectedIds(new Set(accounts.map(a => a.id)))}
-                    />
-                    <span>Select All</span>
-                  </label>
-                  {accounts.map(a => (
-                    <label key={a.id} className="filter-option">
-                      <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleAccount(a.id)} />
-                      <span>{a.account_name}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="filter-section">
-                  <div className="filter-section-header">
-                    <span>Category</span>
-                    {selectedCategories.size > 0 && <button className="filter-clear-btn" onClick={() => setSelectedCategories(new Set())}>Clear</button>}
-                  </div>
-                  <div className="filter-scroll-list">
-                    <label className="filter-option filter-select-all">
-                      <input
-                        type="checkbox"
-                        checked={allCategories.length > 0 && selectedCategories.size === allCategories.length}
-                        onChange={() => selectedCategories.size === allCategories.length ? setSelectedCategories(new Set()) : setSelectedCategories(new Set(allCategories))}
-                      />
-                      <span>Select All</span>
-                    </label>
-                    {allCategories.map(cat => (
-                      <label key={cat} className="filter-option">
-                        <input type="checkbox" checked={selectedCategories.has(cat)} onChange={() => toggleCategory(cat)} />
-                        <span>{cat}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <div className="filter-section-header">
-                    <span>Date Range</span>
-                    {dateFilterModified && (
-                      <button className="filter-clear-btn" onClick={() => { setDateFrom(periodFrom); setDateTo(periodTo); }}>Reset</button>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label>From</label>
-                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>To</label>
-                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                  </div>
-                </div>
-
-              </div>
-              {activeFilterCount > 0 && (
-                <div className="filter-panel-footer">
-                  <button className="filter-clear-btn" onClick={clearAllFilters}>Clear all filters</button>
-                </div>
-              )}
-            </div>
+            <FilterPanel
+              accounts={accounts}
+              selectedAccountIds={selectedIds}
+              onAccountToggle={toggleAccount}
+              onAccountSelectAll={() => setSelectedIds(new Set(accounts.map(a => a.id)))}
+              onAccountClear={() => setSelectedIds(new Set())}
+              allCategories={allCategories}
+              selectedCategories={selectedCategories}
+              onCategoryToggle={toggleCategory}
+              onCategorySelectAll={() => setSelectedCategories(new Set(allCategories))}
+              onCategoryClear={() => setSelectedCategories(new Set())}
+              startDate={dateFrom}
+              endDate={dateTo}
+              onStartDateChange={setDateFrom}
+              onEndDateChange={setDateTo}
+              showDateClear={dateFilterModified}
+              onDateClear={() => { setDateFrom(periodFrom); setDateTo(periodTo); }}
+              activeFilterCount={activeFilterCount}
+              onClearAll={clearAllFilters}
+            />
           )}
 
           {showForm && (
