@@ -11,6 +11,22 @@ from flask_cors import CORS
 from datetime import timedelta
 
 
+def _migrate_transfer_columns(db):
+    """Add transfer columns to an existing transactions table if they don't exist yet."""
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        conn.execute(text(
+            'ALTER TABLE transactions '
+            'ADD COLUMN IF NOT EXISTS is_transfer BOOLEAN NOT NULL DEFAULT FALSE'
+        ))
+        conn.execute(text(
+            'ALTER TABLE transactions '
+            'ADD COLUMN IF NOT EXISTS transfer_peer_id INTEGER '
+            'REFERENCES transactions(id) ON DELETE SET NULL'
+        ))
+        conn.commit()
+
+
 def create_app():
     """Application factory pattern"""
     app = Flask(__name__)
@@ -70,6 +86,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _migrate_transfer_columns(db)
 
     if not app.config.get('TESTING'):
         from services.scheduler import init_scheduler
