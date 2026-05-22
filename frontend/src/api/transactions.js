@@ -26,3 +26,6 @@ export const updateTransaction = (id, body) =>
 
 export const deleteTransaction = (id) =>
   fetchAPI(`/api/transactions/${id}`, { method: 'DELETE' });
+
+export const toggleTransfer = (id) =>
+  fetchAPI(`/api/transactions/${id}/transfer`, { method: 'PATCH' }).then(d => d.transaction);
