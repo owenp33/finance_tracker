@@ -10,8 +10,8 @@ import FilterPanel from './FilterPanel';
 function computeAnalytics(transactions) {
   if (!transactions || transactions.length === 0) return null;
 
-  const expenses = transactions.filter(t => t.amount < 0);
-  const income   = transactions.filter(t => t.amount >= 0);
+  const expenses = transactions.filter(t => t.amount < 0  && !t.is_transfer);
+  const income   = transactions.filter(t => t.amount >= 0 && !t.is_transfer);
 
   const totalIncome   = income.reduce((s, t) => s + t.amount, 0);
   const totalExpenses = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
