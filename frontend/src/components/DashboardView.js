@@ -40,38 +40,41 @@ function DashboardView({ analytics, transactions, budgetData, upcoming, onNaviga
         </div>
       </div>
 
-      {/* Budget progress — only shown when budgets are configured */}
-      {budgetData?.length > 0 && (
-        <div className="budget-progress-section">
+      {/* Two-column section: spending vs budget + recent transactions */}
+      <div className="dashboard-columns">
+        <div className="dashboard-col">
           <div className="section-header">
-            <h3>Budget Progress</h3>
+            <h3>Spending vs Budget</h3>
             <button className="link-btn" onClick={() => onNavigate('budgeting')}>
               Manage →
             </button>
           </div>
-          <div className="budget-progress-list">
-            {budgetData.map(item => (
-              <BudgetProgressBar key={item.id} item={item} />
-            ))}
-          </div>
+          {budgetData?.length > 0 ? (
+            <div className="budget-progress-list">
+              {budgetData.map(item => (
+                <BudgetProgressBar key={item.id} item={item} />
+              ))}
+            </div>
+          ) : (
+            <p className="no-data">No budgets set for this period.</p>
+          )}
         </div>
-      )}
+
+        <div className="dashboard-col">
+          <div className="section-header">
+            <h3>Recent Transactions</h3>
+            <button className="link-btn" onClick={() => onNavigate('transactions')}>
+              View all →
+            </button>
+          </div>
+          <TransactionList transactions={recentTransactions} compact />
+        </div>
+      </div>
 
       {/* Upcoming recurring transactions */}
       <div className="upcoming-section">
-        <h3>Upcoming</h3>
+        <h3>Due This Week</h3>
         <UpcomingList items={upcoming} />
-      </div>
-
-      {/* Recent transactions — read-only, capped at RECENT_LIMIT */}
-      <div className="recent-transactions-section">
-        <div className="section-header">
-          <h3>Recent Transactions</h3>
-          <button className="link-btn" onClick={() => onNavigate('transactions')}>
-            View all →
-          </button>
-        </div>
-        <TransactionList transactions={recentTransactions} />
       </div>
 
     </div>

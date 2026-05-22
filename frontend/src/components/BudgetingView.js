@@ -47,11 +47,43 @@ function BudgetingView({ transactions, onBudgetChange }) {
   // Map of budget id → true for rows whose last auto-save failed
   const [saveErrors, setSaveErrors] = useState(new Map());
 
+  // Monthly income
+  const [monthlyIncome, setMonthlyIncome] = useState(() => {
+    const saved = localStorage.getItem('budget_monthly_income');
+    return saved ? parseFloat(saved) : 0;
+  });
+  const [isEditingIncome, setIsEditingIncome] = useState(false);
+  const [incomeInput, setIncomeInput] = useState('');
+
   // Add-category form
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [adding, setAdding] = useState(false);
+
+  // ── Derived: income summary ────────────────────────────────────────────────
+  const totalAllocated = progress.reduce((sum, item) => sum + item.allocated, 0);
+  const unallocated = monthlyIncome - totalAllocated;
+  const incomeSet = monthlyIncome > 0;
+
+  const openIncomeEdit = () => {
+    setIncomeInput(incomeSet ? monthlyIncome.toFixed(2) : '');
+    setIsEditingIncome(true);
+  };
+
+  const saveIncome = () => {
+    const parsed = parseFloat(incomeInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setMonthlyIncome(parsed);
+      localStorage.setItem('budget_monthly_income', String(parsed));
+    }
+    setIsEditingIncome(false);
+  };
+
+  const handleIncomeKeyDown = (e) => {
+    if (e.key === 'Enter') saveIncome();
+    if (e.key === 'Escape') setIsEditingIncome(false);
+  };
 
   // ── Derived: category suggestions ──────────────────────────────────────────
   // Unique categories from all transactions, minus any already budgeted this period
@@ -68,26 +100,34 @@ function BudgetingView({ transactions, onBudgetChange }) {
     try {
       const data = await getBudgetProgress(p);
 
-      // Auto-rollover: if this period has no budgets and isn't in the future,
-      // copy rollover=true rows from the immediately preceding month.
-      if (data.length === 0 && p <= getCurrentPeriod()) {
-        try {
-          const prevBudgets = await getBudgets(getPrevPeriod(p));
-          const toRollover = prevBudgets.filter(b => b.rollover);
-          if (toRollover.length > 0) {
-            await Promise.all(
-              toRollover.map(b =>
-                createBudget({ category: b.category, period: p, amount: b.amount, rollover: true })
-              )
-            );
-            const fresh = await getBudgetProgress(p);
-            setProgress(fresh);
-            onBudgetChange?.();
-            return;
+      // Auto-rollover: walk back up to 12 months to find the nearest non-empty
+      // period, then create any rollover=true categories missing from this period.
+      try {
+        let searchPeriod = getPrevPeriod(p);
+        let toRollover = [];
+        for (let i = 0; i < 12; i++) {
+          const prevBudgets = await getBudgets(searchPeriod);
+          if (prevBudgets.length > 0) {
+            toRollover = prevBudgets.filter(b => b.rollover);
+            break;
           }
-        } catch {
-          // Rollover failed — user can add categories manually
+          searchPeriod = getPrevPeriod(searchPeriod);
         }
+        const existing = new Set(data.map(b => b.category));
+        const missing = toRollover.filter(b => !existing.has(b.category));
+        if (missing.length > 0) {
+          await Promise.all(
+            missing.map(b =>
+              createBudget({ category: b.category, period: p, amount: b.amount, rollover: true })
+            )
+          );
+          const fresh = await getBudgetProgress(p);
+          setProgress(fresh);
+          onBudgetChange?.();
+          return;
+        }
+      } catch {
+        // Rollover failed — user can add categories manually
       }
 
       setProgress(data);
@@ -162,7 +202,7 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const handleDelete = async (item) => {
     if (
       !window.confirm(
-        `Remove "${item.category}" budget? This will clear over-budget flags on existing transactions.`
+        `Remove "${item.category}" budget? This will also delete all future rollover copies of this category and clear over-budget flags on affected transactions.`
       )
     ) return;
     try {
@@ -217,6 +257,56 @@ function BudgetingView({ transactions, onBudgetChange }) {
         </button>
       </div>
 
+      {/* Summary cards */}
+      <div className="budget-summary-cards">
+        <div className={`budget-summary-card income-card`} onClick={!isEditingIncome ? openIncomeEdit : undefined}>
+          <div className="budget-summary-label">Monthly Income</div>
+          {isEditingIncome ? (
+            <input
+              className="income-inline-input"
+              type="number"
+              step="0.01"
+              min="0"
+              value={incomeInput}
+              placeholder="0.00"
+              autoFocus
+              onChange={e => setIncomeInput(e.target.value)}
+              onBlur={saveIncome}
+              onKeyDown={handleIncomeKeyDown}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <div className="budget-summary-value">
+              ${monthlyIncome.toFixed(2)}
+            </div>
+          )}
+          {!incomeSet && !isEditingIncome && (
+            <div className="income-hint">Click to set your income</div>
+          )}
+        </div>
+
+        <div className={`budget-summary-card${!incomeSet ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Allocated</div>
+          <div className="budget-summary-value">${totalAllocated.toFixed(2)}</div>
+          {incomeSet && (
+            <div className="budget-summary-sub">
+              {((totalAllocated / monthlyIncome) * 100).toFixed(0)}% of income
+            </div>
+          )}
+        </div>
+
+        <div className={`budget-summary-card${!incomeSet ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Unallocated</div>
+          <div className={`budget-summary-value${incomeSet ? (unallocated >= 0 ? ' green' : ' red') : ''}`}>
+            ${Math.abs(unallocated).toFixed(2)}
+            {incomeSet && unallocated < 0 && ' over'}
+          </div>
+          {incomeSet && (
+            <div className="budget-summary-sub">remaining to allocate</div>
+          )}
+        </div>
+      </div>
+
       {error && (
         <div className="error-message">
           {error}
@@ -224,76 +314,80 @@ function BudgetingView({ transactions, onBudgetChange }) {
         </div>
       )}
 
-      {/* Budget rows */}
-      {loading ? (
-        <p className="no-data">Loading…</p>
-      ) : progress.length === 0 ? (
-        <p className="no-data">No budgets set for this period. Add a category below.</p>
-      ) : (
-        <div className="budget-rows">
-          {progress.map(item => (
-            <BudgetRow
-              key={item.id}
-              item={item}
-              onAmountBlur={handleAmountBlur}
-              onRolloverToggle={handleRolloverToggle}
-              onDelete={handleDelete}
-              hasSaveError={saveErrors.has(item.id)}
-            />
-          ))}
+      {/* Category Allocations card */}
+      <div className="category-allocations-card">
+        <div className="category-allocations-header">
+          <h3>Category Allocations</h3>
+          {!showAddForm && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowAddForm(true)}>
+              + Add Category
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Add category */}
-      {!showAddForm ? (
-        <button className="btn btn-secondary" onClick={() => setShowAddForm(true)}>
-          + Add Category
-        </button>
-      ) : (
-        <div className="add-budget-form">
-          <div className="form-group">
-            <label>Category</label>
-            <input
-              list="budget-category-suggestions"
-              type="text"
-              value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
-              placeholder="e.g. Groceries"
-              autoFocus
-            />
-            {/* Native datalist gives free-text + suggestions in one element */}
-            <datalist id="budget-category-suggestions">
-              {suggestedCategories.map(c => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+        {showAddForm && (
+          <div className="add-budget-form">
+            <div className="form-group">
+              <label>Category</label>
+              <input
+                list="budget-category-suggestions"
+                type="text"
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                placeholder="e.g. Groceries"
+                autoFocus
+              />
+              <datalist id="budget-category-suggestions">
+                {suggestedCategories.map(c => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
+            <div className="form-group">
+              <label>Monthly Allocation ($)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={newAmount}
+                onChange={e => setNewAmount(e.target.value)}
+                placeholder="0.00"
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              />
+            </div>
+            <div className="form-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleAdd}
+                disabled={adding || !newCategory.trim() || !newAmount}
+              >
+                {adding ? 'Adding…' : 'Add'}
+              </button>
+              <button className="btn btn-ghost" onClick={cancelAdd}>Cancel</button>
+            </div>
           </div>
-          <div className="form-group">
-            <label>Monthly Allocation ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={newAmount}
-              onChange={e => setNewAmount(e.target.value)}
-              placeholder="0.00"
-              onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            />
+        )}
+
+        {loading ? (
+          <p className="no-data">Loading…</p>
+        ) : progress.length === 0 ? (
+          <p className="no-data">No budgets set for this period. Add a category above.</p>
+        ) : (
+          <div className="budget-rows">
+            {progress.map(item => (
+              <BudgetRow
+                key={item.id}
+                item={item}
+                onAmountBlur={handleAmountBlur}
+                onRolloverToggle={handleRolloverToggle}
+                onDelete={handleDelete}
+                hasSaveError={saveErrors.has(item.id)}
+                monthlyIncome={monthlyIncome}
+              />
+            ))}
           </div>
-          <div className="form-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handleAdd}
-              disabled={adding || !newCategory.trim() || !newAmount}
-            >
-              {adding ? 'Adding…' : 'Add'}
-            </button>
-            <button className="btn btn-ghost" onClick={cancelAdd}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
     </div>
   );

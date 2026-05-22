@@ -1,4 +1,7 @@
+import { useCategoryColors } from '../CategoryColorContext';
+
 function BudgetProgressBar({ item, showCategory = true }) {
+  const { getColor } = useCategoryColors();
   const { category, allocated, carried_over, spent, remaining, over_budget } = item;
   const total = allocated + (carried_over || 0);
   const pct = total > 0 ? Math.min((spent / total) * 100, 100) : 0;
@@ -14,7 +17,7 @@ function BudgetProgressBar({ item, showCategory = true }) {
       <div className="budget-bar-track">
         <div
           className={`budget-bar-fill${over_budget ? ' over-budget' : ''}`}
-          style={{ width: `${pct}%` }}
+          style={{ width: `${pct}%`, ...(!over_budget && { background: getColor(category) }) }}
         />
       </div>
       {over_budget && (

@@ -157,6 +157,10 @@ class DbService:
     def get_recurring(self, recurring_id):
         return RecurringModel.query.get(recurring_id)
 
+    def get_all_accounts(self):
+        """Return every account across all users (used by the background scheduler)."""
+        return AccountModel.query.all()
+
     def get_account_recurring(self, account_id):
         return RecurringModel.query.filter_by(account_id=account_id).all()
 

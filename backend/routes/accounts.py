@@ -227,4 +227,7 @@ def add_recurring(account_id):
         notes=data.get('notes', '')
     )
 
+    # Immediately generate any transactions that are already due
+    account_service.process_due_recurring(account_id)
+
     return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201

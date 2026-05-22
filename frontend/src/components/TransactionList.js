@@ -1,14 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
+import { useCategoryColors } from '../CategoryColorContext';
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false }) {
+const formatDate = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const formatAmount = (amount) =>
+  `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
+
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
+  const { getColor } = useCategoryColors();
+
+  useEffect(() => {
+    if (resetSignal) {
+      setEditingId(null);
+      setEditFields({});
+    }
+  }, [resetSignal]);
 
   if (!transactions || transactions.length === 0) {
     return <p className="no-data">No transactions found</p>;
   }
 
   const startEdit = (t) => {
+    onStartEdit?.();
     setEditingId(t.id);
     setEditFields({
       date: t.date,
@@ -30,45 +49,81 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
   const set = (field, value) => setEditFields(prev => ({ ...prev, [field]: value }));
 
   return (
-    <div className="transaction-list">
+    <div className={`transaction-list${compact ? ' compact' : ''}`}>
       {transactions.map(t => (
         <div key={t.id} className="transaction-item">
           {editingId === t.id ? (
             <div className="transaction-edit-form">
-              <div className="transaction-edit-fields">
-                <input type="date" value={editFields.date} onChange={e => set('date', e.target.value)} />
-                <input type="text" value={editFields.vendor} onChange={e => set('vendor', e.target.value)} placeholder="Vendor" />
-                <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="Category" />
-                <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} placeholder="Amount" />
-                <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} placeholder="Notes" />
-                {accounts.length > 0 && (
+              {accounts.length > 0 && (
+                <div className="form-group">
+                  <label>Account</label>
                   <select value={editFields.account_id} onChange={e => set('account_id', parseInt(e.target.value))}>
                     {accounts.map(a => (
                       <option key={a.id} value={a.id}>{a.account_name}</option>
                     ))}
                   </select>
-                )}
+                </div>
+              )}
+              <div className="form-group">
+                <label>Date</label>
+                <input type="date" value={editFields.date} onChange={e => set('date', e.target.value)} />
               </div>
-              <div className="transaction-edit-actions">
+              <div className="form-group">
+                <label>Vendor</label>
+                <input type="text" value={editFields.vendor} onChange={e => set('vendor', e.target.value)} placeholder="e.g., Netflix" />
+              </div>
+              <div className="form-group">
+                <label>Category</label>
+                <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="e.g., Subscriptions" />
+              </div>
+              <div className="form-group">
+                <label>Amount <small>(negative = expense)</small></label>
+                <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Notes <small>(optional)</small></label>
+                <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} />
+              </div>
+              <div className="form-actions">
                 <button className="btn btn-primary btn-sm" onClick={() => saveEdit(t.id)}>Save</button>
                 <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
               </div>
             </div>
-          ) : (
+          ) : compact ? (
             <>
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} • {t.date}{t.account_name ? ` • ${t.account_name}` : ''}</span>
-                {t.notes && <small>{t.notes}</small>}
+                <span>{t.category} · {formatDate(t.date)}</span>
+              </div>
+              <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                {formatAmount(t.amount)}
+              </div>
+            </>
+          ) : (
+            <>
+              {onToggle && (
+                <input
+                  type="checkbox"
+                  className="tx-checkbox"
+                  checked={selectedIds?.has(t.id) ?? false}
+                  onChange={() => onToggle(t.id)}
+                  onClick={e => e.stopPropagation()}
+                />
+              )}
+              <span className="tx-cat-dot" style={{ background: getColor(t.category) }} title={t.category} />
+              <div className="transaction-info">
+                <strong>{t.vendor}</strong>
+                <span>{t.category} · {formatDate(t.date)}{t.notes ? ` · ${t.notes}` : ''}</span>
               </div>
               <div className="transaction-right">
+                {t.over_budget && <span className="tx-over-chip">Over budget</span>}
                 <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                  {t.amount >= 0 ? '+' : ''}${Math.abs(t.amount).toFixed(2)}
+                  {formatAmount(t.amount)}
                 </div>
                 {showAll && (
                   <>
-                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(t)}>Edit</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onDelete(t.id)}>Delete</button>
+                    <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>
+                    <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}><Trash2 size={14} /></button>
                   </>
                 )}
               </div>

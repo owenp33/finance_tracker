@@ -21,6 +21,7 @@ def create_app():
         'postgresql://postgres:password@localhost:5432/finance_app'
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 
@@ -69,6 +70,10 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+
+    if not app.config.get('TESTING'):
+        from services.scheduler import init_scheduler
+        init_scheduler(app)
 
     return app
 

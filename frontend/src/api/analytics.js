@@ -1,4 +1,4 @@
 import { fetchAPI } from './client';
 
-export const getAnalytics = (accountId) =>
-  fetchAPI(`/api/analytics/${accountId}`);
+export const getAnalytics = () =>
+  fetchAPI('/api/analytics/all');

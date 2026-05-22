@@ -31,7 +31,7 @@ function App() {
   const [recurringTransactions, setRecurringTransactions] = useState([]);
 
   // Domain hooks
-  const { accounts, selectedAccount, loadAccounts } = useAccounts({ setError });
+  const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
   const { upcoming, loadUpcoming } = useUpcoming({ setError });
@@ -92,8 +92,8 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadAnalytics()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -126,11 +126,21 @@ function App() {
     }
   };
 
+  const handleDeleteManyTransactions = async (ids) => {
+    if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
+    try {
+      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleAddRecurring = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -206,14 +216,9 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
+      loadAnalytics();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAnalytics(selectedAccount);
-    }
-  }, [selectedAccount, loadAnalytics]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
@@ -226,7 +231,7 @@ function App() {
     return (
       <div className="App">
         <div className="loading-screen">
-          <h1>💰 Money Tracker</h1>
+          <h1>Personal Finance Dashboard</h1>
           <p>Loading...</p>
         </div>
       </div>
@@ -267,9 +272,13 @@ function App() {
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteTransaction}
+            onDeleteMany={handleDeleteManyTransactions}
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
             onImportDone={refreshAll}
+            onCreateAccount={handleCreateAccount}
+            onEditAccount={handleEditAccount}
+            onDeleteAccount={handleDeleteAccount}
           />
         )}
         {view === 'budgeting' && (
@@ -279,7 +288,7 @@ function App() {
           />
         )}
         {view === 'insights' && (
-          <InsightsView analytics={analytics} />
+          <InsightsView transactions={transactions} accounts={accounts} />
         )}
       </main>
     </div>
