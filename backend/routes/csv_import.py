@@ -83,16 +83,20 @@ def preview_csv():
             and db_service.transaction_exists(account_id, row['date'], row['vendor'], amount_cents)
         )
 
+        category    = str(row['category'])
+        is_transfer = category.strip().lower() in ('transfer', 'payment')
+
         rows.append({
             'date':         row['date'].isoformat(),
             'vendor':       str(row['vendor']),
-            'category':     str(row['category']),
+            'category':     category,
             'amount':       amount,
             'notes':        str(row.get('notes', '') or ''),
             'account_id':   account_id,
             'account_name': account_name,
             'duplicate':    is_duplicate,
             'zero_amount':  zero_amount,
+            'is_transfer':  is_transfer,
         })
 
     importable = sum(
@@ -141,9 +145,10 @@ def confirm_import():
     # Build the set of account IDs this user is allowed to write to
     user_account_ids = {a.id for a in db_service.get_user_accounts(user_id)}
 
-    imported          = 0
-    skipped           = 0
-    affected_accounts = set()
+    imported                = 0
+    skipped                 = 0
+    affected_accounts       = set()
+    newly_created_transfers = []
 
     for row in rows:
         account_id = row.get('account_id')
@@ -154,10 +159,11 @@ def confirm_import():
             continue
 
         try:
-            date_obj = datetime.fromisoformat(row['date']).date()
-            amount   = float(row['amount'])
-            vendor   = str(row['vendor'])
-            category = str(row['category'])
+            date_obj    = datetime.fromisoformat(row['date']).date()
+            amount      = float(row['amount'])
+            vendor      = str(row['vendor'])
+            category    = str(row['category'])
+            is_transfer = bool(row.get('is_transfer', False))
         except (KeyError, ValueError, TypeError):
             skipped += 1
             continue
@@ -169,23 +175,39 @@ def confirm_import():
             skipped += 1
             continue
 
-        account_service.add_transaction(
+        tx = account_service.add_transaction(
             account_id=account_id,
             date_obj=date_obj,
             vendor=vendor,
             category=category,
             amount=amount,
             notes=str(row.get('notes', '') or ''),
+            is_transfer=is_transfer,
         )
         affected_accounts.add(account_id)
         imported += 1
 
+        if is_transfer:
+            newly_created_transfers.append(tx)
+
     for aid in affected_accounts:
         account_service.recalculate_account_balance(aid)
+
+    # Link transfer pairs — covers both cross-batch matches and existing unlinked transfers
+    linked = 0
+    for tx in newly_created_transfers:
+        if tx.transfer_peer_id is None:
+            peer = db_service.find_transfer_peer(
+                user_id, tx.amount_cents, tx.date, tx.account_id, exclude_id=tx.id
+            )
+            if peer:
+                account_service.link_transfer(tx.id, peer.id)
+                linked += 1
 
     return jsonify({
         'success':  True,
         'message':  f'Imported {imported} transactions, skipped {skipped} duplicates/invalid',
         'imported': imported,
         'skipped':  skipped,
+        'linked':   linked,
     }), 200
