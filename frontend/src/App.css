@@ -1866,12 +1866,73 @@ body {
 
 .account-item {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
   padding: 14px 16px;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+}
+
+.account-item-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-transfers {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.account-transfers-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.account-transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.account-transfer-date {
+  color: #888;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.account-transfer-vendor {
+  flex: 1;
+  color: #333;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-transfer-peer {
+  color: #555;
+  white-space: nowrap;
+}
+
+.account-transfer-unlinked {
+  color: #aaa;
+  font-style: italic;
+}
+
+.account-transfer-amount {
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: right;
 }
 
 .account-info {

@@ -648,35 +648,60 @@ function TransactionsView({
             {accounts.length === 0 ? (
               <p className="no-data">No accounts yet. Add one above.</p>
             ) : (
-              accounts.map(a => (
-                <div key={a.id} className="account-item">
-                  {editingAccountId === a.id ? (
-                    <div className="account-edit-form">
-                      <div className="form-group">
-                        <label>Account ID</label>
-                        <input type="text" value={editingAccountIdStr} onChange={e => setEditingAccountIdStr(e.target.value)} placeholder="e.g., checking-1234" autoFocus />
+              accounts.map(a => {
+                const accountTransfers = transactions
+                  .filter(t => t.is_transfer && t.account_id === a.id)
+                  .sort((x, y) => y.date.localeCompare(x.date));
+                return (
+                  <div key={a.id} className="account-item">
+                    {editingAccountId === a.id ? (
+                      <div className="account-edit-form">
+                        <div className="form-group">
+                          <label>Account ID</label>
+                          <input type="text" value={editingAccountIdStr} onChange={e => setEditingAccountIdStr(e.target.value)} placeholder="e.g., checking-1234" autoFocus />
+                        </div>
+                        <div className="form-group">
+                          <label>Display Name</label>
+                          <input type="text" value={editingAccountName} onChange={e => setEditingAccountName(e.target.value)} placeholder="e.g., Chase Checking" />
+                        </div>
+                        <div className="account-edit-actions">
+                          <button className="btn btn-primary btn-sm" onClick={async () => { await onEditAccount(a.id, { account_id: editingAccountIdStr, account_name: editingAccountName }); setEditingAccountId(null); }}>Save</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>Cancel</button>
+                        </div>
                       </div>
-                      <div className="form-group">
-                        <label>Display Name</label>
-                        <input type="text" value={editingAccountName} onChange={e => setEditingAccountName(e.target.value)} placeholder="e.g., Chase Checking" />
-                      </div>
-                      <div className="account-edit-actions">
-                        <button className="btn btn-primary btn-sm" onClick={async () => { await onEditAccount(a.id, { account_id: editingAccountIdStr, account_name: editingAccountName }); setEditingAccountId(null); }}>Save</button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="account-info"><strong>{a.account_name}</strong><small>{a.account_id}</small></div>
-                      <div className="account-balance">${a.balance?.toFixed(2) ?? '0.00'}</div>
-                      <div className="account-actions">
-                        <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}><Pencil size={14} /></button>
-                        <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))
+                    ) : (
+                      <>
+                        <div className="account-item-row">
+                          <div className="account-info"><strong>{a.account_name}</strong><small>{a.account_id}</small></div>
+                          <div className="account-balance">${a.balance?.toFixed(2) ?? '0.00'}</div>
+                          <div className="account-actions">
+                            <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}><Pencil size={14} /></button>
+                            <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
+                          </div>
+                        </div>
+                        {accountTransfers.length > 0 && (
+                          <div className="account-transfers">
+                            <div className="account-transfers-label">Transfers ({accountTransfers.length})</div>
+                            {accountTransfers.map(t => (
+                              <div key={t.id} className="account-transfer-row">
+                                <span className="account-transfer-date">{formatDate(t.date)}</span>
+                                <span className="account-transfer-vendor">{t.vendor}</span>
+                                <span className="account-transfer-peer">
+                                  {t.amount < 0 ? '→' : '←'}{' '}
+                                  {t.transfer_peer_account ?? <span className="account-transfer-unlinked">Unlinked</span>}
+                                </span>
+                                <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                                  {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
