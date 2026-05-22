@@ -129,7 +129,7 @@ class AnalyticsService:
             'category': trans.category,
             'amount': trans.amount,
             'notes': trans.notes
-        } for trans in transactions]
+        } for trans in transactions if not trans.is_transfer]
 
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'])
