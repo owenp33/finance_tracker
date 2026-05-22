@@ -592,7 +592,8 @@ function TransactionsView({
                       return (
                         <tr key={i} className={rowClass}>
                           <td><input type="checkbox" checked={importSelected.has(i)} onChange={() => toggleImportRow(i)} disabled={row.account_id === null || row.zero_amount} /></td>
-                          <td>{row.date}</td><td>{row.vendor}</td><td>{row.category}</td>
+                          <td>{row.date}</td><td>{row.vendor}</td>
+                          <td>{row.category}{row.is_transfer && <span className="tx-transfer-chip" style={{ marginLeft: 6 }}>Transfer</span>}</td>
                           <td className={row.amount >= 0 ? 'green' : 'red'}>{row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}</td>
                           <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
                           <td><small>{row.notes}</small></td>
