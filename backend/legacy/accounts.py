@@ -314,6 +314,23 @@ class FinanceDataProcessor:
     @staticmethod
     def parse_date(date_str: str) -> date:
         """Parse date string of multiple formats"""
+        # Handle NaN or empty values
+        if pd.isna(date_str) or date_str == '':
+            return date.today()
+        
+        # Convert to string if it's a number (Excel sometimes converts dates to numbers)
+        date_str = str(date_str).strip()
+        
+        # Handle Excel serial date numbers (e.g., 45678.0)
+        try:
+            # If it's a number, try to parse as Excel date
+            if '.' in date_str or date_str.isdigit():
+                excel_date = float(date_str)
+                # Excel epoch starts at 1899-12-30
+                return datetime(1899, 12, 30) + timedelta(days=excel_date)
+        except (ValueError, OverflowError):
+            pass
+        
         # Try MM/DD/YYYY format first
         try:
             return datetime.strptime(date_str, '%m/%d/%Y').date()
@@ -332,8 +349,14 @@ class FinanceDataProcessor:
         except ValueError:
             pass
         
+        # Try M/D/YYYY format (single digit month/day)
+        try:
+            return datetime.strptime(date_str, '%m/%d/%Y').date()
+        except ValueError:
+            pass
+        
         # Default to today if parsing fails
-        # print(f"Warning: Could not parse date '{date_str}', using today's date")
+        print(f"Warning: Could not parse date '{date_str}', using today's date")
         return date.today()
     
     @staticmethod
@@ -575,8 +598,8 @@ class FinanceDataProcessor:
         
         # SPENDING BY CATEGORY 
         expenses = df[df['amount'] < 0].copy()
-        
-        if not expenses.empty:
+
+        if not expenses.empty:            
             expenses['amount_abs'] = expenses['amount'].abs()
             
             spending_grouped = expenses.groupby('category')['amount_abs'].agg([
@@ -585,25 +608,22 @@ class FinanceDataProcessor:
                 ('count', 'count')
             ]).round(2)
             
-            spending_by_category = {
-                cat: {
+            spending_by_category = [
+                {
+                    'category': str(cat),
                     'total': float(row['total']),
                     'average': float(row['average']),
                     'count': int(row['count']),
                     'percentage': round(float(row['total'] / total_expenses * 100), 1) if total_expenses > 0 else 0
                 }
                 for cat, row in spending_grouped.iterrows()
-            }
+            ]
             
-            # Sort by total spending
-            spending_by_category = dict(
-                sorted(spending_by_category.items(), 
-                    key=lambda x: x[1]['total'], 
-                    reverse=True)
-            )
+            # Sort the list (not dict)
+            spending_by_category.sort(key=lambda x: x['total'], reverse=True)
         else:
-            spending_by_category = {}
-        
+            spending_by_category = []
+            
         # INCOME BY CATEGORY
         income_df = df[df['amount'] > 0].copy()
         
@@ -614,27 +634,25 @@ class FinanceDataProcessor:
                 ('count', 'count')
             ]).round(2)
             
-            income_by_category = {
-                cat: {
+            income_by_category = [
+                {
+                    'category': str(cat),
                     'total': float(row['total']),
                     'average': float(row['average']),
                     'count': int(row['count']),
                     'percentage': round(float(row['total'] / total_income * 100), 1) if total_income > 0 else 0
                 }
                 for cat, row in income_grouped.iterrows()
-            }
+            ]   
             
-            income_by_category = dict(
-                sorted(income_by_category.items(), 
-                    key=lambda x: x[1]['total'], 
-                    reverse=True)
-            )
+            income_by_category.sort(key=lambda x: x['total'], reverse=True)
         else:
             income_by_category = {}
-        
+            
+        income_by_category.sort(key=lambda x: x['total'], reverse=True)
         # MONTHLY SUMMARY
         df['year_month'] = df['date'].dt.to_period('M').astype(str)
-        
+
         monthly_data = []
         for month, group in df.groupby('year_month'):
             month_income = group[group['amount'] > 0]['amount'].sum()
@@ -642,36 +660,45 @@ class FinanceDataProcessor:
             month_net = month_income - month_expenses
             
             monthly_data.append({
-                'month': month,
+                'month': month,  # Already a string like "2025-01"
                 'income': round(float(month_income), 2),
                 'expenses': round(float(month_expenses), 2),
                 'net': round(float(month_net), 2),
                 'transaction_count': len(group)
             })
-        
+
         # Sort by month (most recent first)
         monthly_data.sort(key=lambda x: x['month'], reverse=True)
+
+        monthly_summary = monthly_data# {
+    #        item['month']: {
+    #            'income': item['income'],
+    #            'expenses': item['expenses'],
+    #            'net': item['net'],
+    #            'transaction_count': item['transaction_count']
+    #        }
+    #        for item in monthly_data
+    #    }
         
-        monthly_summary = {
-            item['month']: {
-                'income': item['income'],
-                'expenses': item['expenses'],
-                'net': item['net'],
-                'transaction_count': item['transaction_count']
-            }
-            for item in monthly_data
-        }
-        
-        # TOP VENDORS         
-        top_expense_vendors = expenses.groupby('vendor')['amount_abs'].sum().sort_values(ascending=False).head(10) if not expenses.empty else pd.Series()
-        
-        top_vendors = {
-            'expenses': {
-                vendor: round(float(amount), 2)
+        # TOP VENDORS
+        if not expenses.empty:
+            top_expense_vendors = (
+                expenses.groupby('vendor')['amount_abs']
+                .sum()
+                .sort_values(ascending=False)
+                .head(10)
+            )
+            
+            top_vendors = [
+                {
+                    'vendor': str(vendor),
+                    'amount': round(float(amount), 2)
+                }
                 for vendor, amount in top_expense_vendors.items()
-            } if not top_expense_vendors.empty else {}
-        }
-        
+            ]
+        else:
+            top_vendors = []
+            
         # RECENT TRANSACTIONS 
         recent = df.sort_values('date', ascending=False).head(10)
         recent_transactions = [
