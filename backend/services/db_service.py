@@ -152,6 +152,36 @@ class DbService:
                 .order_by(TransactionModel.date.desc())
                 .all())
 
+    def find_transfer_peer(self, user_id, amount_cents, date_obj, exclude_account_id, exclude_id=None):
+        """
+        Find an unlinked transfer transaction that is the counterpart to a given one.
+
+        Matches on: opposite-sign amount, same user, different account,
+        within ±5 days, already flagged as a transfer, not yet linked.
+        Returns the closest match by date, or None.
+        """
+        from datetime import timedelta
+        date_min = date_obj - timedelta(days=5)
+        date_max = date_obj + timedelta(days=5)
+
+        query = (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.amount_cents == -amount_cents,
+                TransactionModel.date >= date_min,
+                TransactionModel.date <= date_max,
+                TransactionModel.account_id != exclude_account_id,
+                TransactionModel.is_transfer == True,
+                TransactionModel.transfer_peer_id == None,
+            )
+        )
+        if exclude_id is not None:
+            query = query.filter(TransactionModel.id != exclude_id)
+
+        return query.order_by(TransactionModel.date.asc()).first()
+
     # RECURRING OPERATIONS ======================================================
 
     def get_recurring(self, recurring_id):

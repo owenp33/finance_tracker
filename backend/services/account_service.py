@@ -50,7 +50,7 @@ class AccountService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, is_transfer=False):
         """
         Create a transaction, update the account balance, and re-evaluate
         over_budget flags for the category/period. Single commit for all writes.
@@ -62,6 +62,7 @@ class AccountService:
             category=category,
             notes=notes,
             recurring_id=recurring_id,
+            is_transfer=is_transfer,
         )
         transaction.amount = amount
 
@@ -177,6 +178,42 @@ class AccountService:
         if was_expense:
             db_service._reevaluate_category_flags(user_id, category, period)
 
+        db.session.commit()
+        return True, None
+
+    def link_transfer(self, tx_id, peer_id):
+        """
+        Mark two transactions as the two sides of a transfer and link them.
+        Both are flagged is_transfer=True and each points to the other via transfer_peer_id.
+        Returns (success, error_message).
+        """
+        tx   = db_service.get_transaction(tx_id)
+        peer = db_service.get_transaction(peer_id)
+        if not tx or not peer:
+            return False, 'Transaction not found'
+        tx.is_transfer       = True
+        tx.transfer_peer_id  = peer_id
+        peer.is_transfer     = True
+        peer.transfer_peer_id = tx_id
+        db.session.commit()
+        return True, None
+
+    def unlink_transfer(self, tx_id):
+        """
+        Remove the transfer link from a transaction and its peer (if any).
+        Both sides lose their is_transfer flag and transfer_peer_id.
+        Returns (success, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return False, 'Transaction not found'
+        if tx.transfer_peer_id:
+            peer = db_service.get_transaction(tx.transfer_peer_id)
+            if peer:
+                peer.transfer_peer_id = None
+                peer.is_transfer      = False
+        tx.transfer_peer_id = None
+        tx.is_transfer      = False
         db.session.commit()
         return True, None
 
