@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
 const formatDate = (dateStr) => {
@@ -10,7 +10,7 @@ const formatDate = (dateStr) => {
 const formatAmount = (amount) =>
   `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -117,9 +117,19 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, showAl
               </div>
               <div className="transaction-right">
                 {t.over_budget && <span className="tx-over-chip">Over budget</span>}
+                {t.is_transfer && <span className="tx-transfer-chip">Transfer</span>}
                 <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                   {formatAmount(t.amount)}
                 </div>
+                {onToggleTransfer && (
+                  <button
+                    className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
+                    title={t.is_transfer ? 'Unmark transfer' : 'Mark as transfer'}
+                    onClick={() => onToggleTransfer(t.id)}
+                  >
+                    <ArrowLeftRight size={14} />
+                  </button>
+                )}
                 {showAll && (
                   <>
                     <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>

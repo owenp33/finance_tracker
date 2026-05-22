@@ -56,6 +56,7 @@ function TransactionsView({
   onEdit,
   onDelete,
   onDeleteMany,
+  onToggleTransfer,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -389,6 +390,7 @@ function TransactionsView({
             accounts={accounts}
             onEdit={onEdit}
             onDelete={onDelete}
+            onToggleTransfer={onToggleTransfer}
             showAll={true}
             resetSignal={showForm}
             onStartEdit={() => setShowForm(false)}
