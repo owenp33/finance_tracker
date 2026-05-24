@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -256,6 +256,9 @@ function TransactionsView({
 
   const toggleImportRow = (i) =>
     setImportSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  const toggleImportRowTransfer = (i) =>
+    setImportRows(prev => prev.map((r, idx) => idx === i ? { ...r, is_transfer: !r.is_transfer } : r));
 
   const handleConfirm = async () => {
     const rows = importRows.filter((_, i) => importSelected.has(i));
@@ -584,7 +587,7 @@ function TransactionsView({
               <div className="import-table-wrap">
                 <table className="import-table">
                   <thead>
-                    <tr><th></th><th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>Account</th><th>Notes</th></tr>
+                    <tr><th></th><th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>Account</th><th>Notes</th><th>Transfer</th></tr>
                   </thead>
                   <tbody>
                     {importRows.map((row, i) => {
@@ -593,10 +596,19 @@ function TransactionsView({
                         <tr key={i} className={rowClass}>
                           <td><input type="checkbox" checked={importSelected.has(i)} onChange={() => toggleImportRow(i)} disabled={row.account_id === null || row.zero_amount} /></td>
                           <td>{row.date}</td><td>{row.vendor}</td>
-                          <td>{row.category}{row.is_transfer && <span className="tx-transfer-chip" style={{ marginLeft: 6 }}>Transfer</span>}</td>
+                          <td>{row.category}</td>
                           <td className={row.amount >= 0 ? 'green' : 'red'}>{row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}</td>
                           <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
                           <td><small>{row.notes}</small></td>
+                          <td>
+                            <button
+                              className={`import-transfer-toggle${row.is_transfer ? ' active' : ''}`}
+                              title={row.is_transfer ? 'Unmark as transfer' : 'Mark as transfer'}
+                              onClick={() => toggleImportRowTransfer(i)}
+                            >
+                              <ArrowLeftRight size={13} />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}

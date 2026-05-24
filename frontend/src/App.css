@@ -402,6 +402,30 @@ body {
   white-space: nowrap;
 }
 
+.import-transfer-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 6px;
+  background: white;
+  color: #aaa;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.import-transfer-toggle:hover {
+  border-color: #3b5bdb;
+  color: #3b5bdb;
+}
+
+.import-transfer-toggle.active {
+  border-color: #3b5bdb;
+  background: #e7f0ff;
+  color: #3b5bdb;
+}
+
 .tx-transfer-chip {
   font-size: 0.72rem;
   font-weight: 600;
