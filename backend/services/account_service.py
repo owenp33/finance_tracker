@@ -44,6 +44,13 @@ class AccountService:
         if not account:
             return False, 'Account not found'
 
+        # Unlink any transfer peers before the cascade delete to avoid
+        # SQLAlchemy circular-FK conflicts (same issue as delete_transaction).
+        transfer_ids = [t.id for t in account.transactions if t.is_transfer]
+        for tx_id in transfer_ids:
+            self.unlink_transfer(tx_id)
+
+        account = db_service.get_account(account_id)
         db.session.delete(account)
         db.session.commit()
         return True, None
@@ -161,6 +168,14 @@ class AccountService:
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return False, 'Transaction not found'
+
+        # Clear transfer link before deleting to avoid SQLAlchemy circular-FK conflicts.
+        # unlink_transfer commits, so we re-fetch a clean session state afterward.
+        if trans.is_transfer:
+            self.unlink_transfer(transaction_id)
+            trans = db_service.get_transaction(transaction_id)
+            if not trans:
+                return False, 'Transaction not found'
 
         # Capture context before deletion — needed for re-evaluation after the row is gone
         was_expense  = trans.amount_cents < 0
