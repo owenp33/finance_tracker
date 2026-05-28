@@ -196,10 +196,15 @@ function TransactionsView({
   const toggleSelectTx = (id) =>
     setSelectedTxIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const allFilteredSelected = sortedFiltered.length > 0 && sortedFiltered.every(t => selectedTxIds.has(t.id));
+  const allVisibleSelected = visible.length > 0 && visible.every(t => selectedTxIds.has(t.id));
 
-  const toggleSelectAllTx = () =>
-    setSelectedTxIds(allFilteredSelected ? new Set() : new Set(sortedFiltered.map(t => t.id)));
+  const toggleSelectAllTx = () => {
+    if (allVisibleSelected) {
+      setSelectedTxIds(prev => { const n = new Set(prev); visible.forEach(t => n.delete(t.id)); return n; });
+    } else {
+      setSelectedTxIds(prev => { const n = new Set(prev); visible.forEach(t => n.add(t.id)); return n; });
+    }
+  };
 
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedTxIds);
@@ -220,7 +225,6 @@ function TransactionsView({
         });
     if (ids.length === 0) return;
     await onToggleTransferMany(ids);
-    setSelectedTxIds(new Set());
   };
 
   // ── Recurring tab ────────────────────────────────────────────────────────
@@ -391,11 +395,11 @@ function TransactionsView({
               <label className="bulk-select-all">
                 <input
                   type="checkbox"
-                  checked={allFilteredSelected}
-                  ref={el => { if (el) el.indeterminate = selectedTxIds.size > 0 && !allFilteredSelected; }}
+                  checked={allVisibleSelected}
+                  ref={el => { if (el) el.indeterminate = selectedTxIds.size > 0 && !allVisibleSelected; }}
                   onChange={toggleSelectAllTx}
                 />
-                <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${sortedFiltered.length}`}</span>
+                <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${visible.length}`}</span>
               </label>
               {selectedTxIds.size > 0 && (
                 <div className="bulk-actions">
