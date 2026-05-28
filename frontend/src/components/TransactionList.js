@@ -85,7 +85,18 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                 <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} />
               </div>
               <div className="form-actions">
-                <button className="btn btn-primary btn-sm" onClick={() => saveEdit(t.id)}>Save</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => saveEdit(t.id)}
+                  disabled={
+                    editFields.date === t.date &&
+                    editFields.vendor === t.vendor &&
+                    editFields.category === t.category &&
+                    parseFloat(editFields.amount) === t.amount &&
+                    (editFields.notes || '') === (t.notes || '') &&
+                    editFields.account_id === t.account_id
+                  }
+                >Save</button>
                 <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
               </div>
             </div>
