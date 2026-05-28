@@ -72,27 +72,23 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
       </div>
 
-      {/* Transfer toggle */}
+      {/* Transfer + Recurring toggles — mutually exclusive */}
       <div className="recurring-toggle-row">
         <label className="recurring-toggle-label">
           <input
             type="checkbox"
             checked={base.is_transfer}
-            onChange={e => setB('is_transfer', e.target.checked)}
+            onChange={e => { setB('is_transfer', e.target.checked); if (e.target.checked) setIsRecurring(false); }}
           />
           Mark as transfer
         </label>
-      </div>
-
-      {/* Recurring toggle */}
-      <div className="recurring-toggle-row">
         <label className="recurring-toggle-label">
           <input
             type="checkbox"
             checked={isRecurring}
-            onChange={e => setIsRecurring(e.target.checked)}
+            onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) setB('is_transfer', false); }}
           />
-          Make this a recurring transaction
+          Make this recurring
         </label>
       </div>
 

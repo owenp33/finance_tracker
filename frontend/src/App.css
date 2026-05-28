@@ -570,6 +570,7 @@ body {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
+  gap: 24px;
   padding: 10px 0 4px;
   border-top: 1.5px solid #e9ecef;
   margin-top: 4px;
@@ -2018,6 +2019,12 @@ body {
   padding: 8px 4px;
   border-bottom: 1px solid #e9ecef;
   margin-bottom: 4px;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .bulk-select-all {

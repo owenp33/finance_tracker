@@ -135,6 +135,15 @@ function App() {
     }
   };
 
+  const handleToggleTransferMany = async (ids) => {
+    try {
+      await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleDeleteManyTransactions = async (ids) => {
     if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
     try {
@@ -285,6 +294,7 @@ function App() {
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
             onToggleTransfer={handleToggleTransfer}
+            onToggleTransferMany={handleToggleTransferMany}
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}

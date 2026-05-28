@@ -57,6 +57,7 @@ function TransactionsView({
   onDelete,
   onDeleteMany,
   onToggleTransfer,
+  onToggleTransferMany,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -203,6 +204,22 @@ function TransactionsView({
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedTxIds);
     await onDeleteMany(ids);
+    setSelectedTxIds(new Set());
+  };
+
+  const selectedTransferCount = Array.from(selectedTxIds)
+    .filter(id => sortedFiltered.find(tx => tx.id === id)?.is_transfer).length;
+  const allSelectedAreTransfers = selectedTxIds.size > 0 && selectedTransferCount === selectedTxIds.size;
+
+  const handleBulkMarkTransfer = async () => {
+    const ids = allSelectedAreTransfers
+      ? Array.from(selectedTxIds)
+      : Array.from(selectedTxIds).filter(id => {
+          const t = sortedFiltered.find(tx => tx.id === id);
+          return t && !t.is_transfer;
+        });
+    if (ids.length === 0) return;
+    await onToggleTransferMany(ids);
     setSelectedTxIds(new Set());
   };
 
@@ -381,9 +398,14 @@ function TransactionsView({
                 <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${sortedFiltered.length}`}</span>
               </label>
               {selectedTxIds.size > 0 && (
-                <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
-                  Delete {selectedTxIds.size} selected
-                </button>
+                <div className="bulk-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={handleBulkMarkTransfer}>
+                    {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                    Delete {selectedTxIds.size} selected
+                  </button>
+                </div>
               )}
             </div>
           )}
