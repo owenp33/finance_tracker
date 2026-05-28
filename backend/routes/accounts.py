@@ -149,7 +149,8 @@ def add_transaction(account_id):
         vendor=data['vendor'],
         category=data['category'],
         amount=float(data['amount']),
-        notes=data.get('notes', '')
+        notes=data.get('notes', ''),
+        is_transfer=data.get('is_transfer', False),
     )
 
     acc = db_service.get_account(account_id)

@@ -7,6 +7,7 @@ const EMPTY_BASE = (accounts) => ({
   category: '',
   amount: '',
   notes: '',
+  is_transfer: false,
 });
 
 const EMPTY_RECURRING = {
@@ -69,6 +70,18 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
       <div className="form-group">
         <label>Notes <small>(optional)</small></label>
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
+      </div>
+
+      {/* Transfer toggle */}
+      <div className="recurring-toggle-row">
+        <label className="recurring-toggle-label">
+          <input
+            type="checkbox"
+            checked={base.is_transfer}
+            onChange={e => setB('is_transfer', e.target.checked)}
+          />
+          Mark as transfer
+        </label>
       </div>
 
       {/* Recurring toggle */}
