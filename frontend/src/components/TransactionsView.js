@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2 } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -64,6 +64,9 @@ function TransactionsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  undoMode,
+  undoLabel,
+  onUndo,
 }) {
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
@@ -401,16 +404,24 @@ function TransactionsView({
                 />
                 <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${visible.length}`}</span>
               </label>
-              {selectedTxIds.size > 0 && (
-                <div className="bulk-actions">
-                  <button className="btn btn-ghost btn-sm" onClick={handleBulkMarkTransfer}>
-                    {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
+              <div className="bulk-actions">
+                {selectedTxIds.size > 0 && (
+                  <>
+                    <button className="btn btn-ghost btn-sm" onClick={handleBulkMarkTransfer}>
+                      {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                      Delete {selectedTxIds.size} selected
+                    </button>
+                  </>
+                )}
+                {undoMode && (
+                  <button className="btn btn-ghost btn-sm bulk-undo-btn" onClick={onUndo}>
+                    {undoMode === 'undo' ? <Undo2 size={13} /> : <Redo2 size={13} />}
+                    {undoMode === 'undo' ? 'Undo' : 'Redo'} {undoLabel}
                   </button>
-                  <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
-                    Delete {selectedTxIds.size} selected
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 

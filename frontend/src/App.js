@@ -9,6 +9,7 @@ import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
 import { useUpcoming } from './hooks/useUpcoming';
 import { useAnalytics } from './hooks/useAnalytics';
+import { useUndoHistory } from './hooks/useUndoHistory';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -36,6 +37,7 @@ function App() {
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
   const { upcoming, loadUpcoming } = useUpcoming({ setError });
   const { analytics, loadAnalytics } = useAnalytics({ setError });
+  const { mode: undoMode, label: undoLabel, pushUndo, pushRedo, execute: executeUndo } = useUndoHistory();
 
   // AUTH HANDLERS =============================================================
 
@@ -97,6 +99,10 @@ function App() {
 
   // ACTION HANDLERS ===========================================================
 
+  const handleUndo = async () => {
+    try { await executeUndo(); } catch (err) { setError(err.message); }
+  };
+
   const handleAddTransaction = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
@@ -108,9 +114,21 @@ function App() {
   };
 
   const handleEditTransaction = async (id, body) => {
+    const prev = transactions.find(t => t.id === id);
     try {
       await transactionsAPI.updateTransaction(id, body);
       await refreshAll();
+      if (prev) {
+        const prevFields = { date: prev.date, vendor: prev.vendor, category: prev.category, amount: prev.amount, notes: prev.notes || '', account_id: prev.account_id };
+        pushUndo(`edit "${prev.vendor}"`, async () => {
+          await transactionsAPI.updateTransaction(id, prevFields);
+          await refreshAll();
+          pushRedo(async () => {
+            await transactionsAPI.updateTransaction(id, body);
+            await refreshAll();
+          });
+        });
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -118,9 +136,22 @@ function App() {
 
   const handleDeleteTransaction = async (id) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    const tx = transactions.find(t => t.id === id);
     try {
       await transactionsAPI.deleteTransaction(id);
       await refreshAll();
+      if (tx) {
+        pushUndo(`delete "${tx.vendor}"`, async () => {
+          const newTx = await transactionsAPI.addTransaction(tx.account_id, { date: tx.date, vendor: tx.vendor, category: tx.category, amount: tx.amount, notes: tx.notes || '', is_transfer: tx.is_transfer });
+          await refreshAll();
+          if (newTx?.id) {
+            pushRedo(async () => {
+              await transactionsAPI.deleteTransaction(newTx.id);
+              await refreshAll();
+            });
+          }
+        });
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -130,6 +161,14 @@ function App() {
     try {
       await transactionsAPI.toggleTransfer(id);
       await refreshAll();
+      pushUndo('toggle transfer', async () => {
+        await transactionsAPI.toggleTransfer(id);
+        await refreshAll();
+        pushRedo(async () => {
+          await transactionsAPI.toggleTransfer(id);
+          await refreshAll();
+        });
+      });
     } catch (err) {
       setError(err.message);
     }
@@ -139,6 +178,14 @@ function App() {
     try {
       await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
       await refreshAll();
+      pushUndo(`toggle ${ids.length} transfer${ids.length !== 1 ? 's' : ''}`, async () => {
+        await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
+        await refreshAll();
+        pushRedo(async () => {
+          await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
+          await refreshAll();
+        });
+      });
     } catch (err) {
       setError(err.message);
     }
@@ -146,9 +193,23 @@ function App() {
 
   const handleDeleteManyTransactions = async (ids) => {
     if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
+    const txs = transactions.filter(t => ids.includes(t.id));
     try {
       await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
       await refreshAll();
+      if (txs.length > 0) {
+        pushUndo(`delete ${txs.length} transaction${txs.length !== 1 ? 's' : ''}`, async () => {
+          const newTxs = await Promise.all(txs.map(tx => transactionsAPI.addTransaction(tx.account_id, { date: tx.date, vendor: tx.vendor, category: tx.category, amount: tx.amount, notes: tx.notes || '', is_transfer: tx.is_transfer })));
+          await refreshAll();
+          const newIds = newTxs.filter(Boolean).map(t => t.id);
+          if (newIds.length > 0) {
+            pushRedo(async () => {
+              await Promise.all(newIds.map(id => transactionsAPI.deleteTransaction(id)));
+              await refreshAll();
+            });
+          }
+        });
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -299,6 +360,9 @@ function App() {
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
+            undoMode={undoMode}
+            undoLabel={undoLabel}
+            onUndo={handleUndo}
           />
         )}
         {view === 'budgeting' && (
