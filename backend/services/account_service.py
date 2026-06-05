@@ -337,7 +337,7 @@ class AccountService:
                     vendor=rec.vendor,
                     category=rec.category,
                     amount=rec.amount,
-                    notes=f"Auto-generated from recurring: {rec.notes}",
+                    notes=rec.notes or '',
                     recurring_id=rec.id
                 )
 
