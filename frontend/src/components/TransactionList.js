@@ -51,7 +51,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
   return (
     <div className={`transaction-list${compact ? ' compact' : ''}`}>
       {transactions.map(t => (
-        <div key={t.id} className="transaction-item">
+        <div key={t.id} className={`transaction-item${selectedIds?.has(t.id) ? ' tx-selected' : ''}`}>
           {editingId === t.id ? (
             <div className="transaction-edit-form">
               {accounts.length > 0 && (

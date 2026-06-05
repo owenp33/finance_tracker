@@ -97,6 +97,22 @@ function TransactionsView({
   // Recurring tab — inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
+  const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
+  const [selectedRecurringTxIds, setSelectedRecurringTxIds] = useState(new Set());
+
+  const toggleRecurringExpand = (id) =>
+    setExpandedRecurringIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const toggleSelectRecurringTx = (id) =>
+    setSelectedRecurringTxIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
 
   // Accounts tab
   const [showAddAccountForm, setShowAddAccountForm] = useState(false);
@@ -560,18 +576,83 @@ function TransactionsView({
                     </div>
                   ) : (
                     <>
-                      <div className="recurring-info">
-                        <strong>{r.vendor}</strong>
-                        <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
-                        {r.notes && <small>{r.notes}</small>}
+                      <div className="recurring-item-row">
+                        <div className="recurring-info">
+                          <strong>{r.vendor}</strong>
+                          <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
+                          {r.notes && <small>{r.notes}</small>}
+                        </div>
+                        <div className="recurring-item-right">
+                          <span className={`transaction-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
+                            {r.amount >= 0 ? '+' : '-'}${Math.abs(r.amount).toFixed(2)}
+                          </span>
+                          <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}><Pencil size={14} /></button>
+                          <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}><Trash2 size={14} /></button>
+                        </div>
                       </div>
-                      <div className="recurring-item-right">
-                        <span className={`transaction-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
-                          {r.amount >= 0 ? '+' : '-'}${Math.abs(r.amount).toFixed(2)}
-                        </span>
-                        <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}><Pencil size={14} /></button>
-                        <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}><Trash2 size={14} /></button>
-                      </div>
+                      {(() => {
+                        const generated = transactions
+                          .filter(t => t.recurring_id === r.id)
+                          .sort((a, b) => b.date.localeCompare(a.date));
+                        if (generated.length === 0) return null;
+                        const isExpanded = expandedRecurringIds.has(r.id);
+                        return (
+                          <div className="recurring-generated">
+                            <button
+                              className="recurring-generated-toggle"
+                              onClick={() => toggleRecurringExpand(r.id)}
+                            >
+                              {isExpanded ? '▲' : '▼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
+                            </button>
+                            {isExpanded && (
+                              <div className="recurring-generated-list">
+                                {(() => {
+                                  const sectionSelected = generated.filter(t => selectedRecurringTxIds.has(t.id));
+                                  const allAreTransfers = sectionSelected.length > 0 && sectionSelected.every(t => t.is_transfer);
+                                  return (
+                                    <>
+                                      {sectionSelected.length > 0 && (
+                                        <div className="recurring-bulk-actions">
+                                          <span className="recurring-bulk-count">{sectionSelected.length} selected</span>
+                                          <button
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => onToggleTransferMany(sectionSelected.map(t => t.id))}
+                                          >
+                                            {allAreTransfers ? 'Unmark transfer' : 'Mark as transfer'}
+                                          </button>
+                                          <button
+                                            className="btn btn-danger btn-sm"
+                                            onClick={async () => {
+                                              await onDeleteMany(sectionSelected.map(t => t.id));
+                                              setSelectedRecurringTxIds(prev => {
+                                                const n = new Set(prev);
+                                                sectionSelected.forEach(t => n.delete(t.id));
+                                                return n;
+                                              });
+                                            }}
+                                          >
+                                            Delete {sectionSelected.length}
+                                          </button>
+                                        </div>
+                                      )}
+                                      <TransactionList
+                                        transactions={generated}
+                                        accounts={accounts}
+                                        onEdit={onEdit}
+                                        onDelete={onDelete}
+                                        onToggleTransfer={onToggleTransfer}
+                                        showAll={true}
+                                        selectedIds={selectedRecurringTxIds}
+                                        onToggle={toggleSelectRecurringTx}
+                                      />
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
