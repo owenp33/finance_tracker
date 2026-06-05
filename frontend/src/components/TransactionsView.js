@@ -99,6 +99,7 @@ function TransactionsView({
   const [recurringEditFields, setRecurringEditFields] = useState({});
   const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
   const [selectedRecurringTxIds, setSelectedRecurringTxIds] = useState(new Set());
+  const [recurringBulkAmount, setRecurringBulkAmount] = useState('');
 
   const toggleRecurringExpand = (id) =>
     setExpandedRecurringIds(prev => {
@@ -438,16 +439,20 @@ function TransactionsView({
                 <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${visible.length}`}</span>
               </label>
               <div className="bulk-actions">
-                {selectedTxIds.size > 0 && (
-                  <>
-                    <button className="btn btn-ghost btn-sm" onClick={handleBulkMarkTransfer}>
-                      {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
-                    </button>
-                    <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
-                      Delete {selectedTxIds.size} selected
-                    </button>
-                  </>
-                )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleBulkMarkTransfer}
+                  style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
+                >
+                  {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
+                </button>
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={handleBulkDelete}
+                  style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
+                >
+                  Delete {selectedTxIds.size || '—'} selected
+                </button>
                 {undoMode && (
                   <button className="btn btn-ghost btn-sm bulk-undo-btn" onClick={onUndo}>
                     {undoMode === 'undo' ? <Undo2 size={13} /> : <Redo2 size={13} />}
@@ -608,15 +613,72 @@ function TransactionsView({
                               <div className="recurring-generated-list">
                                 {(() => {
                                   const sectionSelected = generated.filter(t => selectedRecurringTxIds.has(t.id));
-                                  const allAreTransfers = sectionSelected.length > 0 && sectionSelected.every(t => t.is_transfer);
+                                  const allSectionSelected = generated.length > 0 && generated.every(t => selectedRecurringTxIds.has(t.id));
+                                  const someSectionSelected = sectionSelected.length > 0;
+                                  const allAreTransfers = someSectionSelected && sectionSelected.every(t => t.is_transfer);
+
+                                  const toggleSelectAllSection = () => {
+                                    if (allSectionSelected) {
+                                      setSelectedRecurringTxIds(prev => {
+                                        const n = new Set(prev); generated.forEach(t => n.delete(t.id)); return n;
+                                      });
+                                    } else {
+                                      setSelectedRecurringTxIds(prev => {
+                                        const n = new Set(prev); generated.forEach(t => n.add(t.id)); return n;
+                                      });
+                                    }
+                                  };
+
                                   return (
                                     <>
-                                      {sectionSelected.length > 0 && (
-                                        <div className="recurring-bulk-actions">
-                                          <span className="recurring-bulk-count">{sectionSelected.length} selected</span>
+                                      <div className="recurring-bulk-actions">
+                                        <label className="bulk-select-all">
+                                          <input
+                                            type="checkbox"
+                                            checked={allSectionSelected}
+                                            ref={el => { if (el) el.indeterminate = someSectionSelected && !allSectionSelected; }}
+                                            onChange={toggleSelectAllSection}
+                                          />
+                                          <span>
+                                            {someSectionSelected
+                                              ? `${sectionSelected.length} of ${generated.length} selected`
+                                              : `Select all ${generated.length}`}
+                                          </span>
+                                        </label>
+                                        <div className="recurring-bulk-right">
+                                          {someSectionSelected && (
+                                            <div className="recurring-bulk-amount">
+                                              <span>Change amount to</span>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                className="recurring-bulk-amount-input"
+                                                value={recurringBulkAmount}
+                                                onChange={e => setRecurringBulkAmount(e.target.value)}
+                                                placeholder="0.00"
+                                              />
+                                              <button
+                                                className="btn btn-primary btn-sm"
+                                                disabled={!recurringBulkAmount || isNaN(parseFloat(recurringBulkAmount))}
+                                                onClick={async () => {
+                                                  const amount = parseFloat(recurringBulkAmount);
+                                                  for (const t of sectionSelected) {
+                                                    await onEdit(t.id, {
+                                                      date: t.date, vendor: t.vendor, category: t.category,
+                                                      amount, notes: t.notes || '', account_id: t.account_id,
+                                                    });
+                                                  }
+                                                  setRecurringBulkAmount('');
+                                                }}
+                                              >
+                                                Apply
+                                              </button>
+                                            </div>
+                                          )}
                                           <button
                                             className="btn btn-ghost btn-sm"
                                             onClick={() => onToggleTransferMany(sectionSelected.map(t => t.id))}
+                                            style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                           >
                                             {allAreTransfers ? 'Unmark transfer' : 'Mark as transfer'}
                                           </button>
@@ -630,11 +692,12 @@ function TransactionsView({
                                                 return n;
                                               });
                                             }}
+                                            style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                           >
-                                            Delete {sectionSelected.length}
+                                            Delete {sectionSelected.length || '—'}
                                           </button>
                                         </div>
-                                      )}
+                                      </div>
                                       <TransactionList
                                         transactions={generated}
                                         accounts={accounts}

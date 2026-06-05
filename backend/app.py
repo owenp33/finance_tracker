@@ -27,7 +27,7 @@ def _migrate_transfer_columns(db):
         conn.commit()
 
 
-def create_app():
+def create_app(test_config=None):
     """Application factory pattern"""
     app = Flask(__name__)
 
@@ -40,6 +40,9 @@ def create_app():
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
+
+    if test_config:
+        app.config.update(test_config)
 
     # Initialize extensions from single source
     from extensions import db, jwt
@@ -86,7 +89,8 @@ def create_app():
 
     with app.app_context():
         db.create_all()
-        _migrate_transfer_columns(db)
+        if not app.config.get('TESTING'):
+            _migrate_transfer_columns(db)
 
     if not app.config.get('TESTING'):
         from services.scheduler import init_scheduler
