@@ -1018,6 +1018,12 @@ body {
   background: #f8f9fa;
 }
 
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .btn-sm {
   padding: 6px 14px;
   font-size: 0.85rem;
@@ -2510,6 +2516,48 @@ body {
 .dashboard-col .budget-progress-list {
   max-height: 320px;
   overflow-y: auto;
+}
+
+/* Transaction search bar */
+.tx-search-bar {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.tx-search-input {
+  width: 100%;
+  padding: 9px 36px 9px 14px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #333;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.tx-search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.tx-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.tx-search-clear:hover {
+  color: #333;
 }
 
 /* Undo / Redo button in bulk action bar */

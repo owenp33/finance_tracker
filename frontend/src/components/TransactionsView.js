@@ -78,6 +78,7 @@ function TransactionsView({
 
   // All tab — filters
   const [showFilters, setShowFilters] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [datePreset, setDatePreset] = useState('');
@@ -120,7 +121,7 @@ function TransactionsView({
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
     setSelectedTxIds(new Set());
-  }, [selectedIds, selectedCategories, dateFrom, dateTo]);
+  }, [selectedIds, selectedCategories, dateFrom, dateTo, searchQuery]);
 
   // ── All tab ──────────────────────────────────────────────────────────────
 
@@ -185,11 +186,13 @@ function TransactionsView({
     }
   };
 
+  const searchLower = searchQuery.toLowerCase();
   const filtered = transactions.filter(t => {
     if (selectedIds.size > 0 && !selectedIds.has(t.account_id)) return false;
     if (selectedCategories.size > 0 && !selectedCategories.has(t.category)) return false;
     if (dateFrom && t.date < dateFrom) return false;
     if (dateTo && t.date > dateTo) return false;
+    if (searchLower && !t.vendor.toLowerCase().includes(searchLower)) return false;
     return true;
   });
 
@@ -347,6 +350,20 @@ function TransactionsView({
                 {showForm ? 'Cancel' : '+ Add Transaction'}
               </button>
             </div>
+          </div>
+
+          {/* Search bar */}
+          <div className="tx-search-bar">
+            <input
+              type="text"
+              className="tx-search-input"
+              placeholder="Search by vendor..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="tx-search-clear" onClick={() => setSearchQuery('')} title="Clear search">×</button>
+            )}
           </div>
 
           {/* Period navigator */}
