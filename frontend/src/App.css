@@ -806,6 +806,13 @@ body {
   font-size: 0.9rem;
 }
 
+.recurring-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .recurring-amount {
   font-size: 1.3rem;
   font-weight: 700;

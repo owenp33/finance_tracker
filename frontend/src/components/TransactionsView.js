@@ -565,7 +565,7 @@ function TransactionsView({
                         <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
                         {r.notes && <small>{r.notes}</small>}
                       </div>
-                      <div className="transaction-right">
+                      <div className="recurring-item-right">
                         <span className={`transaction-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
                           {r.amount >= 0 ? '+' : '-'}${Math.abs(r.amount).toFixed(2)}
                         </span>
