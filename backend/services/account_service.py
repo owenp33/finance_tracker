@@ -232,6 +232,26 @@ class AccountService:
         db.session.commit()
         return True, None
 
+    def break_transfer_link(self, tx_id):
+        """
+        Clear the peer link between two transfer transactions without removing
+        the is_transfer flag. Both sides remain visible as unlinked transfers,
+        ready to be re-paired to the correct account.
+
+        Distinct from unlink_transfer, which fully removes the is_transfer flag.
+        Returns (success, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return False, 'Transaction not found'
+        if tx.transfer_peer_id:
+            peer = db_service.get_transaction(tx.transfer_peer_id)
+            if peer:
+                peer.transfer_peer_id = None
+        tx.transfer_peer_id = None
+        db.session.commit()
+        return True, None
+
     def create_transfer_pair(self, tx_id, to_account_id):
         """
         Create the counterpart transaction for an existing transfer on a different

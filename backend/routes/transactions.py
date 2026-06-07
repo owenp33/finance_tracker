@@ -76,6 +76,23 @@ def toggle_transfer(transaction_id):
     return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
 
 
+@transactions_bp.route('/<int:transaction_id>/transfer/pair', methods=['DELETE'])
+@jwt_required()
+@owns_transaction
+def break_transfer_pair(transaction_id):
+    """
+    Break the peer link between two transfer transactions while keeping both
+    flagged as is_transfer=True. Use this to correct a wrong pairing without
+    fully removing the transfer designation.
+    """
+    success, error = account_service.break_transfer_link(transaction_id)
+    if not success:
+        return jsonify({'success': False, 'error': error}), 404
+
+    trans = db_service.get_transaction(transaction_id)
+    return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
+
+
 @transactions_bp.route('/<int:transaction_id>/transfer/pair', methods=['POST'])
 @jwt_required()
 @owns_transaction
