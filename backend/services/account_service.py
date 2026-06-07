@@ -232,6 +232,38 @@ class AccountService:
         db.session.commit()
         return True, None
 
+    def create_transfer_pair(self, tx_id, to_account_id):
+        """
+        Create the counterpart transaction for an existing transfer on a different
+        account and link both sides.
+
+        The peer mirrors the original: same date, vendor, category, notes, and the
+        negated amount (so -$500 on Checking becomes +$500 on Savings).
+        Both transactions are flagged is_transfer=True and linked via transfer_peer_id.
+
+        Returns (original_tx, peer_tx, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return None, None, 'Transaction not found'
+
+        peer = self.add_transaction(
+            account_id=to_account_id,
+            date_obj=tx.date,
+            vendor=tx.vendor,
+            category=tx.category,
+            amount=-tx.amount,
+            notes=tx.notes or '',
+            is_transfer=True,
+        )
+
+        tx.is_transfer      = True
+        tx.transfer_peer_id = peer.id
+        peer.transfer_peer_id = tx.id
+        db.session.commit()
+
+        return tx, peer, None
+
     # RECURRING OPERATIONS ======================================================
 
     def add_recurring(self, account_id, start_date, vendor, category, amount,

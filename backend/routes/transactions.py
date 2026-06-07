@@ -76,6 +76,41 @@ def toggle_transfer(transaction_id):
     return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
 
 
+@transactions_bp.route('/<int:transaction_id>/transfer/pair', methods=['POST'])
+@jwt_required()
+@owns_transaction
+def pair_transfer(transaction_id):
+    """
+    Create the counterpart transaction on a different account and link both as a
+    transfer pair. The peer is a mirror of the original (negated amount, same
+    date/vendor/category/notes).
+
+    Body: { to_account_id: <int> }
+    """
+    data = request.get_json()
+    to_account_id = data.get('to_account_id')
+    if not to_account_id:
+        return jsonify({'success': False, 'error': 'to_account_id is required'}), 400
+
+    to_account = db_service.get_account(to_account_id)
+    if not to_account:
+        return jsonify({'success': False, 'error': 'Destination account not found'}), 404
+
+    user_id = get_jwt_identity()
+    if int(to_account.user_id) != int(user_id):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    original, peer, error = account_service.create_transfer_pair(transaction_id, to_account_id)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+
+    return jsonify({
+        'success': True,
+        'transaction': original.to_dict(),
+        'peer': peer.to_dict(),
+    }), 201
+
+
 @transactions_bp.route('/<int:transaction_id>', methods=['DELETE'])
 @jwt_required()
 @owns_transaction
