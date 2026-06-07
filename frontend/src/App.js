@@ -183,6 +183,15 @@ function App() {
     }
   };
 
+  const handleBreakTransferLink = async (txId) => {
+    try {
+      await transactionsAPI.breakTransferLink(txId);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleToggleTransferMany = async (ids) => {
     try {
       await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
@@ -366,6 +375,7 @@ function App() {
             onToggleTransfer={handleToggleTransfer}
             onToggleTransferMany={handleToggleTransferMany}
             onPairTransfer={handlePairTransfer}
+            onBreakTransferLink={handleBreakTransferLink}
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}

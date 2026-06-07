@@ -35,3 +35,6 @@ export const pairTransfer = (id, toAccountId) =>
     method: 'POST',
     body: JSON.stringify({ to_account_id: toAccountId }),
   }).then(d => ({ transaction: d.transaction, peer: d.peer }));
+
+export const breakTransferLink = (id) =>
+  fetchAPI(`/api/transactions/${id}/transfer/pair`, { method: 'DELETE' }).then(d => d.transaction);
