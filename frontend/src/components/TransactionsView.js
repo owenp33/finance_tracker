@@ -646,8 +646,10 @@ function TransactionsView({
                                           </span>
                                         </label>
                                         <div className="recurring-bulk-right">
-                                          {someSectionSelected && (
-                                            <div className="recurring-bulk-amount">
+                                          <div
+                                            className="recurring-bulk-amount"
+                                            style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
+                                          >
                                               <span>Change amount to</span>
                                               <input
                                                 type="number"
@@ -673,8 +675,7 @@ function TransactionsView({
                                               >
                                                 Apply
                                               </button>
-                                            </div>
-                                          )}
+                                          </div>
                                           <button
                                             className="btn btn-ghost btn-sm"
                                             onClick={() => onToggleTransferMany(sectionSelected.map(t => t.id))}
