@@ -15,9 +15,9 @@ const EMPTY_RECURRING = {
   number: -1,   // -1 = infinite
 };
 
-function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
+function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defaultRecurring = false }) {
   const [base, setBase] = useState(EMPTY_BASE(accounts));
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(defaultRecurring);
   const [recurring, setRecurring] = useState(EMPTY_RECURRING);
 
   const setB = (field, value) => setBase(prev => ({ ...prev, [field]: value }));
@@ -38,7 +38,7 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
     }
     setBase(EMPTY_BASE(accounts));
     setRecurring(EMPTY_RECURRING);
-    setIsRecurring(false);
+    setIsRecurring(defaultRecurring);
   };
 
   return (
@@ -72,27 +72,29 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
       </div>
 
-      {/* Transfer + Recurring toggles — mutually exclusive */}
-      <div className="recurring-toggle-row">
-        <label className="recurring-toggle-label">
-          <input
-            type="checkbox"
-            checked={base.is_transfer}
-            onChange={e => { setB('is_transfer', e.target.checked); if (e.target.checked) setIsRecurring(false); }}
-          />
-          Mark as transfer
-        </label>
-        <label className="recurring-toggle-label">
-          <input
-            type="checkbox"
-            checked={isRecurring}
-            onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) setB('is_transfer', false); }}
-          />
-          Make this recurring
-        </label>
-      </div>
+      {/* Transfer + Recurring toggles — hidden when form is locked to recurring mode */}
+      {!defaultRecurring && (
+        <div className="recurring-toggle-row">
+          <label className="recurring-toggle-label">
+            <input
+              type="checkbox"
+              checked={base.is_transfer}
+              onChange={e => { setB('is_transfer', e.target.checked); if (e.target.checked) setIsRecurring(false); }}
+            />
+            Mark as transfer
+          </label>
+          <label className="recurring-toggle-label">
+            <input
+              type="checkbox"
+              checked={isRecurring}
+              onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) setB('is_transfer', false); }}
+            />
+            Make this recurring
+          </label>
+        </div>
+      )}
 
-      {/* Expandable recurring fields */}
+      {/* Recurring fields — always visible when defaultRecurring, otherwise expandable */}
       {isRecurring && (
         <div className="recurring-extra-fields">
           <div className="form-group">

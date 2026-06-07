@@ -524,6 +524,7 @@ function TransactionsView({
               onSubmitRecurring={async (data) => { await onAddRecurring(data); setShowForm(false); }}
               onCancel={() => setShowForm(false)}
               accounts={accounts}
+              defaultRecurring={true}
             />
           )}
           <div className="recurring-list">
