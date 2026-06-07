@@ -174,6 +174,15 @@ function App() {
     }
   };
 
+  const handlePairTransfer = async (txId, toAccountId) => {
+    try {
+      await transactionsAPI.pairTransfer(txId, toAccountId);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleToggleTransferMany = async (ids) => {
     try {
       await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
@@ -356,6 +365,7 @@ function App() {
             onDeleteRecurring={handleDeleteRecurring}
             onToggleTransfer={handleToggleTransfer}
             onToggleTransferMany={handleToggleTransferMany}
+            onPairTransfer={handlePairTransfer}
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
