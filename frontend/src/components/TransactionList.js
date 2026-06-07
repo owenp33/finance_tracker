@@ -10,7 +10,7 @@ const formatDate = (dateStr) => {
 const formatAmount = (amount) =>
   `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -129,7 +129,12 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
               <div className="transaction-right">
                 <div className="tx-default-info">
                   {t.over_budget && <span className="tx-over-chip">Over budget</span>}
-                  {t.is_transfer && <span className="tx-transfer-chip">Transfer</span>}
+                  {t.is_transfer && (
+                    <span className={`tx-transfer-chip${t.transfer_peer_id ? '' : ' tx-transfer-unlinked'}`}
+                      title={t.transfer_peer_id ? undefined : 'Go to Accounts tab to link this transfer'}>
+                      {t.transfer_peer_id ? 'Transfer' : 'Transfer · unlinked'}
+                    </span>
+                  )}
                   <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                     {formatAmount(t.amount)}
                   </div>
@@ -138,7 +143,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                   {onToggleTransfer && (
                     <button
                       className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
-                      title={t.is_transfer ? 'Unmark transfer' : 'Mark as transfer'}
+                      title={t.is_transfer ? (t.transfer_peer_id ? 'Unlink transfer' : 'Unmark transfer') : 'Mark as transfer'}
                       onClick={() => onToggleTransfer(t.id)}
                     >
                       <ArrowLeftRight size={14} />

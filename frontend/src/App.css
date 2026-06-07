@@ -446,6 +446,11 @@ body {
   white-space: nowrap;
 }
 
+.tx-transfer-chip.tx-transfer-unlinked {
+  color: #888;
+  background: #f3f4f6;
+}
+
 .tx-transfer-active {
   color: #3b5bdb !important;
   background: #e7f0ff !important;
