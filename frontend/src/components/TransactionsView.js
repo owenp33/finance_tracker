@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2, Info } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -128,6 +128,10 @@ function TransactionsView({
   const [pairingToAccountId, setPairingToAccountId] = useState('');
   const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
   const [transferBulkToAccountId, setTransferBulkToAccountId] = useState('');
+  const [expandedAccountIds, setExpandedAccountIds] = useState(new Set());
+
+  const toggleAccountExpand = (id) =>
+    setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const toggleTransferSelect = (id) =>
     setSelectedTransferIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -892,14 +896,34 @@ function TransactionsView({
                     ) : (
                       <>
                         <div className="account-item-row">
-                          <div className="account-info"><strong>{a.account_name}</strong><small>{a.account_id}</small></div>
+                          <button
+                            className="account-expand-btn"
+                            onClick={() => toggleAccountExpand(a.id)}
+                            disabled={accountTransfers.length === 0}
+                            title={accountTransfers.length === 0 ? 'No transfers' : (expandedAccountIds.has(a.id) ? 'Collapse' : 'Expand transfers')}
+                          >
+                            {expandedAccountIds.has(a.id)
+                              ? <ChevronDown size={15} />
+                              : <ChevronRight size={15} />}
+                          </button>
+                          <div className="account-info">
+                            <strong>{a.account_name}</strong>
+                            <small>
+                              {a.account_id}
+                              {accountTransfers.length > 0 && (
+                                <span className="account-transfer-count">
+                                  {accountTransfers.length} transfer{accountTransfers.length !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </small>
+                          </div>
                           <div className="account-balance">${a.balance?.toFixed(2) ?? '0.00'}</div>
                           <div className="account-actions">
                             <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}><Pencil size={14} /></button>
                             <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
                           </div>
                         </div>
-                        {accountTransfers.length > 0 && (() => {
+                        {accountTransfers.length > 0 && expandedAccountIds.has(a.id) && (() => {
                           const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
                           const allSelected  = accountTransfers.length > 0 && accountTransfers.every(t => selectedTransferIds.has(t.id));
                           const someSelected = acctSelected.length > 0;
