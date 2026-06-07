@@ -2032,13 +2032,41 @@ body {
   border-top: 1px solid #f0f0f0;
 }
 
-.account-transfers-label {
+.account-transfers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  min-height: 28px;
+}
+
+.account-transfers-header .bulk-select-all {
   font-size: 0.75rem;
   font-weight: 600;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin-bottom: 6px;
+}
+
+.transfer-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transfer-bulk-hint {
+  font-size: 0.8rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.transfer-bulk-bar select {
+  font-size: 0.82rem;
+  padding: 3px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #fff;
 }
 
 .account-transfer-row {
@@ -2048,6 +2076,17 @@ body {
   padding: 4px 0;
   font-size: 0.85rem;
   color: #444;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+
+.account-transfer-row.transfer-selected {
+  background: #f0f4ff;
+}
+
+.transfer-checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .account-transfer-date {
@@ -2063,6 +2102,15 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.account-transfer-direction {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
 }
 
 .account-transfer-peer {

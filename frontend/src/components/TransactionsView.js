@@ -126,6 +126,11 @@ function TransactionsView({
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
   const [pairingTxId, setPairingTxId] = useState(null);
   const [pairingToAccountId, setPairingToAccountId] = useState('');
+  const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
+  const [transferBulkToAccountId, setTransferBulkToAccountId] = useState('');
+
+  const toggleTransferSelect = (id) =>
+    setSelectedTransferIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // Import tab
   const [importStep, setImportStep] = useState('pick');
@@ -894,58 +899,126 @@ function TransactionsView({
                             <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
                           </div>
                         </div>
-                        {accountTransfers.length > 0 && (
-                          <div className="account-transfers">
-                            <div className="account-transfers-label">Transfers ({accountTransfers.length})</div>
-                            {accountTransfers.map(t => (
-                              <div key={t.id} className="account-transfer-row">
-                                <span className="account-transfer-date">{formatDate(t.date)}</span>
-                                <span className="account-transfer-vendor">{t.vendor}</span>
-                                <span className="account-transfer-peer">
-                                  {t.amount < 0 ? '→' : '←'}{' '}
-                                  {t.transfer_peer_account ?? (
-                                    pairingTxId === t.id ? (
-                                      <span className="account-transfer-pair-picker">
-                                        <select
-                                          value={pairingToAccountId}
-                                          onChange={e => setPairingToAccountId(e.target.value)}
-                                          autoFocus
-                                        >
-                                          <option value="">— select account —</option>
-                                          {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                            <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                          ))}
-                                        </select>
-                                        <button
-                                          className="btn btn-primary btn-sm"
-                                          disabled={!pairingToAccountId}
-                                          onClick={async () => {
-                                            await onPairTransfer(t.id, parseInt(pairingToAccountId));
-                                            setPairingTxId(null);
-                                            setPairingToAccountId('');
-                                          }}
-                                        >Link</button>
-                                        <button
-                                          className="btn btn-ghost btn-sm"
-                                          onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}
-                                        >✕</button>
-                                      </span>
-                                    ) : (
-                                      <span
-                                        className="account-transfer-unlinked"
-                                        title="Click to link to another account"
-                                        onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
-                                      >Unlinked</span>
-                                    )
-                                  )}
-                                </span>
-                                <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                                  {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
-                                </span>
+                        {accountTransfers.length > 0 && (() => {
+                          const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
+                          const allSelected  = accountTransfers.length > 0 && accountTransfers.every(t => selectedTransferIds.has(t.id));
+                          const someSelected = acctSelected.length > 0;
+                          const unlinkedSelected = acctSelected.filter(t => !t.transfer_peer_id);
+
+                          const toggleAll = () => {
+                            if (allSelected) {
+                              setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.delete(t.id)); return n; });
+                            } else {
+                              setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.add(t.id)); return n; });
+                            }
+                          };
+
+                          const handleBulkLink = async () => {
+                            const toId = parseInt(transferBulkToAccountId);
+                            await Promise.all(unlinkedSelected.map(t => onPairTransfer(t.id, toId)));
+                            setSelectedTransferIds(prev => { const n = new Set(prev); unlinkedSelected.forEach(t => n.delete(t.id)); return n; });
+                            setTransferBulkToAccountId('');
+                          };
+
+                          return (
+                            <div className="account-transfers">
+                              <div className="account-transfers-header">
+                                <label className="bulk-select-all">
+                                  <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                                    onChange={toggleAll}
+                                  />
+                                  <span>
+                                    {someSelected
+                                      ? `${acctSelected.length} of ${accountTransfers.length} selected`
+                                      : `Transfers (${accountTransfers.length})`}
+                                  </span>
+                                </label>
+                                <div
+                                  className="transfer-bulk-bar"
+                                  style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
+                                >
+                                  <span className="transfer-bulk-hint">
+                                    Link {unlinkedSelected.length} unlinked to:
+                                  </span>
+                                  <select
+                                    value={transferBulkToAccountId}
+                                    onChange={e => setTransferBulkToAccountId(e.target.value)}
+                                  >
+                                    <option value="">— select account —</option>
+                                    {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                      <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    disabled={!transferBulkToAccountId || unlinkedSelected.length === 0}
+                                    onClick={handleBulkLink}
+                                  >
+                                    Link
+                                  </button>
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              {accountTransfers.map(t => (
+                                <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    className="transfer-checkbox"
+                                    checked={selectedTransferIds.has(t.id)}
+                                    onChange={() => toggleTransferSelect(t.id)}
+                                  />
+                                  <span className="account-transfer-date">{formatDate(t.date)}</span>
+                                  <span className="account-transfer-vendor">{t.vendor}</span>
+                                  <span className="account-transfer-direction">
+                                    {t.amount < 0 ? 'To' : 'From'}
+                                  </span>
+                                  <span className="account-transfer-peer">
+                                    {t.transfer_peer_account ?? (
+                                      pairingTxId === t.id ? (
+                                        <span className="account-transfer-pair-picker">
+                                          <select
+                                            value={pairingToAccountId}
+                                            onChange={e => setPairingToAccountId(e.target.value)}
+                                            autoFocus
+                                          >
+                                            <option value="">— select account —</option>
+                                            {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                              <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                            ))}
+                                          </select>
+                                          <button
+                                            className="btn btn-primary btn-sm"
+                                            disabled={!pairingToAccountId}
+                                            onClick={async () => {
+                                              await onPairTransfer(t.id, parseInt(pairingToAccountId));
+                                              setPairingTxId(null);
+                                              setPairingToAccountId('');
+                                            }}
+                                          >Link</button>
+                                          <button
+                                            className="btn btn-ghost btn-sm"
+                                            onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}
+                                          >✕</button>
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="account-transfer-unlinked"
+                                          title="Click to link to another account"
+                                          onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
+                                        >Unlinked</span>
+                                      )
+                                    )}
+                                  </span>
+                                  <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                                    {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </>
                     )}
                   </div>
