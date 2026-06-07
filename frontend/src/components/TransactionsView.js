@@ -920,6 +920,17 @@ function TransactionsView({
                             setTransferBulkToAccountId('');
                           };
 
+                          // Group linked transfers by peer account for the relationship summary
+                          const peerGroups = {};
+                          for (const t of accountTransfers) {
+                            if (!t.transfer_peer_account) continue;
+                            const peer = t.transfer_peer_account;
+                            if (!peerGroups[peer]) peerGroups[peer] = { out: 0, in: 0 };
+                            if (t.amount < 0) peerGroups[peer].out += Math.abs(t.amount);
+                            else peerGroups[peer].in += t.amount;
+                          }
+                          const unlinkedCount = accountTransfers.filter(t => !t.transfer_peer_account).length;
+
                           return (
                             <div className="account-transfers">
                               <div className="account-transfers-header">
@@ -961,6 +972,24 @@ function TransactionsView({
                                   </button>
                                 </div>
                               </div>
+                              {(Object.keys(peerGroups).length > 0 || unlinkedCount > 0) && (
+                                <div className="transfer-relationship-summary">
+                                  {Object.entries(peerGroups).map(([peer, { out, in: inn }]) => (
+                                    <div key={peer} className="transfer-rel-row">
+                                      <span className="transfer-rel-peer">{peer}</span>
+                                      <span className="transfer-rel-flows">
+                                        {out > 0 && <span className="transfer-rel-out">${out.toFixed(2)} out</span>}
+                                        {inn > 0 && <span className="transfer-rel-in">${inn.toFixed(2)} in</span>}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {unlinkedCount > 0 && (
+                                    <div className="transfer-rel-row">
+                                      <span className="transfer-rel-unlinked">{unlinkedCount} unlinked</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                               {accountTransfers.map(t => (
                                 <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}`}>
                                   <input
