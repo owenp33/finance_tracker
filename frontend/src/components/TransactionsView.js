@@ -58,6 +58,7 @@ function TransactionsView({
   onDeleteMany,
   onToggleTransfer,
   onToggleTransferMany,
+  onPairTransfer,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -123,6 +124,8 @@ function TransactionsView({
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [editingAccountName, setEditingAccountName] = useState('');
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
+  const [pairingTxId, setPairingTxId] = useState(null);
+  const [pairingToAccountId, setPairingToAccountId] = useState('');
 
   // Import tab
   const [importStep, setImportStep] = useState('pick');
@@ -900,7 +903,41 @@ function TransactionsView({
                                 <span className="account-transfer-vendor">{t.vendor}</span>
                                 <span className="account-transfer-peer">
                                   {t.amount < 0 ? '→' : '←'}{' '}
-                                  {t.transfer_peer_account ?? <span className="account-transfer-unlinked">Unlinked</span>}
+                                  {t.transfer_peer_account ?? (
+                                    pairingTxId === t.id ? (
+                                      <span className="account-transfer-pair-picker">
+                                        <select
+                                          value={pairingToAccountId}
+                                          onChange={e => setPairingToAccountId(e.target.value)}
+                                          autoFocus
+                                        >
+                                          <option value="">— select account —</option>
+                                          {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                            <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          className="btn btn-primary btn-sm"
+                                          disabled={!pairingToAccountId}
+                                          onClick={async () => {
+                                            await onPairTransfer(t.id, parseInt(pairingToAccountId));
+                                            setPairingTxId(null);
+                                            setPairingToAccountId('');
+                                          }}
+                                        >Link</button>
+                                        <button
+                                          className="btn btn-ghost btn-sm"
+                                          onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}
+                                        >✕</button>
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="account-transfer-unlinked"
+                                        title="Click to link to another account"
+                                        onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
+                                      >Unlinked</span>
+                                    )
+                                  )}
                                 </span>
                                 <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                                   {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
