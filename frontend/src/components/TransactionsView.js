@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2 } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2, Info } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -544,7 +544,7 @@ function TransactionsView({
                         <input type="text" value={recurringEditFields.category} onChange={e => setRF('category', e.target.value)} placeholder="e.g., Subscriptions" />
                       </div>
                       <div className="form-group">
-                        <label>Amount <small>(negative = expense)</small></label>
+                        <label>Amount <span className="info-tip" data-tip="Negative = expense, positive = income"><Info /></span></label>
                         <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} />
                       </div>
                       <div className="form-group">
@@ -566,7 +566,7 @@ function TransactionsView({
                         <label>Notes <small>(optional)</small></label>
                         <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} />
                       </div>
-                      <div className="form-group">
+                      <div className="form-group recurring-number-group">
                         <label className="recurring-number-label">
                           <input type="checkbox" checked={recurringEditFields.number !== -1} onChange={e => setRF('number', e.target.checked ? 1 : -1)} />
                           Limit occurrences

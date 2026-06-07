@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Info } from 'lucide-react';
 
 const EMPTY_BASE = (accounts) => ({
   account_id: accounts?.[0]?.id || '',
@@ -64,8 +65,8 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
         <input type="text" value={base.category} onChange={e => setB('category', e.target.value)} placeholder="e.g., Subscriptions" required />
       </div>
       <div className="form-group">
-        <label>Amount</label>
-        <input type="number" step="0.01" value={base.amount} onChange={e => setB('amount', e.target.value)} placeholder="Negative = expense" required />
+        <label>Amount <span className="info-tip" data-tip="Negative = expense, positive = income"><Info /></span></label>
+        <input type="number" step="0.01" value={base.amount} onChange={e => setB('amount', e.target.value)} required />
       </div>
       <div className="form-group">
         <label>Notes <small>(optional)</small></label>

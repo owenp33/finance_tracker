@@ -642,36 +642,17 @@ body {
 /* Transaction inline edit */
 .transaction-edit-form {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  background: #f8f9fa;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
 }
 
-.transaction-edit-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.transaction-edit-fields input {
-  flex: 1;
-  min-width: 120px;
-  padding: 7px 10px;
-  border: 1.5px solid #dee2e6;
-  border-radius: 7px;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
-}
-
-.transaction-edit-fields input:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.transaction-edit-actions {
-  display: flex;
-  gap: 8px;
+.transaction-edit-form .form-actions {
+  grid-column: 1 / -1;
 }
 
 /* Analytics View */
@@ -1588,38 +1569,18 @@ body {
 /* === Recurring Tab Edit ==================================== */
 .recurring-edit-form {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  background: #f8f9fa;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
 }
 
-.recurring-edit-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.recurring-edit-fields input,
-.recurring-edit-fields select {
-  flex: 1;
-  min-width: 130px;
-  padding: 7px 10px;
-  border: 1.5px solid #dee2e6;
-  border-radius: 7px;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
-}
-
-.recurring-edit-fields input:focus,
-.recurring-edit-fields select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.recurring-edit-actions {
-  display: flex;
-  gap: 8px;
+.recurring-edit-form .form-actions,
+.recurring-edit-form .recurring-number-group {
+  grid-column: 1 / -1;
 }
 
 .recurring-actions {
@@ -1627,6 +1588,45 @@ body {
   gap: 8px;
   margin-left: auto;
   flex-shrink: 0;
+}
+
+/* === Info tooltip ========================================== */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  color: #9ca3af;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.info-tip svg {
+  width: 13px;
+  height: 13px;
+}
+
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 400;
+  padding: 4px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 200;
+}
+
+.info-tip:hover::after {
+  opacity: 1;
 }
 
 /* === Flagged badge ========================================= */

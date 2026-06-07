@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Info } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
 const formatDate = (dateStr) => {
@@ -77,7 +77,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                 <input type="text" value={editFields.category} onChange={e => set('category', e.target.value)} placeholder="e.g., Subscriptions" />
               </div>
               <div className="form-group">
-                <label>Amount <small>(negative = expense)</small></label>
+                <label>Amount <span className="info-tip" data-tip="Negative = expense, positive = income"><Info /></span></label>
                 <input type="number" step="0.01" value={editFields.amount} onChange={e => set('amount', e.target.value)} />
               </div>
               <div className="form-group">
