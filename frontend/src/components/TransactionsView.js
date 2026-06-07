@@ -949,7 +949,6 @@ function TransactionsView({
 
                           const handleBulkUnlink = async () => {
                             await Promise.all(linkedSelected.map(t => onBreakTransferLink(t.id)));
-                            setSelectedTransferIds(prev => { const n = new Set(prev); linkedSelected.forEach(t => n.delete(t.id)); return n; });
                           };
 
                           // Group linked transfers by peer account for the relationship summary
