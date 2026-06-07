@@ -59,6 +59,7 @@ function TransactionsView({
   onToggleTransfer,
   onToggleTransferMany,
   onPairTransfer,
+  onBreakTransferLink,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -947,7 +948,7 @@ function TransactionsView({
                           };
 
                           const handleBulkUnlink = async () => {
-                            await Promise.all(linkedSelected.map(t => onToggleTransfer(t.id)));
+                            await Promise.all(linkedSelected.map(t => onBreakTransferLink(t.id)));
                             setSelectedTransferIds(prev => { const n = new Set(prev); linkedSelected.forEach(t => n.delete(t.id)); return n; });
                           };
 
