@@ -937,11 +937,18 @@ function TransactionsView({
                             }
                           };
 
+                          const linkedSelected   = acctSelected.filter(t =>  t.transfer_peer_id);
+
                           const handleBulkLink = async () => {
                             const toId = parseInt(transferBulkToAccountId);
                             await Promise.all(unlinkedSelected.map(t => onPairTransfer(t.id, toId)));
                             setSelectedTransferIds(prev => { const n = new Set(prev); unlinkedSelected.forEach(t => n.delete(t.id)); return n; });
                             setTransferBulkToAccountId('');
+                          };
+
+                          const handleBulkUnlink = async () => {
+                            await Promise.all(linkedSelected.map(t => onToggleTransfer(t.id)));
+                            setSelectedTransferIds(prev => { const n = new Set(prev); linkedSelected.forEach(t => n.delete(t.id)); return n; });
                           };
 
                           // Group linked transfers by peer account for the relationship summary
@@ -975,25 +982,37 @@ function TransactionsView({
                                   className="transfer-bulk-bar"
                                   style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                 >
-                                  <span className="transfer-bulk-hint">
-                                    Link {unlinkedSelected.length} unlinked to:
-                                  </span>
-                                  <select
-                                    value={transferBulkToAccountId}
-                                    onChange={e => setTransferBulkToAccountId(e.target.value)}
-                                  >
-                                    <option value="">— select account —</option>
-                                    {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                      <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    disabled={!transferBulkToAccountId || unlinkedSelected.length === 0}
-                                    onClick={handleBulkLink}
-                                  >
-                                    Link
-                                  </button>
+                                  {unlinkedSelected.length > 0 && (
+                                    <>
+                                      <span className="transfer-bulk-hint">
+                                        Link {unlinkedSelected.length} to:
+                                      </span>
+                                      <select
+                                        value={transferBulkToAccountId}
+                                        onChange={e => setTransferBulkToAccountId(e.target.value)}
+                                      >
+                                        <option value="">— select account —</option>
+                                        {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                          <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        className="btn btn-primary btn-sm"
+                                        disabled={!transferBulkToAccountId}
+                                        onClick={handleBulkLink}
+                                      >
+                                        Link
+                                      </button>
+                                    </>
+                                  )}
+                                  {linkedSelected.length > 0 && (
+                                    <button
+                                      className="btn btn-ghost btn-sm"
+                                      onClick={handleBulkUnlink}
+                                    >
+                                      Unlink {linkedSelected.length}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               {(Object.keys(peerGroups).length > 0 || unlinkedCount > 0) && (
