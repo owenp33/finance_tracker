@@ -254,18 +254,38 @@ class AccountService:
 
     def create_transfer_pair(self, tx_id, to_account_id):
         """
-        Create the counterpart transaction for an existing transfer on a different
-        account and link both sides.
+        Ensure tx is paired with a counterpart on to_account_id.
 
-        The peer mirrors the original: same date, vendor, category, notes, and the
-        negated amount (so -$500 on Checking becomes +$500 on Savings).
-        Both transactions are flagged is_transfer=True and linked via transfer_peer_id.
+        Three cases:
+          - No existing peer: creates one.
+          - Existing peer already on to_account_id: no-op, returns existing pair.
+          - Existing peer on a different account: deletes old peer (reversing its
+            balance effect) then creates a new one on to_account_id.
+
+        This makes the same endpoint handle initial linking and moving a transfer
+        to a different account without leaving orphaned transactions.
 
         Returns (original_tx, peer_tx, error_message).
         """
         tx = db_service.get_transaction(tx_id)
         if not tx:
             return None, None, 'Transaction not found'
+
+        if tx.transfer_peer_id:
+            old_peer = db_service.get_transaction(tx.transfer_peer_id)
+            if old_peer and old_peer.account_id == to_account_id:
+                return tx, old_peer, None  # already paired correctly, nothing to do
+            if old_peer:
+                old_peer.transfer_peer_id = None
+                tx.transfer_peer_id = None
+                db.session.flush()
+                old_account = db_service.get_account(old_peer.account_id)
+                if old_account:
+                    old_account.balance_cents -= old_peer.amount_cents
+                db.session.delete(old_peer)
+                db.session.flush()
+            else:
+                tx.transfer_peer_id = None
 
         peer = self.add_transaction(
             account_id=to_account_id,
@@ -277,8 +297,8 @@ class AccountService:
             is_transfer=True,
         )
 
-        tx.is_transfer      = True
-        tx.transfer_peer_id = peer.id
+        tx.is_transfer        = True
+        tx.transfer_peer_id   = peer.id
         peer.transfer_peer_id = tx.id
         db.session.commit()
 
