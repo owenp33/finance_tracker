@@ -2217,14 +2217,66 @@ body {
   text-align: right;
 }
 
-.transfer-delete-btn {
+.account-transfer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.transfer-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
+}
+
+.account-transfer-row:hover .transfer-row-actions {
+  opacity: 1;
+}
+
+.transfer-action-btn {
   flex-shrink: 0;
 }
 
-.account-transfer-row:hover .transfer-delete-btn {
-  opacity: 1;
+.transfer-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.transfer-edit-row input {
+  font-size: 0.82rem;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.transfer-edit-row input[type="text"],
+.transfer-edit-row input[type="number"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.transfer-edit-row input[type="date"] {
+  width: 130px;
+}
+
+.account-transfer-peer-name {
+  color: #4f46e5;
+  cursor: pointer;
+  font-size: 0.82rem;
+  text-decoration: underline dotted;
+  transition: color 0.15s;
+}
+
+.account-transfer-peer-name:hover {
+  color: #3730a3;
 }
 
 .account-info {

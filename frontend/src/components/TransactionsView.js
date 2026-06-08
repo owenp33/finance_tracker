@@ -130,12 +130,26 @@ function TransactionsView({
   const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
   const [transferBulkToAccountId, setTransferBulkToAccountId] = useState('');
   const [expandedAccountIds, setExpandedAccountIds] = useState(new Set());
+  const [editingTransferId, setEditingTransferId] = useState(null);
+  const [editTransferFields, setEditTransferFields] = useState({});
+  const [movingPeerId, setMovingPeerId] = useState(null);
+  const [movingToAccountId, setMovingToAccountId] = useState('');
 
   const toggleAccountExpand = (id) =>
     setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const toggleTransferSelect = (id) =>
     setSelectedTransferIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const startTransferEdit = (t) => {
+    setEditingTransferId(t.id);
+    setEditTransferFields({ date: t.date, vendor: t.vendor, amount: t.amount, notes: t.notes || '' });
+  };
+  const setETF = (field, val) => setEditTransferFields(prev => ({ ...prev, [field]: val }));
+  const saveTransferEdit = async (t) => {
+    await onEdit(t.id, { ...editTransferFields, account_id: t.account_id, category: t.category });
+    setEditingTransferId(null);
+  };
 
   // Import tab
   const [importStep, setImportStep] = useState('pick');
@@ -928,8 +942,6 @@ function TransactionsView({
                           const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
                           const allSelected  = accountTransfers.length > 0 && accountTransfers.every(t => selectedTransferIds.has(t.id));
                           const someSelected = acctSelected.length > 0;
-                          const unlinkedSelected = acctSelected.filter(t => !t.transfer_peer_id);
-
                           const toggleAll = () => {
                             if (allSelected) {
                               setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.delete(t.id)); return n; });
@@ -938,11 +950,16 @@ function TransactionsView({
                             }
                           };
 
-                          const handleBulkLink = async () => {
+                          const handleBulkMove = async () => {
                             const toId = parseInt(transferBulkToAccountId);
-                            await Promise.all(unlinkedSelected.map(t => onPairTransfer(t.id, toId)));
-                            setSelectedTransferIds(prev => { const n = new Set(prev); unlinkedSelected.forEach(t => n.delete(t.id)); return n; });
+                            await Promise.all(acctSelected.map(t => onPairTransfer(t.id, toId)));
                             setTransferBulkToAccountId('');
+                          };
+
+                          const handleBulkDelete = async () => {
+                            if (!window.confirm(`Delete ${acctSelected.length} transfer${acctSelected.length !== 1 ? 's' : ''}?`)) return;
+                            await Promise.all(acctSelected.map(t => onDelete(t.id)));
+                            setSelectedTransferIds(prev => { const n = new Set(prev); acctSelected.forEach(t => n.delete(t.id)); return n; });
                           };
 
                           // Group linked transfers by peer account for the relationship summary
@@ -976,29 +993,25 @@ function TransactionsView({
                                   className="transfer-bulk-bar"
                                   style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                 >
-                                  {unlinkedSelected.length > 0 && (
-                                    <>
-                                      <span className="transfer-bulk-hint">
-                                        Link {unlinkedSelected.length} to:
-                                      </span>
-                                      <select
-                                        value={transferBulkToAccountId}
-                                        onChange={e => setTransferBulkToAccountId(e.target.value)}
-                                      >
-                                        <option value="">— select account —</option>
-                                        {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                          <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                        ))}
-                                      </select>
-                                      <button
-                                        className="btn btn-primary btn-sm"
-                                        disabled={!transferBulkToAccountId}
-                                        onClick={handleBulkLink}
-                                      >
-                                        Link
-                                      </button>
-                                    </>
-                                  )}
+                                  <span className="transfer-bulk-hint">Move {acctSelected.length} to:</span>
+                                  <select
+                                    value={transferBulkToAccountId}
+                                    onChange={e => setTransferBulkToAccountId(e.target.value)}
+                                  >
+                                    <option value="">— account —</option>
+                                    {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                      <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    disabled={!transferBulkToAccountId}
+                                    onClick={handleBulkMove}
+                                  >Move</button>
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={handleBulkDelete}
+                                  >Delete {acctSelected.length}</button>
                                 </div>
                               </div>
                               {(Object.keys(peerGroups).length > 0 || unlinkedCount > 0) && (
@@ -1021,64 +1034,112 @@ function TransactionsView({
                               )}
                               {accountTransfers.map(t => (
                                 <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}`}>
-                                  <input
-                                    type="checkbox"
-                                    className="transfer-checkbox"
-                                    checked={selectedTransferIds.has(t.id)}
-                                    onChange={() => toggleTransferSelect(t.id)}
-                                  />
-                                  <span className="account-transfer-date">{formatDate(t.date)}</span>
-                                  <span className="account-transfer-vendor">{t.vendor}</span>
-                                  <span className="account-transfer-direction">
-                                    {t.amount < 0 ? 'To' : 'From'}
-                                  </span>
-                                  <span className="account-transfer-peer">
-                                    {t.transfer_peer_account ?? (
-                                      pairingTxId === t.id ? (
-                                        <span className="account-transfer-pair-picker">
-                                          <select
-                                            value={pairingToAccountId}
-                                            onChange={e => setPairingToAccountId(e.target.value)}
-                                            autoFocus
-                                          >
-                                            <option value="">— select account —</option>
-                                            {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                              <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                            ))}
-                                          </select>
-                                          <button
-                                            className="btn btn-primary btn-sm"
-                                            disabled={!pairingToAccountId}
-                                            onClick={async () => {
-                                              await onPairTransfer(t.id, parseInt(pairingToAccountId));
-                                              setPairingTxId(null);
-                                              setPairingToAccountId('');
-                                            }}
-                                          >Link</button>
-                                          <button
-                                            className="btn btn-ghost btn-sm"
-                                            onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}
-                                          >✕</button>
+                                  {editingTransferId === t.id ? (
+                                    <div className="transfer-edit-row">
+                                      <input type="date" value={editTransferFields.date} onChange={e => setETF('date', e.target.value)} />
+                                      <input type="text" value={editTransferFields.vendor} onChange={e => setETF('vendor', e.target.value)} placeholder="Vendor" />
+                                      <input type="number" step="0.01" value={editTransferFields.amount} onChange={e => setETF('amount', e.target.value)} placeholder="Amount" />
+                                      <input type="text" value={editTransferFields.notes} onChange={e => setETF('notes', e.target.value)} placeholder="Notes" />
+                                      <button className="btn btn-primary btn-sm" onClick={() => saveTransferEdit(t)}>Save</button>
+                                      <button className="btn btn-ghost btn-sm" onClick={() => setEditingTransferId(null)}>Cancel</button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <input
+                                        type="checkbox"
+                                        className="transfer-checkbox"
+                                        checked={selectedTransferIds.has(t.id)}
+                                        onChange={() => toggleTransferSelect(t.id)}
+                                      />
+                                      <span className="account-transfer-date">{formatDate(t.date)}</span>
+                                      <span className="account-transfer-vendor">{t.vendor}</span>
+                                      <span className="account-transfer-direction">
+                                        {t.amount < 0 ? 'To' : 'From'}
+                                      </span>
+                                      <span className="account-transfer-peer">
+                                        {t.transfer_peer_id ? (
+                                          movingPeerId === t.id ? (
+                                            <span className="account-transfer-pair-picker">
+                                              <select
+                                                value={movingToAccountId}
+                                                onChange={e => setMovingToAccountId(e.target.value)}
+                                                autoFocus
+                                              >
+                                                <option value="">— select account —</option>
+                                                {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                                ))}
+                                              </select>
+                                              <button
+                                                className="btn btn-primary btn-sm"
+                                                disabled={!movingToAccountId}
+                                                onClick={async () => {
+                                                  await onPairTransfer(t.id, parseInt(movingToAccountId));
+                                                  setMovingPeerId(null);
+                                                  setMovingToAccountId('');
+                                                }}
+                                              >Move</button>
+                                              <button className="btn btn-ghost btn-sm" onClick={() => { setMovingPeerId(null); setMovingToAccountId(''); }}>✕</button>
+                                            </span>
+                                          ) : (
+                                            <span
+                                              className="account-transfer-peer-name"
+                                              title="Click to change linked account"
+                                              onClick={() => { setMovingPeerId(t.id); setMovingToAccountId(''); }}
+                                            >{t.transfer_peer_account}</span>
+                                          )
+                                        ) : (
+                                          pairingTxId === t.id ? (
+                                            <span className="account-transfer-pair-picker">
+                                              <select
+                                                value={pairingToAccountId}
+                                                onChange={e => setPairingToAccountId(e.target.value)}
+                                                autoFocus
+                                              >
+                                                <option value="">— select account —</option>
+                                                {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                                ))}
+                                              </select>
+                                              <button
+                                                className="btn btn-primary btn-sm"
+                                                disabled={!pairingToAccountId}
+                                                onClick={async () => {
+                                                  await onPairTransfer(t.id, parseInt(pairingToAccountId));
+                                                  setPairingTxId(null);
+                                                  setPairingToAccountId('');
+                                                }}
+                                              >Link</button>
+                                              <button className="btn btn-ghost btn-sm" onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}>✕</button>
+                                            </span>
+                                          ) : (
+                                            <span
+                                              className="account-transfer-unlinked"
+                                              title="Click to link to another account"
+                                              onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
+                                            >Unlinked</span>
+                                          )
+                                        )}
+                                      </span>
+                                      <div className="account-transfer-right">
+                                        <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                                          {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
                                         </span>
-                                      ) : (
-                                        <span
-                                          className="account-transfer-unlinked"
-                                          title="Click to link to another account"
-                                          onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
-                                        >Unlinked</span>
-                                      )
-                                    )}
-                                  </span>
-                                  <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                                    {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
-                                  </span>
-                                  <button
-                                    className="btn btn-danger btn-sm icon-btn transfer-delete-btn"
-                                    title="Delete transfer"
-                                    onClick={() => onDelete(t.id)}
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
+                                        <div className="transfer-row-actions">
+                                          <button
+                                            className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
+                                            title="Edit"
+                                            onClick={() => startTransferEdit(t)}
+                                          ><Pencil size={13} /></button>
+                                          <button
+                                            className="btn btn-danger btn-sm icon-btn transfer-action-btn"
+                                            title="Delete"
+                                            onClick={() => onDelete(t.id)}
+                                          ><Trash2 size={13} /></button>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               ))}
                             </div>
