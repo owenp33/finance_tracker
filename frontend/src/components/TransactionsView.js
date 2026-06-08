@@ -938,17 +938,11 @@ function TransactionsView({
                             }
                           };
 
-                          const linkedSelected   = acctSelected.filter(t =>  t.transfer_peer_id);
-
                           const handleBulkLink = async () => {
                             const toId = parseInt(transferBulkToAccountId);
                             await Promise.all(unlinkedSelected.map(t => onPairTransfer(t.id, toId)));
                             setSelectedTransferIds(prev => { const n = new Set(prev); unlinkedSelected.forEach(t => n.delete(t.id)); return n; });
                             setTransferBulkToAccountId('');
-                          };
-
-                          const handleBulkUnlink = async () => {
-                            await Promise.all(linkedSelected.map(t => onBreakTransferLink(t.id)));
                           };
 
                           // Group linked transfers by peer account for the relationship summary
@@ -1004,14 +998,6 @@ function TransactionsView({
                                         Link
                                       </button>
                                     </>
-                                  )}
-                                  {linkedSelected.length > 0 && (
-                                    <button
-                                      className="btn btn-ghost btn-sm"
-                                      onClick={handleBulkUnlink}
-                                    >
-                                      Unlink {linkedSelected.length}
-                                    </button>
                                   )}
                                 </div>
                               </div>
