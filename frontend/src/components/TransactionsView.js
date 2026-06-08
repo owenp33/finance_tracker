@@ -60,6 +60,7 @@ function TransactionsView({
   onToggleTransferMany,
   onPairTransfer,
   onBreakTransferLink,
+  onDeleteTransferBulk,
   onEditRecurring,
   onDeleteRecurring,
   onImportDone,
@@ -959,7 +960,7 @@ function TransactionsView({
                           };
 
                           const handleBulkDelete = async () => {
-                            await Promise.all(acctSelected.map(t => onDelete(t.id)));
+                            await onDeleteTransferBulk(acctSelected.map(t => t.id));
                             setSelectedTransferIds(prev => { const n = new Set(prev); acctSelected.forEach(t => n.delete(t.id)); return n; });
                           };
 

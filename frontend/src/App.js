@@ -192,6 +192,15 @@ function App() {
     }
   };
 
+  const handleDeleteTransferBulk = async (ids) => {
+    try {
+      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleToggleTransferMany = async (ids) => {
     try {
       await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
@@ -376,6 +385,7 @@ function App() {
             onToggleTransferMany={handleToggleTransferMany}
             onPairTransfer={handlePairTransfer}
             onBreakTransferLink={handleBreakTransferLink}
+            onDeleteTransferBulk={handleDeleteTransferBulk}
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
