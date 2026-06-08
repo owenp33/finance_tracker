@@ -262,8 +262,8 @@ class AccountService:
           - Existing peer on a different account: deletes old peer (reversing its
             balance effect) then creates a new one on to_account_id.
 
-        This makes the same endpoint handle initial linking and moving a transfer
-        to a different account without leaving orphaned transactions.
+        Uses a single commit to avoid SQLAlchemy session expiry issues that arise
+        when add_transaction commits mid-function and invalidates in-flight objects.
 
         Returns (original_tx, peer_tx, error_message).
         """
@@ -283,19 +283,26 @@ class AccountService:
                 if old_account:
                     old_account.balance_cents -= old_peer.amount_cents
                 db.session.delete(old_peer)
-                db.session.flush()
             else:
                 tx.transfer_peer_id = None
 
-        peer = self.add_transaction(
+        # Create peer inline without an intermediate commit so tx stays valid.
+        peer = TransactionModel(
             account_id=to_account_id,
-            date_obj=tx.date,
+            date=tx.date,
             vendor=tx.vendor,
             category=tx.category,
-            amount=-tx.amount,
             notes=tx.notes or '',
             is_transfer=True,
         )
+        peer.amount = -tx.amount
+
+        new_account = db_service.get_account(to_account_id)
+        if new_account:
+            new_account.balance_cents += peer.amount_cents
+
+        db.session.add(peer)
+        db.session.flush()  # assigns peer.id
 
         tx.is_transfer        = True
         tx.transfer_peer_id   = peer.id

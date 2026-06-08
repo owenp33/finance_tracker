@@ -952,12 +952,13 @@ function TransactionsView({
 
                           const handleBulkMove = async () => {
                             const toId = parseInt(transferBulkToAccountId);
-                            await Promise.all(acctSelected.map(t => onPairTransfer(t.id, toId)));
+                            for (const t of acctSelected) {
+                              await onPairTransfer(t.id, toId);
+                            }
                             setTransferBulkToAccountId('');
                           };
 
                           const handleBulkDelete = async () => {
-                            if (!window.confirm(`Delete ${acctSelected.length} transfer${acctSelected.length !== 1 ? 's' : ''}?`)) return;
                             await Promise.all(acctSelected.map(t => onDelete(t.id)));
                             setSelectedTransferIds(prev => { const n = new Set(prev); acctSelected.forEach(t => n.delete(t.id)); return n; });
                           };
