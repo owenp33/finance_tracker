@@ -2217,6 +2217,16 @@ body {
   text-align: right;
 }
 
+.transfer-delete-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.account-transfer-row:hover .transfer-delete-btn {
+  opacity: 1;
+}
+
 .account-info {
   flex: 1;
   display: flex;

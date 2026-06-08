@@ -1072,6 +1072,13 @@ function TransactionsView({
                                   <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                                     {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
                                   </span>
+                                  <button
+                                    className="btn btn-danger btn-sm icon-btn transfer-delete-btn"
+                                    title="Delete transfer"
+                                    onClick={() => onDelete(t.id)}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
                                 </div>
                               ))}
                             </div>
