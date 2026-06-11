@@ -769,8 +769,8 @@ function TransactionsView({
             <div className="import-pick">
               <div className="csv-format-info">
                 <p><strong>Supported formats:</strong></p>
-                <p>date, vendor, category, <em>expense</em>, <em>income</em>, account, notes</p>
-                <p>date, vendor, category, <em>amount</em>, account, notes</p>
+                <p>date, vendor, category, <em>expense/withdrawal</em>, <em>income/deposit</em>, account, notes/description</p>
+                <p>date, vendor, category, <em>amount</em>, account, notes/description</p>
                 <p className="csv-format-note">The <em>account</em> column is matched to your existing accounts by name.</p>
               </div>
               <div className="form-group">

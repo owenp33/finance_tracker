@@ -67,15 +67,20 @@ class AnalyticsService:
 
         df['date'] = df['date'].apply(AnalyticsService.parse_date)
 
-        if 'expense' in df.columns and 'income' in df.columns:
-            df['expense'] = df['expense'].apply(AnalyticsService.clean_currency)
-            df['income'] = df['income'].apply(AnalyticsService.clean_currency)
-            df['amount'] = df['income'] - df['expense']
+        has_expense_withdrawal = 'expense' in df.columns or 'withdrawal' in df.columns
+        has_income_deposit = 'income' in df.columns or 'deposit' in df.columns
+
+        if has_expense_withdrawal and has_income_deposit:
+            expense_col = 'expense' if 'expense' in df.columns else 'withdrawal'
+            income_col  = 'income' if 'income' in df.columns else 'deposit'
+            df[expense_col] = df[expense_col].apply(AnalyticsService.clean_currency)
+            df[income_col]  = df[income_col].apply(AnalyticsService.clean_currency)
+            df['amount'] = df[income_col] - df[expense_col]
         elif 'amount' in df.columns:
             df['amount'] = df['amount'].apply(AnalyticsService.clean_currency)
         else:
             raise ValueError(
-                "CSV must have either 'expense' and 'income' columns, "
+                "CSV must have 'expense'/'withdrawal', 'income'/'deposit', "
                 "or a single 'amount' column"
             )
 
@@ -85,7 +90,13 @@ class AnalyticsService:
             df['vendor'] = df['store'].fillna('Unknown')
 
         df['category'] = df['category'].fillna('Uncategorized')
-        df['notes'] = df['notes'].fillna('') if 'notes' in df.columns else ''
+
+        if 'notes' in df.columns:
+            df['notes'] = df['notes'].fillna('')
+        elif 'description' in df.columns:
+            df['notes'] = df['description'].fillna('')
+        else:
+            df['notes'] = ''
 
         required_columns = ['date', 'vendor', 'category', 'amount']
         missing_columns = [col for col in required_columns if col not in df.columns]
