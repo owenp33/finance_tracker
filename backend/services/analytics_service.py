@@ -28,21 +28,33 @@ class AnalyticsService:
             return 0.0
 
     @staticmethod
-    def parse_date(date_str: str) -> date:
-        """Parse date string across multiple common formats, including Excel serials"""
-        if pd.isna(date_str) or date_str == '':
+    def parse_date(value) -> date:
+        """
+        Parse a date value into a Python date object.
+        Handles pandas Timestamps (returned by read_excel), Python datetime/date
+        objects, Excel serial numbers, and common date strings.
+        """
+        # pandas reads Excel date cells as Timestamps — extract the date directly
+        if isinstance(value, pd.Timestamp):
+            return value.date()
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+
+        if pd.isna(value) or value == '':
             return date.today()
 
-        date_str = str(date_str).strip()
+        date_str = str(value).strip()
 
         try:
             if '.' in date_str or date_str.isdigit():
                 excel_date = float(date_str)
-                return datetime(1899, 12, 30) + timedelta(days=excel_date)
+                return (datetime(1899, 12, 30) + timedelta(days=excel_date)).date()
         except (ValueError, OverflowError):
             pass
 
-        formats = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y']
+        formats = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y', '%Y-%m-%d %H:%M:%S']
         for fmt in formats:
             try:
                 return datetime.strptime(date_str, fmt).date()
