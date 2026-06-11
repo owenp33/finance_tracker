@@ -51,28 +51,46 @@ class AnalyticsService:
         print(f"Warning: Could not parse date '{date_str}', using today's date")
         return date.today()
 
-    # CSV LOADING ===============================================================
+    # FILE PARSING ===============================================================
 
     @staticmethod
-    def load_csv(filepath) -> pd.DataFrame:
-        """
-        Load and normalize a financial CSV file into a standard DataFrame.
+    def parse_csv(file) -> pd.DataFrame:
+        """Read a CSV file into a raw DataFrame. No normalization."""
+        return pd.read_csv(file)
 
-        Supported formats:
-          1) date, vendor, category, expense, income, account, (notes)
-          2) date, vendor, category, amount, account, (notes)
+    @staticmethod
+    def parse_excel(file) -> pd.DataFrame:
+        """Read an XLSX or XLS file into a raw DataFrame. No normalization."""
+        filename = getattr(file, 'filename', '') or str(file)
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'xlsx'
+        engine = 'openpyxl' if ext == 'xlsx' else 'xlrd'
+        return pd.read_excel(file, engine=engine)
+
+    # NORMALIZATION ==============================================================
+
+    @staticmethod
+    def normalize_dataframe(df) -> pd.DataFrame:
         """
-        df = pd.read_csv(filepath)
+        Normalize a raw financial DataFrame to standard columns.
+
+        - Lowercases and strips all column headers
+        - Parses the date column
+        - Resolves amount from: amount | expense+income | withdrawal+deposit
+        - Resolves vendor from: vendor | store
+        - Resolves notes from: notes | description
+        - Validates required columns are present
+        """
+        df = df.copy()
         df.columns = df.columns.str.lower().str.strip()
 
         df['date'] = df['date'].apply(AnalyticsService.parse_date)
 
-        has_expense_withdrawal = 'expense' in df.columns or 'withdrawal' in df.columns
-        has_income_deposit = 'income' in df.columns or 'deposit' in df.columns
+        has_expense_withdrawal = 'expense'    in df.columns or 'withdrawal' in df.columns
+        has_income_deposit = 'income'     in df.columns or 'deposit'    in df.columns
 
         if has_expense_withdrawal and has_income_deposit:
             expense_col = 'expense' if 'expense' in df.columns else 'withdrawal'
-            income_col  = 'income' if 'income' in df.columns else 'deposit'
+            income_col  = 'income'  if 'income'  in df.columns else 'deposit'
             df[expense_col] = df[expense_col].apply(AnalyticsService.clean_currency)
             df[income_col]  = df[income_col].apply(AnalyticsService.clean_currency)
             df['amount'] = df[income_col] - df[expense_col]
@@ -80,7 +98,7 @@ class AnalyticsService:
             df['amount'] = df['amount'].apply(AnalyticsService.clean_currency)
         else:
             raise ValueError(
-                "CSV must have 'expense'/'withdrawal', 'income'/'deposit', "
+                "File must have 'expense'/'withdrawal' + 'income'/'deposit', "
                 "or a single 'amount' column"
             )
 
@@ -98,12 +116,21 @@ class AnalyticsService:
         else:
             df['notes'] = ''
 
-        required_columns = ['date', 'vendor', 'category', 'amount']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"CSV is missing required columns: {missing_columns}")
+        missing = [c for c in ['date', 'vendor', 'category', 'amount'] if c not in df.columns]
+        if missing:
+            raise ValueError(f"File is missing required columns: {missing}")
 
         return df
+
+    # LOADING ====================================================================
+
+    @staticmethod
+    def load_file(file) -> pd.DataFrame:
+        """Detect format, parse, and normalize. Delegates to parse_csv/parse_excel + normalize_dataframe."""
+        filename = getattr(file, 'filename', '') or str(file)
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'csv'
+        df = AnalyticsService.parse_excel(file) if ext in ('xlsx', 'xls') else AnalyticsService.parse_csv(file)
+        return AnalyticsService.normalize_dataframe(df)
 
     # REPORTING =================================================================
 

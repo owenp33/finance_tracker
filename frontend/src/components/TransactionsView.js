@@ -306,7 +306,12 @@ function TransactionsView({
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (!file || !file.name.endsWith('.csv')) { alert('Please select a valid CSV file'); e.target.value = ''; return; }
+    const allowed = ['.csv', '.xlsx', '.xls'];
+    if (!file || !allowed.some(ext => file.name.toLowerCase().endsWith(ext))) {
+      alert('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
+      e.target.value = '';
+      return;
+    }
     setImportFile(file);
     setImportSuccessMsg('');
   };
@@ -768,14 +773,15 @@ function TransactionsView({
           {importStep === 'pick' && (
             <div className="import-pick">
               <div className="csv-format-info">
-                <p><strong>Supported formats:</strong></p>
+                <p><strong>Accepted files:</strong> .csv, .xlsx, .xls</p>
+                <p><strong>Supported column layouts:</strong></p>
                 <p>date, vendor, category, <em>expense/withdrawal</em>, <em>income/deposit</em>, account, notes/description</p>
                 <p>date, vendor, category, <em>amount</em>, account, notes/description</p>
                 <p className="csv-format-note">The <em>account</em> column is matched to your existing accounts by name.</p>
               </div>
               <div className="form-group">
                 <label>Select CSV File</label>
-                <input type="file" accept=".csv" onChange={handleFileChange} />
+                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
                 {importFile && <p className="file-selected">✓ {importFile.name}</p>}
               </div>
               {importFile && (

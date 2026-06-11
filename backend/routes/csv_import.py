@@ -39,7 +39,7 @@ def preview_csv():
         return jsonify({'success': False, 'error': 'No file selected'}), 400
 
     try:
-        df = AnalyticsService.load_csv(file)
+        df = AnalyticsService.load_file(file)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
