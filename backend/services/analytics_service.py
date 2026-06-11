@@ -4,6 +4,7 @@ analytics_service.py - CSV Processing and Analytics
 Handles financial data parsing and report generation.
 No database writes — pure data transformation and analysis.
 """
+import io
 import pandas as pd
 import re
 from datetime import datetime, date, timedelta
@@ -54,17 +55,24 @@ class AnalyticsService:
     # FILE PARSING ===============================================================
 
     @staticmethod
-    def parse_csv(file) -> pd.DataFrame:
-        """Read a CSV file into a raw DataFrame. No normalization."""
-        return pd.read_csv(file)
+    def parse_csv(stream: io.BytesIO) -> pd.DataFrame:
+        """
+        Read CSV data from a BytesIO stream into a raw DataFrame. No normalization.
+        Tries UTF-8 (with BOM), plain UTF-8, then Latin-1 to handle Windows/bank exports.
+        """
+        raw = stream.read()
+        for encoding in ('utf-8-sig', 'utf-8', 'latin-1'):
+            try:
+                return pd.read_csv(io.BytesIO(raw), encoding=encoding)
+            except UnicodeDecodeError:
+                continue
+        raise ValueError("Could not decode the file — try saving it as UTF-8")
 
     @staticmethod
-    def parse_excel(file) -> pd.DataFrame:
-        """Read an XLSX or XLS file into a raw DataFrame. No normalization."""
-        filename = getattr(file, 'filename', '') or str(file)
-        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'xlsx'
-        engine = 'openpyxl' if ext == 'xlsx' else 'xlrd'
-        return pd.read_excel(file, engine=engine)
+    def parse_excel(stream: io.BytesIO, ext: str = 'xlsx') -> pd.DataFrame:
+        """Read XLSX/XLS data from a BytesIO stream into a raw DataFrame. No normalization."""
+        engine = 'xlrd' if ext == 'xls' else 'openpyxl'
+        return pd.read_excel(stream, engine=engine)
 
     # NORMALIZATION ==============================================================
 
@@ -82,6 +90,9 @@ class AnalyticsService:
         """
         df = df.copy()
         df.columns = df.columns.str.lower().str.strip()
+
+        if 'date' not in df.columns:
+            raise ValueError("File is missing required column: 'date'")
 
         df['date'] = df['date'].apply(AnalyticsService.parse_date)
 
@@ -120,16 +131,42 @@ class AnalyticsService:
         if missing:
             raise ValueError(f"File is missing required columns: {missing}")
 
+        # Truncate to DB column limits
+        df['vendor']   = df['vendor'].str[:100]
+        df['category'] = df['category'].str[:50]
+
         return df
 
     # LOADING ====================================================================
 
     @staticmethod
     def load_file(file) -> pd.DataFrame:
-        """Detect format, parse, and normalize. Delegates to parse_csv/parse_excel + normalize_dataframe."""
-        filename = getattr(file, 'filename', '') or str(file)
-        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'csv'
-        df = AnalyticsService.parse_excel(file) if ext in ('xlsx', 'xls') else AnalyticsService.parse_csv(file)
+        """
+        Detect format, parse, and normalize.
+        Reads the upload into BytesIO once, then delegates to parse_csv or parse_excel.
+        Format is detected from both the filename extension and the MIME type so that
+        binary Excel files are never accidentally passed to the CSV parser.
+        """
+        filename = getattr(file, 'filename', '') or ''
+        ext      = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        mime     = getattr(file, 'content_type', '') or ''
+
+        is_excel = ext in ('xlsx', 'xls') or 'spreadsheet' in mime or 'excel' in mime
+
+        raw = file.read()
+        if len(raw) > 10 * 1024 * 1024:
+            raise ValueError("File exceeds the 10 MB size limit")
+
+        stream = io.BytesIO(raw)
+
+        if is_excel:
+            df = AnalyticsService.parse_excel(stream, ext or 'xlsx')
+        else:
+            df = AnalyticsService.parse_csv(stream)
+
+        if len(df) > 10_000:
+            raise ValueError(f"File has {len(df):,} rows; the limit is 10,000 per import")
+
         return AnalyticsService.normalize_dataframe(df)
 
     # REPORTING =================================================================

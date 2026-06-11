@@ -42,6 +42,8 @@ def preview_csv():
         df = AnalyticsService.load_file(file)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Could not parse file: {e}'}), 400
 
     # Build a name/id → account lookup scoped to this user
     user_accounts   = db_service.get_user_accounts(user_id)
