@@ -933,7 +933,7 @@ function TransactionsView({
                               )}
                             </small>
                           </div>
-                          <div className="account-balance">${a.balance?.toFixed(2) ?? '0.00'}</div>
+                          <div className={`account-balance ${a.balance >= 0 ? 'green' : 'red'}`}>${a.balance?.toFixed(2) ?? '0.00'}</div>
                           <div className="account-actions">
                             <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}><Pencil size={14} /></button>
                             <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
