@@ -2626,16 +2626,27 @@ body {
   padding: 2px 0;
 }
 
+/* ── Budget row card ───────────────────────────────────────────────────────── */
+.budget-row-card {
+  border-bottom: 1px solid #f1f3f5;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.budget-row-card:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.budget-row-card.has-error .budget-row-inline { opacity: 0.7; }
+
 /* ── Budget inline row ─────────────────────────────────────────────────────── */
 .budget-row-inline {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 4px;
-  border-bottom: 1px solid #f1f3f5;
+  padding: 8px 4px 4px;
 }
-
-.budget-row-inline:last-child { border-bottom: none; }
 
 .bri-dot-wrap {
   position: relative;
@@ -2794,6 +2805,117 @@ body {
   font-size: 0.78rem;
   flex-shrink: 0;
 }
+
+/* ── Progress bar inside budget row ───────────────────────────────────────── */
+.bri-progress {
+  padding: 2px 4px 6px;
+}
+
+.bri-bar-track {
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.bri-bar-fill {
+  height: 100%;
+  background: #667eea;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.bri-bar-fill.over {
+  background: #dc2626;
+}
+
+.bri-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.bri-bar-meta .over {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* ── Expand button ────────────────────────────────────────────────────────── */
+.bri-expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px 6px;
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.bri-expand-btn:hover {
+  color: #6b7280;
+}
+
+/* ── Expanded transaction list ────────────────────────────────────────────── */
+.bri-tx-list {
+  border-top: 1px solid #f1f3f5;
+  padding: 4px 4px 2px;
+}
+
+.bri-tx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px;
+  border-bottom: 1px solid #f9fafb;
+}
+
+.bri-tx-item:last-child {
+  border-bottom: none;
+}
+
+.bri-tx-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bri-tx-vendor {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bri-tx-date {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.bri-tx-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.bri-tx-amount {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.bri-tx-amount.green { color: #16a34a; }
+.bri-tx-amount.red   { color: #dc2626; }
 
 /* ── Category Allocations card ─────────────────────────────────────────────── */
 .category-allocations-card {

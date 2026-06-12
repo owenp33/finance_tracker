@@ -383,6 +383,8 @@ function BudgetingView({ transactions, onBudgetChange }) {
                 onDelete={handleDelete}
                 hasSaveError={saveErrors.has(item.id)}
                 monthlyIncome={monthlyIncome}
+                transactions={transactions}
+                period={period}
               />
             ))}
           </div>
