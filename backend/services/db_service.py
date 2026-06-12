@@ -98,8 +98,25 @@ class DbService:
             .all()
         )
 
+        # Sum positive reimbursements for the category — they offset spending
+        from sqlalchemy import func as sa_func
+        reimbursement_cents = (
+            db.session.query(sa_func.sum(TransactionModel.amount_cents))
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.category == category,
+                TransactionModel.date >= period_start,
+                TransactionModel.date <  period_end,
+                TransactionModel.is_reimbursement == True,
+                TransactionModel.amount_cents > 0,
+            )
+            .scalar() or 0
+        )
+
         allocated_cents = budget.amount_cents + budget.carried_over_cents
-        cumulative = 0
+        # Start negative so reimbursements act as a pre-credit against spending
+        cumulative = -reimbursement_cents
         for t in transactions:
             cumulative += abs(t.amount_cents)
             t.over_budget = cumulative > allocated_cents

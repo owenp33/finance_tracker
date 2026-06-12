@@ -51,10 +51,26 @@ class BudgetService:
             .all()
         )
 
-        # Sum absolute spending per category (in cents)
+        # Fetch reimbursements — positive transactions marked as reimbursements
+        reimbursement_rows = (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.date >= period_start,
+                TransactionModel.date <  period_end,
+                TransactionModel.is_reimbursement == True,
+                TransactionModel.amount_cents > 0,
+            )
+            .all()
+        )
+
+        # Sum absolute spending per category (in cents), then subtract reimbursements
         spending: dict[str, int] = {}
         for t in expense_rows:
             spending[t.category] = spending.get(t.category, 0) + abs(t.amount_cents)
+        for t in reimbursement_rows:
+            spending[t.category] = max(0, spending.get(t.category, 0) - t.amount_cents)
 
         result = []
         for budget in budgets:

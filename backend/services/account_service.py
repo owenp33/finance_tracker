@@ -57,7 +57,7 @@ class AccountService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, is_transfer=False):
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, is_transfer=False, is_reimbursement=False):
         """
         Create a transaction, update the account balance, and re-evaluate
         over_budget flags for the category/period. Single commit for all writes.
@@ -70,6 +70,7 @@ class AccountService:
             notes=notes,
             recurring_id=recurring_id,
             is_transfer=is_transfer,
+            is_reimbursement=is_reimbursement,
         )
         transaction.amount = amount
 
@@ -80,7 +81,8 @@ class AccountService:
         db.session.add(transaction)
         db.session.flush()
 
-        if transaction.amount_cents < 0:
+        needs_flag_eval = transaction.amount_cents < 0 or (is_reimbursement and transaction.amount_cents > 0)
+        if needs_flag_eval:
             db_service._reevaluate_category_flags(
                 user_id=account.user_id,
                 category=category,
@@ -151,6 +153,14 @@ class AccountService:
                 account = db_service.get_account(trans.account_id)
                 if account:
                     account.balance_cents += (trans.amount_cents - old_amount_cents)
+
+            if 'is_reimbursement' in data:
+                trans.is_reimbursement = bool(data['is_reimbursement'])
+                account = db_service.get_account(trans.account_id)
+                if account:
+                    db_service._reevaluate_category_flags(
+                        account.user_id, trans.category, trans.date.strftime('%Y-%m')
+                    )
 
             db.session.commit()
             return trans, None

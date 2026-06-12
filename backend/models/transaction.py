@@ -15,6 +15,7 @@ class TransactionModel(db.Model):
     notes = db.Column(db.Text)
     over_budget = db.Column(db.Boolean, default=False, nullable=False)
     is_transfer = db.Column(db.Boolean, default=False, nullable=False)
+    is_reimbursement = db.Column(db.Boolean, default=False, nullable=False)
     transfer_peer_id = db.Column(
         db.Integer,
         db.ForeignKey('transactions.id', ondelete='SET NULL'),
@@ -46,6 +47,7 @@ class TransactionModel(db.Model):
             'recurring_id': self.recurring_id,
             'over_budget': self.over_budget,
             'is_transfer': self.is_transfer,
+            'is_reimbursement': self.is_reimbursement,
             'transfer_peer_id': self.transfer_peer_id,
             'transfer_peer_account': peer_account,
         }

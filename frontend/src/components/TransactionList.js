@@ -36,6 +36,8 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
       amount: t.amount,
       notes: t.notes || '',
       account_id: t.account_id,
+      is_transfer: t.is_transfer || false,
+      is_reimbursement: t.is_reimbursement || false,
     });
   };
 
@@ -84,6 +86,23 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                 <label>Notes <small>(optional)</small></label>
                 <input type="text" value={editFields.notes} onChange={e => set('notes', e.target.value)} />
               </div>
+              <div className="mark-as-row">
+                <span className="mark-as-label">Mark as</span>
+                <button
+                  type="button"
+                  className={`mark-as-btn${editFields.is_transfer ? ' active' : ''}`}
+                  onClick={() => {
+                    onToggleTransfer?.(t.id);
+                    set('is_transfer', !editFields.is_transfer);
+                    set('is_reimbursement', false);
+                  }}
+                >Transfer</button>
+                <button
+                  type="button"
+                  className={`mark-as-btn${editFields.is_reimbursement ? ' active' : ''}`}
+                  onClick={() => { set('is_reimbursement', !editFields.is_reimbursement); set('is_transfer', false); }}
+                >Reimbursement</button>
+              </div>
               <div className="form-actions">
                 <button
                   className="btn btn-primary btn-sm"
@@ -94,7 +113,8 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                     editFields.category === t.category &&
                     parseFloat(editFields.amount) === t.amount &&
                     (editFields.notes || '') === (t.notes || '') &&
-                    editFields.account_id === t.account_id
+                    editFields.account_id === t.account_id &&
+                    editFields.is_reimbursement === (t.is_reimbursement || false)
                   }
                 >Save</button>
                 <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
@@ -133,6 +153,11 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                     <span className={`tx-transfer-chip${t.transfer_peer_id ? '' : ' tx-transfer-unlinked'}`}
                       title={t.transfer_peer_id ? undefined : 'Go to Accounts tab to link this transfer'}>
                       {t.transfer_peer_id ? 'Transfer' : 'Transfer · unlinked'}
+                    </span>
+                  )}
+                  {t.is_reimbursement && (
+                    <span className="tx-reimburse-chip" title="Offsets spending in budget calculations">
+                      Reimbursement
                     </span>
                   )}
                   <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>

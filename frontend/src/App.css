@@ -456,6 +456,55 @@ body {
   background: #e7f0ff !important;
 }
 
+.mark-as-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mark-as-label {
+  font-size: 0.82rem;
+  color: #6b7280;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.mark-as-btn {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 99px;
+  padding: 3px 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mark-as-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.mark-as-btn.active {
+  background: #e7f0ff;
+  color: #3b5bdb;
+  border-color: #c7d7f9;
+  font-weight: 600;
+}
+
+.tx-reimburse-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 .transaction-info {
   display: flex;
   flex-direction: column;

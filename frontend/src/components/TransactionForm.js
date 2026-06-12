@@ -9,6 +9,7 @@ const EMPTY_BASE = (accounts) => ({
   amount: '',
   notes: '',
   is_transfer: false,
+  is_reimbursement: false,
 });
 
 const EMPTY_RECURRING = {
@@ -73,26 +74,43 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
       </div>
 
-      {/* Transfer + Recurring toggles — hidden when form is locked to recurring mode */}
+      {/* Mark as pill group + recurring toggle — hidden when form is locked to recurring mode */}
       {!defaultRecurring && (
-        <div className="recurring-toggle-row">
-          <label className="recurring-toggle-label">
-            <input
-              type="checkbox"
-              checked={base.is_transfer}
-              onChange={e => { setB('is_transfer', e.target.checked); if (e.target.checked) setIsRecurring(false); }}
-            />
-            Mark as transfer
-          </label>
-          <label className="recurring-toggle-label">
-            <input
-              type="checkbox"
-              checked={isRecurring}
-              onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) setB('is_transfer', false); }}
-            />
-            Make this recurring
-          </label>
-        </div>
+        <>
+          <div className="mark-as-row">
+            <span className="mark-as-label">Mark as</span>
+            <button
+              type="button"
+              className={`mark-as-btn${base.is_transfer ? ' active' : ''}`}
+              onClick={() => {
+                const next = !base.is_transfer;
+                setB('is_transfer', next);
+                setB('is_reimbursement', false);
+                if (next) setIsRecurring(false);
+              }}
+            >Transfer</button>
+            <button
+              type="button"
+              className={`mark-as-btn${base.is_reimbursement ? ' active' : ''}`}
+              onClick={() => {
+                const next = !base.is_reimbursement;
+                setB('is_reimbursement', next);
+                setB('is_transfer', false);
+                if (next) setIsRecurring(false);
+              }}
+            >Reimbursement</button>
+          </div>
+          <div className="recurring-toggle-row">
+            <label className="recurring-toggle-label">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) { setB('is_transfer', false); setB('is_reimbursement', false); } }}
+              />
+              Make this recurring
+            </label>
+          </div>
+        </>
       )}
 
       {/* Recurring fields — always visible when defaultRecurring, otherwise expandable */}
