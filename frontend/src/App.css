@@ -391,7 +391,7 @@ body {
 }
 
 .recurring-generated-list .transaction-item.tx-selected {
-  background: #e9ecef;
+  background: #eef1ff;
   border-radius: 4px;
 }
 
@@ -876,7 +876,7 @@ body {
   justify-content: space-between;
   padding: 6px 10px;
   margin-bottom: 4px;
-  background: #f1f3f5;
+  background: transparent;
   border-radius: 6px;
 }
 
