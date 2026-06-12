@@ -39,6 +39,7 @@ function BudgetingView({ transactions, onBudgetChange }) {
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const totalAllocated = progress.reduce((sum, item) => sum + item.allocated, 0);
+  const totalSpent = progress.reduce((sum, item) => sum + item.spent, 0);
   const unallocated = monthlyIncome - totalAllocated;
   const incomeSet = monthlyIncome > 0;
 
@@ -124,6 +125,18 @@ function BudgetingView({ transactions, onBudgetChange }) {
           {incomeSet && (
             <div className="budget-summary-sub">
               {((totalAllocated / monthlyIncome) * 100).toFixed(0)}% of income
+            </div>
+          )}
+        </div>
+
+        <div className={`budget-summary-card${progress.length === 0 ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Total Spent</div>
+          <div className={`budget-summary-value${totalSpent > totalAllocated ? ' red' : ''}`}>
+            ${totalSpent.toFixed(2)}
+          </div>
+          {totalAllocated > 0 && (
+            <div className="budget-summary-sub">
+              {((totalSpent / totalAllocated) * 100).toFixed(0)}% of allocated
             </div>
           )}
         </div>
