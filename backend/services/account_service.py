@@ -167,11 +167,11 @@ class AccountService:
                 peer = db_service.get_transaction(trans.transfer_peer_id)
                 if peer:
                     old_peer_amount_cents = peer.amount_cents
-                    if 'date'     in update_fields: peer.date     = trans.date
-                    if 'vendor'   in update_fields: peer.vendor   = trans.vendor
+                    if 'date' in update_fields: peer.date = trans.date
+                    if 'vendor' in update_fields: peer.vendor = trans.vendor
                     if 'category' in update_fields: peer.category = trans.category
-                    if 'notes'    in update_fields: peer.notes    = trans.notes
-                    if 'amount'   in update_fields:
+                    if 'notes' in update_fields: peer.notes = trans.notes
+                    if 'amount' in update_fields:
                         peer.amount = -update_fields['amount']
                         peer_account = db_service.get_account(peer.account_id)
                         if peer_account:

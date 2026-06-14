@@ -47,6 +47,7 @@ class BudgetService:
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.amount_cents < 0,      # expenses only
+                TransactionModel.is_transfer == False,  # exclude inter-account transfers
             )
             .all()
         )

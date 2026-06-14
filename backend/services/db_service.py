@@ -93,6 +93,7 @@ class DbService:
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.amount_cents < 0,
+                TransactionModel.is_transfer == False,  # exclude inter-account transfers
             )
             .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
             .all()
