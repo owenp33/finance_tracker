@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Pencil, Trash2, Info, ChevronDown, ChevronRight } from 'lucide-react';
+﻿import { useState, useEffect } from 'react';
+import { Pencil, Trash2, Info } from 'lucide-react';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 import FilterPanel from './FilterPanel';
 import ImportView from './ImportView';
+import AccountsView from './AccountsView';
 
 const formatDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -39,7 +40,7 @@ function getPeriodLabel(dateFrom, dateTo) {
   }
   const fLabel = from.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const tLabel = to.toLocaleDateString('en-US',   { month: 'long', year: 'numeric' });
-  return fLabel === tLabel ? fLabel : `${fLabel} – ${tLabel}`;
+  return fLabel === tLabel ? fLabel : `${fLabel} â€“ ${tLabel}`;
 }
 
 function getCurrentPeriod() {
@@ -71,22 +72,22 @@ function TransactionsView({
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
 
-  // All tab — period nav
+  // All tab â€” period nav
   const [currentPeriod, setCurrentPeriod] = useState(getCurrentPeriod);
   const [dateFrom, setDateFrom] = useState(() => getMonthRange(getCurrentPeriod())[0]);
   const [dateTo,   setDateTo]   = useState(() => getMonthRange(getCurrentPeriod())[1]);
 
-  // All tab — filters
+  // All tab â€” filters
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [datePreset, setDatePreset] = useState('');
 
-  // All tab — pagination
+  // All tab â€” pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  // All tab — bulk selection
+  // All tab â€” bulk selection
   const [selectedTxIds, setSelectedTxIds] = useState(new Set());
 
   // Sorting
@@ -94,7 +95,7 @@ function TransactionsView({
   const [recurringSort, setRecurringSort] = useState('date-asc');
   const [flaggedSort,   setFlaggedSort]   = useState('date-desc');
 
-  // Recurring tab — inline edit
+  // Recurring tab â€” inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
   const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
@@ -115,47 +116,13 @@ function TransactionsView({
       return n;
     });
 
-  // Accounts tab
-  const [showAddAccountForm, setShowAddAccountForm] = useState(false);
-  const [newAccountId, setNewAccountId] = useState('');
-  const [newAccountName, setNewAccountName] = useState('');
-  const [accountAdding, setAccountAdding] = useState(false);
-  const [editingAccountId, setEditingAccountId] = useState(null);
-  const [editingAccountName, setEditingAccountName] = useState('');
-  const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
-  const [pairingTxId, setPairingTxId] = useState(null);
-  const [pairingToAccountId, setPairingToAccountId] = useState('');
-  const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
-  const [transferBulkToAccountId, setTransferBulkToAccountId] = useState('');
-  const [expandedAccountIds, setExpandedAccountIds] = useState(new Set());
-  const [editingTransferId, setEditingTransferId] = useState(null);
-  const [editTransferFields, setEditTransferFields] = useState({});
-  const [movingPeerId, setMovingPeerId] = useState(null);
-  const [movingToAccountId, setMovingToAccountId] = useState('');
-
-  const toggleAccountExpand = (id) =>
-    setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const toggleTransferSelect = (id) =>
-    setSelectedTransferIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const startTransferEdit = (t) => {
-    setEditingTransferId(t.id);
-    setEditTransferFields({ date: t.date, vendor: t.vendor, amount: t.amount, notes: t.notes || '' });
-  };
-  const setETF = (field, val) => setEditTransferFields(prev => ({ ...prev, [field]: val }));
-  const saveTransferEdit = async (t) => {
-    await onEdit(t.id, { ...editTransferFields, account_id: t.account_id, category: t.category });
-    setEditingTransferId(null);
-  };
-
   // Reset pagination and selection whenever filters or date range change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
     setSelectedTxIds(new Set());
   }, [selectedIds, selectedCategories, dateFrom, dateTo, searchQuery]);
 
-  // ── All tab ──────────────────────────────────────────────────────────────
+  // â”€â”€ All tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const navigatePeriod = (dir) => {
     const [year, month] = currentPeriod.split('-').map(Number);
@@ -265,7 +232,7 @@ function TransactionsView({
     await onToggleTransferMany(ids);
   };
 
-  // ── Recurring tab ────────────────────────────────────────────────────────
+  // â”€â”€ Recurring tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const startEditRecurring = (r) => {
     setEditingRecurringId(r.id);
@@ -289,12 +256,12 @@ function TransactionsView({
     onDeleteRecurring(id);
   };
 
-  // ── Flagged tab ──────────────────────────────────────────────────────────
+  // â”€â”€ Flagged tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const flagged = sortList(transactions.filter(t => t.over_budget), flaggedSort);
   const sortedRecurring = sortList(recurringTransactions, recurringSort, 'next_date');
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div className="transactions-view">
@@ -308,7 +275,7 @@ function TransactionsView({
         <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>Accounts</button>
       </div>
 
-      {/* ── All ───────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ All â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {tab === 'all' && (
         <>
           {/* Header row */}
@@ -319,15 +286,15 @@ function TransactionsView({
                 className={`btn btn-secondary${activeFilterCount > 0 ? ' filter-btn-active' : ''}`}
                 onClick={() => setShowFilters(f => !f)}
               >
-                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? '▲' : '▼'}
+                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? 'â–²' : 'â–¼'}
               </button>
               <select className="sort-select" value={allSort} onChange={e => { setAllSort(e.target.value); setVisibleCount(PAGE_SIZE); }}>
                 <option value="date-desc">Date (newest)</option>
                 <option value="date-asc">Date (oldest)</option>
-                <option value="amount-desc">Amount (high → low)</option>
-                <option value="amount-asc">Amount (low → high)</option>
-                <option value="vendor-asc">Vendor (A → Z)</option>
-                <option value="vendor-desc">Vendor (Z → A)</option>
+                <option value="amount-desc">Amount (high â†’ low)</option>
+                <option value="amount-asc">Amount (low â†’ high)</option>
+                <option value="vendor-asc">Vendor (A â†’ Z)</option>
+                <option value="vendor-desc">Vendor (Z â†’ A)</option>
               </select>
               <button className="btn btn-secondary" onClick={() => setTab('import')}>Import</button>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
@@ -346,15 +313,15 @@ function TransactionsView({
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button className="tx-search-clear" onClick={() => setSearchQuery('')} title="Clear search">×</button>
+              <button className="tx-search-clear" onClick={() => setSearchQuery('')} title="Clear search">Ã—</button>
             )}
           </div>
 
           {/* Period navigator */}
           <div className="period-nav">
-            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(-1)}>‹</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(-1)}>â€¹</button>
             <span className="period-label">{getPeriodLabel(dateFrom, dateTo)}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(1)}>›</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(1)}>â€º</button>
           </div>
 
           {/* Filter panel */}
@@ -418,7 +385,7 @@ function TransactionsView({
                   onClick={handleBulkDelete}
                   style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                 >
-                  Delete {selectedTxIds.size || '—'} selected
+                  Delete {selectedTxIds.size || 'â€”'} selected
                 </button>
               </div>
             </div>
@@ -460,7 +427,7 @@ function TransactionsView({
         </>
       )}
 
-      {/* ── Recurring ─────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Recurring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {tab === 'recurring' && (
         <div className="recurring-view">
           <div className="view-header">
@@ -469,10 +436,10 @@ function TransactionsView({
               <select className="sort-select" value={recurringSort} onChange={e => setRecurringSort(e.target.value)}>
                 <option value="date-asc">Next date (soonest)</option>
                 <option value="date-desc">Next date (latest)</option>
-                <option value="amount-desc">Amount (high → low)</option>
-                <option value="amount-asc">Amount (low → high)</option>
-                <option value="vendor-asc">Vendor (A → Z)</option>
-                <option value="vendor-desc">Vendor (Z → A)</option>
+                <option value="amount-desc">Amount (high â†’ low)</option>
+                <option value="amount-asc">Amount (low â†’ high)</option>
+                <option value="vendor-asc">Vendor (A â†’ Z)</option>
+                <option value="vendor-desc">Vendor (Z â†’ A)</option>
               </select>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
                 {showForm ? 'Cancel' : '+ Add Recurring'}
@@ -546,7 +513,7 @@ function TransactionsView({
                       <div className="recurring-item-row">
                         <div className="recurring-info">
                           <strong>{r.vendor}</strong>
-                          <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
+                          <span>{r.category} Â· {frequencyLabel(r.frequency)} Â· Next: {formatDate(r.next_date)}</span>
                           {r.notes && <small>{r.notes}</small>}
                         </div>
                         <div className="recurring-item-right">
@@ -569,7 +536,7 @@ function TransactionsView({
                               className="recurring-generated-toggle"
                               onClick={() => toggleRecurringExpand(r.id)}
                             >
-                              {isExpanded ? '▲' : '▼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
+                              {isExpanded ? 'â–²' : 'â–¼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
                             </button>
                             {isExpanded && (
                               <div className="recurring-generated-list">
@@ -657,7 +624,7 @@ function TransactionsView({
                                             }}
                                             style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                           >
-                                            Delete {sectionSelected.length || '—'}
+                                            Delete {sectionSelected.length || 'â€”'}
                                           </button>
                                         </div>
                                       </div>
@@ -688,7 +655,7 @@ function TransactionsView({
         </div>
       )}
 
-      {/* ── Import ────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {tab === 'import' && (
         <ImportView
           accounts={accounts}
@@ -699,305 +666,17 @@ function TransactionsView({
 
       {/* ── Accounts ─────────────────────────────────────────────────────── */}
       {tab === 'accounts' && (
-        <div className="accounts-view">
-          <div className="view-header">
-            <h2>Bank Accounts</h2>
-            {!showAddAccountForm && <button className="btn btn-primary" onClick={() => setShowAddAccountForm(true)}>+ Add Account</button>}
-          </div>
-          {showAddAccountForm && (
-            <div className="account-form">
-              <div className="form-group">
-                <label>Account ID <small>(e.g. checking-1234)</small></label>
-                <input type="text" value={newAccountId} onChange={e => setNewAccountId(e.target.value)} placeholder="checking-1234" autoFocus />
-              </div>
-              <div className="form-group">
-                <label>Display Name</label>
-                <input type="text" value={newAccountName} onChange={e => setNewAccountName(e.target.value)} placeholder="Chase Checking" />
-              </div>
-              <div className="form-actions">
-                <button className="btn btn-primary" disabled={!newAccountId.trim() || accountAdding}
-                  onClick={async () => {
-                    setAccountAdding(true);
-                    await onCreateAccount(newAccountId.trim(), newAccountName.trim() || newAccountId.trim());
-                    setNewAccountId(''); setNewAccountName(''); setShowAddAccountForm(false); setAccountAdding(false);
-                  }}>
-                  {accountAdding ? 'Adding…' : 'Add'}
-                </button>
-                <button className="btn btn-ghost" onClick={() => { setShowAddAccountForm(false); setNewAccountId(''); setNewAccountName(''); }}>Cancel</button>
-              </div>
-            </div>
-          )}
-          <div className="accounts-list">
-            {accounts.length === 0 ? (
-              <p className="no-data">No accounts yet. Add one above.</p>
-            ) : (
-              accounts.map(a => {
-                const accountTransfers = transactions
-                  .filter(t => t.is_transfer && t.account_id === a.id)
-                  .sort((x, y) => y.date.localeCompare(x.date));
-                return (
-                  <div key={a.id} className="account-item">
-                    {editingAccountId === a.id ? (
-                      <div className="account-edit-form">
-                        <div className="form-group">
-                          <label>Account ID</label>
-                          <input type="text" value={editingAccountIdStr} onChange={e => setEditingAccountIdStr(e.target.value)} placeholder="e.g., checking-1234" autoFocus />
-                        </div>
-                        <div className="form-group">
-                          <label>Display Name</label>
-                          <input type="text" value={editingAccountName} onChange={e => setEditingAccountName(e.target.value)} placeholder="e.g., Chase Checking" />
-                        </div>
-                        <div className="account-edit-actions">
-                          <button className="btn btn-primary btn-sm" onClick={async () => { await onEditAccount(a.id, { account_id: editingAccountIdStr, account_name: editingAccountName }); setEditingAccountId(null); }}>Save</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="account-item-row">
-                          <button
-                            className="account-expand-btn"
-                            onClick={() => toggleAccountExpand(a.id)}
-                            disabled={accountTransfers.length === 0}
-                            title={accountTransfers.length === 0 ? 'No transfers' : (expandedAccountIds.has(a.id) ? 'Collapse' : 'Expand transfers')}
-                          >
-                            {expandedAccountIds.has(a.id)
-                              ? <ChevronDown size={15} />
-                              : <ChevronRight size={15} />}
-                          </button>
-                          <div className="account-info">
-                            <strong>{a.account_name}</strong>
-                            <small>
-                              {a.account_id}
-                              {accountTransfers.length > 0 && (
-                                <span className="account-transfer-count">
-                                  {accountTransfers.length} transfer{accountTransfers.length !== 1 ? 's' : ''}
-                                </span>
-                              )}
-                            </small>
-                          </div>
-                          <div className={`account-balance ${a.balance >= 0 ? 'green' : 'red'}`}>${a.balance?.toFixed(2) ?? '0.00'}</div>
-                          <div className="account-actions">
-                            <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.account_name); setEditingAccountIdStr(a.account_id); }}><Pencil size={14} /></button>
-                            <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return; await onDeleteAccount(a.id); }}><Trash2 size={14} /></button>
-                          </div>
-                        </div>
-                        {accountTransfers.length > 0 && expandedAccountIds.has(a.id) && (() => {
-                          const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
-                          const allSelected  = accountTransfers.length > 0 && accountTransfers.every(t => selectedTransferIds.has(t.id));
-                          const someSelected = acctSelected.length > 0;
-                          const toggleAll = () => {
-                            if (allSelected) {
-                              setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.delete(t.id)); return n; });
-                            } else {
-                              setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.add(t.id)); return n; });
-                            }
-                          };
-
-                          const handleBulkMove = async () => {
-                            const toId = parseInt(transferBulkToAccountId);
-                            for (const t of acctSelected) {
-                              await onPairTransfer(t.id, toId);
-                            }
-                            setTransferBulkToAccountId('');
-                          };
-
-                          const handleBulkDelete = async () => {
-                            await onDeleteTransferBulk(acctSelected.map(t => t.id));
-                            setSelectedTransferIds(prev => { const n = new Set(prev); acctSelected.forEach(t => n.delete(t.id)); return n; });
-                          };
-
-                          // Group linked transfers by peer account for the relationship summary
-                          const peerGroups = {};
-                          for (const t of accountTransfers) {
-                            if (!t.transfer_peer_account) continue;
-                            const peer = t.transfer_peer_account;
-                            if (!peerGroups[peer]) peerGroups[peer] = { out: 0, in: 0 };
-                            if (t.amount < 0) peerGroups[peer].out += Math.abs(t.amount);
-                            else peerGroups[peer].in += t.amount;
-                          }
-                          const unlinkedCount = accountTransfers.filter(t => !t.transfer_peer_account).length;
-
-                          return (
-                            <div className="account-transfers">
-                              <div className="account-transfers-header">
-                                <label className="bulk-select-all">
-                                  <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
-                                    onChange={toggleAll}
-                                  />
-                                  <span>
-                                    {someSelected
-                                      ? `${acctSelected.length} of ${accountTransfers.length} selected`
-                                      : `Transfers (${accountTransfers.length})`}
-                                  </span>
-                                </label>
-                                <div
-                                  className="transfer-bulk-bar"
-                                  style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-                                >
-                                  <span className="transfer-bulk-hint">Move {acctSelected.length} to:</span>
-                                  <select
-                                    value={transferBulkToAccountId}
-                                    onChange={e => setTransferBulkToAccountId(e.target.value)}
-                                  >
-                                    <option value="">— account —</option>
-                                    {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                      <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    disabled={!transferBulkToAccountId}
-                                    onClick={handleBulkMove}
-                                  >Move</button>
-                                  <button
-                                    className="btn btn-danger btn-sm"
-                                    onClick={handleBulkDelete}
-                                  >Delete {acctSelected.length}</button>
-                                </div>
-                              </div>
-                              {(Object.keys(peerGroups).length > 0 || unlinkedCount > 0) && (
-                                <div className="transfer-relationship-summary">
-                                  {Object.entries(peerGroups).map(([peer, { out, in: inn }]) => (
-                                    <div key={peer} className="transfer-rel-row">
-                                      <span className="transfer-rel-peer">{peer}</span>
-                                      <span className="transfer-rel-flows">
-                                        {out > 0 && <span className="transfer-rel-out">${out.toFixed(2)} out</span>}
-                                        {inn > 0 && <span className="transfer-rel-in">${inn.toFixed(2)} in</span>}
-                                      </span>
-                                    </div>
-                                  ))}
-                                  {unlinkedCount > 0 && (
-                                    <div className="transfer-rel-row">
-                                      <span className="transfer-rel-unlinked">{unlinkedCount} unlinked</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {accountTransfers.map(t => (
-                                <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}`}>
-                                  {editingTransferId === t.id ? (
-                                    <div className="transfer-edit-row">
-                                      <input type="date" value={editTransferFields.date} onChange={e => setETF('date', e.target.value)} />
-                                      <input type="text" value={editTransferFields.vendor} onChange={e => setETF('vendor', e.target.value)} placeholder="Vendor" />
-                                      <input type="number" step="0.01" value={editTransferFields.amount} onChange={e => setETF('amount', e.target.value)} placeholder="Amount" />
-                                      <input type="text" value={editTransferFields.notes} onChange={e => setETF('notes', e.target.value)} placeholder="Notes" />
-                                      <button className="btn btn-primary btn-sm" onClick={() => saveTransferEdit(t)}>Save</button>
-                                      <button className="btn btn-ghost btn-sm" onClick={() => setEditingTransferId(null)}>Cancel</button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <input
-                                        type="checkbox"
-                                        className="transfer-checkbox"
-                                        checked={selectedTransferIds.has(t.id)}
-                                        onChange={() => toggleTransferSelect(t.id)}
-                                      />
-                                      <span className="account-transfer-date">{formatDate(t.date)}</span>
-                                      <span className="account-transfer-vendor">{t.vendor}</span>
-                                      <span className="account-transfer-direction">
-                                        {t.amount < 0 ? 'To' : 'From'}
-                                      </span>
-                                      <span className="account-transfer-peer">
-                                        {t.transfer_peer_id ? (
-                                          movingPeerId === t.id ? (
-                                            <span className="account-transfer-pair-picker">
-                                              <select
-                                                value={movingToAccountId}
-                                                onChange={e => setMovingToAccountId(e.target.value)}
-                                                autoFocus
-                                              >
-                                                <option value="">— select account —</option>
-                                                {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                                ))}
-                                              </select>
-                                              <button
-                                                className="btn btn-primary btn-sm"
-                                                disabled={!movingToAccountId}
-                                                onClick={async () => {
-                                                  await onPairTransfer(t.id, parseInt(movingToAccountId));
-                                                  setMovingPeerId(null);
-                                                  setMovingToAccountId('');
-                                                }}
-                                              >Move</button>
-                                              <button className="btn btn-ghost btn-sm" onClick={() => { setMovingPeerId(null); setMovingToAccountId(''); }}>✕</button>
-                                            </span>
-                                          ) : (
-                                            <span
-                                              className="account-transfer-peer-name"
-                                              title="Click to change linked account"
-                                              onClick={() => { setMovingPeerId(t.id); setMovingToAccountId(''); }}
-                                            >{t.transfer_peer_account}</span>
-                                          )
-                                        ) : (
-                                          pairingTxId === t.id ? (
-                                            <span className="account-transfer-pair-picker">
-                                              <select
-                                                value={pairingToAccountId}
-                                                onChange={e => setPairingToAccountId(e.target.value)}
-                                                autoFocus
-                                              >
-                                                <option value="">— select account —</option>
-                                                {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                                ))}
-                                              </select>
-                                              <button
-                                                className="btn btn-primary btn-sm"
-                                                disabled={!pairingToAccountId}
-                                                onClick={async () => {
-                                                  await onPairTransfer(t.id, parseInt(pairingToAccountId));
-                                                  setPairingTxId(null);
-                                                  setPairingToAccountId('');
-                                                }}
-                                              >Link</button>
-                                              <button className="btn btn-ghost btn-sm" onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}>✕</button>
-                                            </span>
-                                          ) : (
-                                            <span
-                                              className="account-transfer-unlinked"
-                                              title="Click to link to another account"
-                                              onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
-                                            >Unlinked</span>
-                                          )
-                                        )}
-                                      </span>
-                                      <div className="account-transfer-right">
-                                        <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                                          {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
-                                        </span>
-                                        <div className="transfer-row-actions">
-                                          <button
-                                            className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
-                                            title="Edit"
-                                            onClick={() => startTransferEdit(t)}
-                                          ><Pencil size={13} /></button>
-                                          <button
-                                            className="btn btn-danger btn-sm icon-btn transfer-action-btn"
-                                            title="Delete"
-                                            onClick={() => onDelete(t.id)}
-                                          ><Trash2 size={13} /></button>
-                                        </div>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+        <AccountsView
+          transactions={transactions}
+          accounts={accounts}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onPairTransfer={onPairTransfer}
+          onDeleteTransferBulk={onDeleteTransferBulk}
+          onCreateAccount={onCreateAccount}
+          onEditAccount={onEditAccount}
+          onDeleteAccount={onDeleteAccount}
+        />
       )}
 
       {/* ── Flagged ───────────────────────────────────────────────────────── */}
@@ -1009,15 +688,15 @@ function TransactionsView({
               <select className="sort-select" value={flaggedSort} onChange={e => setFlaggedSort(e.target.value)}>
                 <option value="date-desc">Date (newest)</option>
                 <option value="date-asc">Date (oldest)</option>
-                <option value="amount-desc">Amount (high → low)</option>
-                <option value="amount-asc">Amount (low → high)</option>
-                <option value="vendor-asc">Vendor (A → Z)</option>
-                <option value="vendor-desc">Vendor (Z → A)</option>
+                <option value="amount-desc">Amount (high â†’ low)</option>
+                <option value="amount-asc">Amount (low â†’ high)</option>
+                <option value="vendor-asc">Vendor (A â†’ Z)</option>
+                <option value="vendor-desc">Vendor (Z â†’ A)</option>
               </select>
             </div>
           </div>
           {flagged.length === 0 ? (
-            <p className="no-data">No over-budget transactions — you're on track!</p>
+            <p className="no-data">No over-budget transactions â€” you're on track!</p>
           ) : (
             <TransactionList transactions={flagged} accounts={accounts} onEdit={onEdit} onDelete={onDelete} showAll={true} resetSignal={showForm} onStartEdit={() => setShowForm(false)} />
           )}

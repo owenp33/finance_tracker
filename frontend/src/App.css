@@ -2172,13 +2172,32 @@ body {
   flex-shrink: 0;
 }
 
-.account-transfer-vendor {
-  flex: 1;
-  color: #333;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.transfer-vendor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 2px;
+  margin-top: 4px;
+  border-top: 1px solid #eee;
+}
+
+.transfer-vendor-header:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 4px;
+}
+
+.transfer-vendor-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.transfer-vendor-net {
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .transfer-relationship-summary {
@@ -2234,8 +2253,11 @@ body {
 }
 
 .account-transfer-peer {
+  flex: 1;
   color: #555;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .account-transfer-unlinked {
@@ -2297,6 +2319,22 @@ body {
 
 .transfer-action-btn {
   flex-shrink: 0;
+}
+
+.transfer-sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.transfer-sort-select {
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
 }
 
 .transfer-edit-row {
