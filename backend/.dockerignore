@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+tests/
+*.md
+migrate_*.py
+wsgi.py      # copied separately if needed; not excluded but listed for clarity
+.git/
+.gitignore

@@ -1,0 +1,50 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       finance_app
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+
+  # ── Flask backend ────────────────────────────────────────────────────────────
+  backend:
+    # image: used by the server to pull from ghcr.io (set BACKEND_IMAGE in .env)
+    # build: used locally — both can coexist; `docker compose pull` prefers image:
+    image: ${BACKEND_IMAGE:-money-tracker-backend:local}
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:      postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/finance_app
+      JWT_SECRET_KEY:    ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      GUNICORN_WORKERS:  ${GUNICORN_WORKERS:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Expose port 5000 only on localhost — nginx handles public traffic
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  # ── React frontend (nginx) ───────────────────────────────────────────────────
+  frontend:
+    image: ${FRONTEND_IMAGE:-money-tracker-frontend:local}
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

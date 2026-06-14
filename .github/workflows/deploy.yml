@@ -1,0 +1,76 @@
+name: Deploy
+
+# Runs only when CI passes on main
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+env:
+  REGISTRY: ghcr.io
+  # These become: ghcr.io/your-username/money-tracker-backend:latest
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/money-tracker-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/money-tracker-frontend
+
+jobs:
+
+  # ── Build and push Docker images to GitHub Container Registry ───────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    # Only deploy if CI succeeded (not cancelled/failed)
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write   # needed to push to ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # auto-provided, no setup needed
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+  # ── SSH into the server and pull the new images ─────────────────────────────
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key:      ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd ~/money-tracker
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
