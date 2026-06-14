@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info, ChevronDown, ChevronRight } from 'lucide-react';
-import { previewImport, confirmImport } from '../api/imports';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 import FilterPanel from './FilterPanel';
+import ImportView from './ImportView';
 
 const formatDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -149,16 +149,6 @@ function TransactionsView({
     setEditingTransferId(null);
   };
 
-  // Import tab
-  const [importStep, setImportStep] = useState('pick');
-  const [importFile, setImportFile] = useState(null);
-  const [importFallbackId, setImportFallbackId] = useState('');
-  const [importRows, setImportRows] = useState([]);
-  const [importSummary, setImportSummary] = useState(null);
-  const [importSelected, setImportSelected] = useState(new Set());
-  const [importLoading, setImportLoading] = useState(false);
-  const [importSuccessMsg, setImportSuccessMsg] = useState('');
-
   // Reset pagination and selection whenever filters or date range change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -297,59 +287,6 @@ function TransactionsView({
   const handleDeleteRecurring = (id) => {
     if (!window.confirm('Delete this recurring template? Future occurrences will stop being generated.')) return;
     onDeleteRecurring(id);
-  };
-
-  // ── Import tab ───────────────────────────────────────────────────────────
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    const allowed = ['.csv', '.xlsx', '.xls'];
-    if (!file || !allowed.some(ext => file.name.toLowerCase().endsWith(ext))) {
-      alert('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
-      e.target.value = '';
-      return;
-    }
-    setImportFile(file);
-    setImportSuccessMsg('');
-  };
-
-  const handlePreview = async () => {
-    if (!importFile) return;
-    setImportLoading(true);
-    try {
-      const data = await previewImport(importFile, importFallbackId || null);
-      setImportRows(data.rows);
-      setImportSummary(data.summary);
-      setImportSelected(new Set(
-        data.rows.map((r, i) => (!r.duplicate && !r.zero_amount && r.account_id !== null ? i : null)).filter(i => i !== null)
-      ));
-      setImportStep('preview');
-    } catch (err) { alert(`Preview failed: ${err.message}`); }
-    finally { setImportLoading(false); }
-  };
-
-  const toggleImportRow = (i) =>
-    setImportSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
-
-  const toggleImportRowTransfer = (i) =>
-    setImportRows(prev => prev.map((r, idx) => idx === i ? { ...r, is_transfer: !r.is_transfer } : r));
-
-  const handleConfirm = async () => {
-    const rows = importRows.filter((_, i) => importSelected.has(i));
-    if (rows.length === 0) return;
-    setImportLoading(true);
-    try {
-      const data = await confirmImport(rows);
-      setImportSuccessMsg(data.message);
-      onImportDone();
-      resetImport();
-    } catch (err) { alert(`Import failed: ${err.message}`); }
-    finally { setImportLoading(false); }
-  };
-
-  const resetImport = () => {
-    setImportStep('pick'); setImportFile(null); setImportFallbackId('');
-    setImportRows([]); setImportSummary(null); setImportSelected(new Set());
   };
 
   // ── Flagged tab ──────────────────────────────────────────────────────────
@@ -753,102 +690,11 @@ function TransactionsView({
 
       {/* ── Import ────────────────────────────────────────────────────────── */}
       {tab === 'import' && (
-        <div>
-          <div className="view-header"><h2>Import Transactions</h2></div>
-          {importSuccessMsg && (
-            <div className="import-success">
-              <span>✓ {importSuccessMsg}</span>
-              <button className="btn btn-secondary btn-sm" onClick={() => { setImportSuccessMsg(''); setTab('all'); }}>View Transactions →</button>
-            </div>
-          )}
-          {importStep === 'pick' && (
-            <div className="import-pick">
-              <div className="csv-format-info">
-                <p><strong>Accepted files:</strong> .csv, .xlsx, .xls</p>
-                <p><strong>Supported column layouts:</strong></p>
-                <p>date, vendor, category, <em>expense/withdrawal</em>, <em>income/deposit</em>, account, notes/description</p>
-                <p>date, vendor, category, <em>amount</em>, account, notes/description</p>
-                <p className="csv-format-note">The <em>account</em> column is matched to your existing accounts by name.</p>
-              </div>
-              <div className="form-group">
-                <label>Select File</label>
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
-                {importFile && <p className="file-selected">✓ {importFile.name}</p>}
-              </div>
-              {importFile && (
-                <div className="form-group">
-                  <label>Fallback account <small>(only needed if your file has no account column)</small></label>
-                  <select value={importFallbackId} onChange={e => setImportFallbackId(e.target.value)}>
-                    <option value="">— file has an account column —</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="form-actions">
-                <button className="btn btn-primary" onClick={handlePreview} disabled={!importFile || importLoading}>
-                  {importLoading ? 'Scanning…' : 'Preview'}
-                </button>
-              </div>
-            </div>
-          )}
-          {importStep === 'preview' && (
-            <div className="import-preview">
-              {importSummary && (
-                <div className="import-summary">
-                  <span>{importSummary.total} total</span>
-                  <span className="green">{importSummary.importable} importable</span>
-                  {importSummary.duplicates > 0 && <span className="red">{importSummary.duplicates} duplicate{importSummary.duplicates !== 1 ? 's' : ''}</span>}
-                  {importSummary.unmatched > 0 && <span className="orange">{importSummary.unmatched} unmatched</span>}
-                  {importSummary.zero_amount > 0 && <span className="orange">{importSummary.zero_amount} zero-amount</span>}
-                  <span className="count-badge">{importSelected.size} selected</span>
-                </div>
-              )}
-              <div className="form-actions import-actions-top">
-                <button className="btn btn-primary" onClick={handleConfirm} disabled={importSelected.size === 0 || importLoading}>
-                  {importLoading ? 'Importing…' : `Import ${importSelected.size} row${importSelected.size !== 1 ? 's' : ''}`}
-                </button>
-                <button className="btn btn-ghost" onClick={resetImport}>← Back</button>
-              </div>
-              <div className="import-table-wrap">
-                <table className="import-table">
-                  <thead>
-                    <tr><th></th><th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>Account</th><th>Notes</th><th>Transfer</th></tr>
-                  </thead>
-                  <tbody>
-                    {importRows.map((row, i) => {
-                      const rowClass = ['import-row', row.duplicate ? 'duplicate' : '', row.zero_amount ? 'zero-amount' : '', row.account_id === null ? 'unmatched' : '', !importSelected.has(i) ? 'deselected' : ''].filter(Boolean).join(' ');
-                      return (
-                        <tr key={i} className={rowClass}>
-                          <td><input type="checkbox" checked={importSelected.has(i)} onChange={() => toggleImportRow(i)} disabled={row.account_id === null || row.zero_amount} /></td>
-                          <td>{row.date}</td><td>{row.vendor}</td>
-                          <td>{row.category}</td>
-                          <td className={row.amount >= 0 ? 'green' : 'red'}>{row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}</td>
-                          <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
-                          <td><small>{row.notes}</small></td>
-                          <td>
-                            <button
-                              className={`import-transfer-toggle${row.is_transfer ? ' active' : ''}`}
-                              title={row.is_transfer ? 'Unmark as transfer' : 'Mark as transfer'}
-                              onClick={() => toggleImportRowTransfer(i)}
-                            >
-                              <ArrowLeftRight size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="form-actions">
-                <button className="btn btn-primary" onClick={handleConfirm} disabled={importSelected.size === 0 || importLoading}>
-                  {importLoading ? 'Importing…' : `Import ${importSelected.size} row${importSelected.size !== 1 ? 's' : ''}`}
-                </button>
-                <button className="btn btn-ghost" onClick={resetImport}>← Back</button>
-              </div>
-            </div>
-          )}
-        </div>
+        <ImportView
+          accounts={accounts}
+          onImportDone={onImportDone}
+          onNavigateAway={() => setTab('all')}
+        />
       )}
 
       {/* ── Accounts ─────────────────────────────────────────────────────── */}
