@@ -14,7 +14,6 @@ A self-hosted personal finance dashboard for tracking spending across multiple b
 - **Budget planning** — set monthly allocations per category with optional rollover; visual progress bars show spent vs. allocated; transactions within each category are expandable inline
 - **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats
 - **Insights** — spending reports and charts aggregated across all accounts
-- **Undo support** — 20-second undo toast for destructive actions
 
 ---
 

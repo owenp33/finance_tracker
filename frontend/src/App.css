@@ -3022,11 +3022,4 @@ body {
   color: #333;
 }
 
-/* Undo / Redo button in bulk action bar */
-.bulk-undo-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
 /* compact variant has no additional overrides needed — base style is already line-based */

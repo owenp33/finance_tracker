@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Undo2, Redo2, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { previewCSV, confirmImport } from '../api/csv';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
@@ -67,9 +67,6 @@ function TransactionsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
-  undoMode,
-  undoLabel,
-  onUndo,
 }) {
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
@@ -486,12 +483,6 @@ function TransactionsView({
                 >
                   Delete {selectedTxIds.size || '—'} selected
                 </button>
-                {undoMode && (
-                  <button className="btn btn-ghost btn-sm bulk-undo-btn" onClick={onUndo}>
-                    {undoMode === 'undo' ? <Undo2 size={13} /> : <Redo2 size={13} />}
-                    {undoMode === 'undo' ? 'Undo' : 'Redo'} {undoLabel}
-                  </button>
-                )}
               </div>
             </div>
           )}
