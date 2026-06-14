@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 import FilterPanel from './FilterPanel';
@@ -329,7 +329,7 @@ function TransactionsView({
                 <option value="vendor-asc">Vendor (A → Z)</option>
                 <option value="vendor-desc">Vendor (Z → A)</option>
               </select>
-              <button className="btn btn-secondary" onClick={() => setTab('import')}>Import CSV</button>
+              <button className="btn btn-secondary" onClick={() => setTab('import')}>Import</button>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
                 {showForm ? 'Cancel' : '+ Add Transaction'}
               </button>

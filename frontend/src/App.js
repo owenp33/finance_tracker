@@ -107,7 +107,6 @@ function App() {
   };
 
   const handleEditTransaction = async (id, body) => {
-    const prev = transactions.find(t => t.id === id);
     try {
       await transactionsAPI.updateTransaction(id, body);
       await refreshAll();
@@ -118,7 +117,6 @@ function App() {
 
   const handleDeleteTransaction = async (id) => {
     if (!window.confirm('Are you sure you want to delete this transaction?')) return;
-    const tx = transactions.find(t => t.id === id);
     try {
       await transactionsAPI.deleteTransaction(id);
       await refreshAll();
@@ -174,7 +172,6 @@ function App() {
 
   const handleDeleteManyTransactions = async (ids) => {
     if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
-    const txs = transactions.filter(t => ids.includes(t.id));
     try {
       await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
       await refreshAll();

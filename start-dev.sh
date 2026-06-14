@@ -35,9 +35,20 @@ sudo service postgresql start || true   # 'already running' exits non-zero, that
 echo ">> Starting Flask backend..."
 (
   cd "$BACKEND_DIR"
-  if [ -f "venv/bin/activate" ]; then
-    # Linux/WSL venv
-    source venv/bin/activate
+  # Use a Linux-specific venv so it doesn't conflict with the Windows venv/
+  if [ ! -f "venv_linux/bin/activate" ]; then
+    echo ">> Creating WSL venv at backend/venv_linux ..."
+    if ! python3 -m venv venv_linux; then
+      echo ""
+      echo "ERROR: Could not create venv. Run this first:"
+      echo "  sudo apt install python3-venv -y"
+      echo ""
+      exit 1
+    fi
+    source venv_linux/bin/activate
+    pip install -r requirements.prod.txt
+  else
+    source venv_linux/bin/activate
   fi
   python app.py
 ) &
