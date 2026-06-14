@@ -2262,18 +2262,24 @@ body {
 .account-transfer-amount {
   font-weight: 600;
   white-space: nowrap;
-  min-width: 70px;
   text-align: right;
+  transition: opacity 0.15s;
 }
 
 .account-transfer-right {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
   margin-left: auto;
+  width: 90px;     /* fixed width — peer column never shifts on hover */
 }
 
 .transfer-row-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -2283,6 +2289,10 @@ body {
 
 .account-transfer-row:hover .transfer-row-actions {
   opacity: 1;
+}
+
+.account-transfer-row:hover .account-transfer-amount {
+  opacity: 0;
 }
 
 .transfer-action-btn {
