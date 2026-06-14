@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info, ChevronDown, ChevronRight } from 'lucide-react';
-import { previewCSV, confirmImport } from '../api/csv';
+import { previewImport, confirmImport } from '../api/imports';
 import TransactionForm from './TransactionForm';
 import TransactionList from './TransactionList';
 import FilterPanel from './FilterPanel';
@@ -317,7 +317,7 @@ function TransactionsView({
     if (!importFile) return;
     setImportLoading(true);
     try {
-      const data = await previewCSV(importFile, importFallbackId || null);
+      const data = await previewImport(importFile, importFallbackId || null);
       setImportRows(data.rows);
       setImportSummary(data.summary);
       setImportSelected(new Set(
@@ -754,7 +754,7 @@ function TransactionsView({
       {/* ── Import ────────────────────────────────────────────────────────── */}
       {tab === 'import' && (
         <div>
-          <div className="view-header"><h2>Import CSV</h2></div>
+          <div className="view-header"><h2>Import Transactions</h2></div>
           {importSuccessMsg && (
             <div className="import-success">
               <span>✓ {importSuccessMsg}</span>
@@ -771,15 +771,15 @@ function TransactionsView({
                 <p className="csv-format-note">The <em>account</em> column is matched to your existing accounts by name.</p>
               </div>
               <div className="form-group">
-                <label>Select CSV File</label>
+                <label>Select File</label>
                 <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} />
                 {importFile && <p className="file-selected">✓ {importFile.name}</p>}
               </div>
               {importFile && (
                 <div className="form-group">
-                  <label>Fallback account <small>(only needed if your CSV has no account column)</small></label>
+                  <label>Fallback account <small>(only needed if your file has no account column)</small></label>
                   <select value={importFallbackId} onChange={e => setImportFallbackId(e.target.value)}>
-                    <option value="">— CSV has an account column —</option>
+                    <option value="">— file has an account column —</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
                   </select>
                 </div>

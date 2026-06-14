@@ -1,25 +1,26 @@
 """
-csv_import.py - CSV import routes
+imports.py - File import routes (CSV, XLSX, XLS)
 
 Two-step stateless import flow:
 
-  POST /csv/preview   Parse a CSV file and return rows as JSON with per-row
-                      account resolution and duplicate detection. No DB writes.
+  POST /import/preview   Parse an uploaded file and return rows as JSON with
+                         per-row account resolution and duplicate detection.
+                         No DB writes.
 
-  POST /csv/confirm   Accept the rows the user approved, write them to the DB.
-                      Re-verifies duplicates and ownership server-side.
+  POST /import/confirm   Accept the rows the user approved, write them to the DB.
+                         Re-verifies duplicates and ownership server-side.
 """
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService, AnalyticsService
 
-csv_bp = Blueprint('csv', __name__)
+import_bp = Blueprint('import', __name__)
 db_service     = DbService()
 account_service = AccountService()
 
 
-@csv_bp.route('/preview', methods=['POST'])
+@import_bp.route('/preview', methods=['POST'])
 @jwt_required()
 def preview_csv():
     """
@@ -122,7 +123,7 @@ def preview_csv():
     }), 200
 
 
-@csv_bp.route('/confirm', methods=['POST'])
+@import_bp.route('/confirm', methods=['POST'])
 @jwt_required()
 def confirm_import():
     """

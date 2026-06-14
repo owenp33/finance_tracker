@@ -69,7 +69,7 @@ def create_app(test_config=None):
     from routes.transactions import transactions_bp
     from routes.recurring import recurring_bp
     from routes.analytics import analytics_bp
-    from routes.csv_import import csv_bp
+    from routes.imports import import_bp
     from routes.health import health_bp
     from routes.budgets import budgets_bp
 
@@ -79,7 +79,7 @@ def create_app(test_config=None):
     app.register_blueprint(transactions_bp, url_prefix='/api/transactions')
     app.register_blueprint(recurring_bp, url_prefix='/api/recurring')
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
-    app.register_blueprint(csv_bp, url_prefix='/api/csv')
+    app.register_blueprint(import_bp, url_prefix='/api/import')
     app.register_blueprint(budgets_bp, url_prefix='/api/budgets')
 
     from middleware.error_handlers import register_error_handlers

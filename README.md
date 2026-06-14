@@ -23,7 +23,7 @@ A self-hosted personal finance dashboard for tracking spending across multiple b
 |---|---|
 | Backend | Flask 3.1 + Flask-SQLAlchemy |
 | Database | PostgreSQL 15 (SQLite for tests) |
-| Auth | Flask-JWT-Extended (JWT, 24 h expiry) |
+| Auth | Flask-JWT-Extended (JWT, 24h expiry) |
 | Background jobs | APScheduler |
 | File parsing | pandas, openpyxl, xlrd |
 | WSGI server | gunicorn |
@@ -261,5 +261,5 @@ All routes are prefixed with `/api`.
 | `/recurring` | recurring template CRUD; manual generation |
 | `/budgets` | budget CRUD; progress report |
 | `/analytics` | spending report (per-account or aggregated) |
-| `/csv` | two-step import: preview (upload file) + confirm (write selected rows) |
+| `/import` | two-step import: preview (upload file) + confirm (write selected rows) |
 | `/health` | liveness check |
