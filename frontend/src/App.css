@@ -2050,7 +2050,7 @@ body {
 }
 /* ── Accounts tab ──────────────────────────────────────────────────────────── */
 .accounts-view {
-  padding: 16px 0;
+  padding: 30px;
 }
 
 .accounts-list {
@@ -2168,23 +2168,21 @@ body {
 
 .account-transfer-date {
   color: #888;
-  min-width: 60px;
-  flex-shrink: 0;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.transfer-vendor-group + .transfer-vendor-group {
+  border-top: 1px solid #e0e0e0;
+  margin-top: 6px;
+  padding-top: 4px;
 }
 
 .transfer-vendor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 0 2px;
-  margin-top: 4px;
-  border-top: 1px solid #eee;
-}
-
-.transfer-vendor-header:first-child {
-  border-top: none;
-  margin-top: 0;
-  padding-top: 4px;
+  padding: 4px 0 2px;
 }
 
 .transfer-vendor-name {
@@ -2195,7 +2193,9 @@ body {
   letter-spacing: 0.04em;
 }
 
-.transfer-vendor-net {
+.transfer-vendor-flows {
+  display: flex;
+  gap: 10px;
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -2249,6 +2249,8 @@ body {
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  width: 40px;
+  text-align: center;
   flex-shrink: 0;
 }
 
@@ -2285,7 +2287,8 @@ body {
   font-weight: 600;
   white-space: nowrap;
   text-align: right;
-  transition: opacity 0.15s;
+  min-width: 72px;
+  flex-shrink: 0;
 }
 
 .account-transfer-right {
@@ -2294,7 +2297,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   margin-left: auto;
-  width: 90px;     /* fixed width — peer column never shifts on hover */
+  min-width: 90px;   /* expands for year-inclusive dates; peer column never shifts */
 }
 
 .transfer-row-actions {
@@ -2313,7 +2316,7 @@ body {
   opacity: 1;
 }
 
-.account-transfer-row:hover .account-transfer-amount {
+.account-transfer-row:hover .account-transfer-date {
   opacity: 0;
 }
 

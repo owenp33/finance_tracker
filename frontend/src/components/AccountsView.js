@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 
-const formatDate = (dateStr) => {
+const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const opts = showYear
+    ? { month: 'short', day: 'numeric', year: 'numeric' }
+    : { month: 'short', day: 'numeric' };
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', opts);
 };
 
 function AccountsView({
@@ -111,6 +114,8 @@ function AccountsView({
             const cfg = getTransferConfig(a.id);
             const accountTransfers = transactions.filter(t => t.is_transfer && t.account_id === a.id);
             const visibleTransfers = applyTransferSort(accountTransfers, cfg.sort);
+            const transferYears = new Set(accountTransfers.map(t => t.date.slice(0, 4)));
+            const showYear = transferYears.size > 1;
 
             return (
               <div key={a.id} className="account-item">
@@ -216,16 +221,6 @@ function AccountsView({
                         setSelectedTransferIds(prev => { const n = new Set(prev); acctSelected.forEach(t => n.delete(t.id)); return n; });
                       };
 
-                      const peerGroups = {};
-                      for (const t of accountTransfers) {
-                        if (!t.transfer_peer_account) continue;
-                        const peer = t.transfer_peer_account;
-                        if (!peerGroups[peer]) peerGroups[peer] = { out: 0, in: 0 };
-                        if (t.amount < 0) peerGroups[peer].out += Math.abs(t.amount);
-                        else peerGroups[peer].in += t.amount;
-                      }
-                      const unlinkedCount = accountTransfers.filter(t => !t.transfer_peer_account).length;
-
                       return (
                         <div className="account-transfers">
                           <div className="account-transfers-header">
@@ -276,25 +271,6 @@ function AccountsView({
                             </div>
                           </div>
 
-                          {(Object.keys(peerGroups).length > 0 || unlinkedCount > 0) && (
-                            <div className="transfer-relationship-summary">
-                              {Object.entries(peerGroups).map(([peer, { out, in: inn }]) => (
-                                <div key={peer} className="transfer-rel-row">
-                                  <span className="transfer-rel-peer">{peer}</span>
-                                  <span className="transfer-rel-flows">
-                                    {out > 0 && <span className="transfer-rel-out">${out.toFixed(2)} out</span>}
-                                    {inn > 0 && <span className="transfer-rel-in">${inn.toFixed(2)} in</span>}
-                                  </span>
-                                </div>
-                              ))}
-                              {unlinkedCount > 0 && (
-                                <div className="transfer-rel-row">
-                                  <span className="transfer-rel-unlinked">{unlinkedCount} unlinked</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
                           {(() => {
                             const vendorOrder = [];
                             const byVendor = {};
@@ -304,13 +280,15 @@ function AccountsView({
                             }
                             return vendorOrder.map(vendor => {
                               const group = byVendor[vendor];
-                              const net = group.reduce((s, t) => s + t.amount, 0);
+                              const out = group.reduce((s, t) => t.amount < 0 ? s + Math.abs(t.amount) : s, 0);
+                              const inn = group.reduce((s, t) => t.amount > 0 ? s + t.amount : s, 0);
                               return (
-                                <div key={vendor}>
+                                <div key={vendor} className="transfer-vendor-group">
                                   <div className="transfer-vendor-header">
                                     <span className="transfer-vendor-name">{vendor}</span>
-                                    <span className={`transfer-vendor-net ${net >= 0 ? 'green' : 'red'}`}>
-                                      {net >= 0 ? '+' : '-'}${Math.abs(net).toFixed(2)}
+                                    <span className="transfer-vendor-flows">
+                                      {out > 0 && <span className="transfer-rel-out">${out.toFixed(2)} out</span>}
+                                      {inn > 0 && <span className="transfer-rel-in">${inn.toFixed(2)} in</span>}
                                     </span>
                                   </div>
                                   {group.map(t => (
@@ -332,7 +310,9 @@ function AccountsView({
                                             checked={selectedTransferIds.has(t.id)}
                                             onChange={() => toggleTransferSelect(t.id)}
                                           />
-                                          <span className="account-transfer-date">{formatDate(t.date)}</span>
+                                          <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
+                                            {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                                          </span>
                                           <span className="account-transfer-direction">
                                             {t.amount < 0 ? 'To' : 'From'}
                                           </span>
@@ -394,8 +374,8 @@ function AccountsView({
                                             )}
                                           </span>
                                           <div className="account-transfer-right">
-                                            <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
-                                              {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                                            <span className="account-transfer-date">
+                                              {formatDate(t.date, showYear)}
                                             </span>
                                             <div className="transfer-row-actions">
                                               <button
