@@ -268,11 +268,11 @@ function TransactionsView({
       <div className="tab-bar">
         <button className={`tab-btn${tab === 'all'       ? ' active' : ''}`} onClick={() => setTab('all')}>All</button>
         <button className={`tab-btn${tab === 'recurring' ? ' active' : ''}`} onClick={() => setTab('recurring')}>Recurring</button>
+        <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>Accounts</button>
         <button className={`tab-btn${tab === 'import'    ? ' active' : ''}`} onClick={() => setTab('import')}>Import</button>
         <button className={`tab-btn${tab === 'flagged'   ? ' active' : ''}`} onClick={() => setTab('flagged')}>
           Flagged {flagged.length > 0 && <span className="count-badge flagged-badge">{flagged.length}</span>}
         </button>
-        <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>Accounts</button>
       </div>
 
       {/* ── All ───────────────────────────────────────────────────────────── */}
