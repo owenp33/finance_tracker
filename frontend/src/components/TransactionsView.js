@@ -40,7 +40,7 @@ function getPeriodLabel(dateFrom, dateTo) {
   }
   const fLabel = from.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const tLabel = to.toLocaleDateString('en-US',   { month: 'long', year: 'numeric' });
-  return fLabel === tLabel ? fLabel : `${fLabel} â€“ ${tLabel}`;
+  return fLabel === tLabel ? fLabel : `${fLabel} — ${tLabel}`;
 }
 
 function getCurrentPeriod() {
@@ -72,22 +72,22 @@ function TransactionsView({
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
 
-  // All tab â€” period nav
+  // All tab — period nav
   const [currentPeriod, setCurrentPeriod] = useState(getCurrentPeriod);
   const [dateFrom, setDateFrom] = useState(() => getMonthRange(getCurrentPeriod())[0]);
   const [dateTo,   setDateTo]   = useState(() => getMonthRange(getCurrentPeriod())[1]);
 
-  // All tab â€” filters
+  // All tab — filters
   const [showFilters, setShowFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [datePreset, setDatePreset] = useState('');
 
-  // All tab â€” pagination
+  // All tab — pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  // All tab â€” bulk selection
+  // All tab — bulk selection
   const [selectedTxIds, setSelectedTxIds] = useState(new Set());
 
   // Sorting
@@ -95,7 +95,7 @@ function TransactionsView({
   const [recurringSort, setRecurringSort] = useState('date-asc');
   const [flaggedSort,   setFlaggedSort]   = useState('date-desc');
 
-  // Recurring tab â€” inline edit
+  // Recurring tab — inline edit
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
   const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
@@ -122,7 +122,7 @@ function TransactionsView({
     setSelectedTxIds(new Set());
   }, [selectedIds, selectedCategories, dateFrom, dateTo, searchQuery]);
 
-  // â”€â”€ All tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── All tab ──────────────────────────────────────────────────────────────
 
   const navigatePeriod = (dir) => {
     const [year, month] = currentPeriod.split('-').map(Number);
@@ -232,7 +232,7 @@ function TransactionsView({
     await onToggleTransferMany(ids);
   };
 
-  // â”€â”€ Recurring tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Recurring tab ────────────────────────────────────────────────────────
 
   const startEditRecurring = (r) => {
     setEditingRecurringId(r.id);
@@ -256,12 +256,12 @@ function TransactionsView({
     onDeleteRecurring(id);
   };
 
-  // â”€â”€ Flagged tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Flagged tab ──────────────────────────────────────────────────────────
 
   const flagged = sortList(transactions.filter(t => t.over_budget), flaggedSort);
   const sortedRecurring = sortList(recurringTransactions, recurringSort, 'next_date');
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="transactions-view">
@@ -275,7 +275,7 @@ function TransactionsView({
         <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>Accounts</button>
       </div>
 
-      {/* â”€â”€ All â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── All ───────────────────────────────────────────────────────────── */}
       {tab === 'all' && (
         <>
           {/* Header row */}
@@ -286,15 +286,15 @@ function TransactionsView({
                 className={`btn btn-secondary${activeFilterCount > 0 ? ' filter-btn-active' : ''}`}
                 onClick={() => setShowFilters(f => !f)}
               >
-                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? 'â–²' : 'â–¼'}
+                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''} {showFilters ? '▲' : '▼'}
               </button>
               <select className="sort-select" value={allSort} onChange={e => { setAllSort(e.target.value); setVisibleCount(PAGE_SIZE); }}>
                 <option value="date-desc">Date (newest)</option>
                 <option value="date-asc">Date (oldest)</option>
-                <option value="amount-desc">Amount (high â†’ low)</option>
-                <option value="amount-asc">Amount (low â†’ high)</option>
-                <option value="vendor-asc">Vendor (A â†’ Z)</option>
-                <option value="vendor-desc">Vendor (Z â†’ A)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
               </select>
               <button className="btn btn-secondary" onClick={() => setTab('import')}>Import</button>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
@@ -319,9 +319,9 @@ function TransactionsView({
 
           {/* Period navigator */}
           <div className="period-nav">
-            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(-1)}>â€¹</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(-1)}>‹</button>
             <span className="period-label">{getPeriodLabel(dateFrom, dateTo)}</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(1)}>â€º</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigatePeriod(1)}>›</button>
           </div>
 
           {/* Filter panel */}
@@ -385,7 +385,7 @@ function TransactionsView({
                   onClick={handleBulkDelete}
                   style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                 >
-                  Delete {selectedTxIds.size || 'â€”'} selected
+                  Delete {selectedTxIds.size || '—'} selected
                 </button>
               </div>
             </div>
@@ -427,7 +427,7 @@ function TransactionsView({
         </>
       )}
 
-      {/* â”€â”€ Recurring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Recurring ─────────────────────────────────────────────────────── */}
       {tab === 'recurring' && (
         <div className="recurring-view">
           <div className="view-header">
@@ -436,10 +436,10 @@ function TransactionsView({
               <select className="sort-select" value={recurringSort} onChange={e => setRecurringSort(e.target.value)}>
                 <option value="date-asc">Next date (soonest)</option>
                 <option value="date-desc">Next date (latest)</option>
-                <option value="amount-desc">Amount (high â†’ low)</option>
-                <option value="amount-asc">Amount (low â†’ high)</option>
-                <option value="vendor-asc">Vendor (A â†’ Z)</option>
-                <option value="vendor-desc">Vendor (Z â†’ A)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
               </select>
               <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
                 {showForm ? 'Cancel' : '+ Add Recurring'}
@@ -536,7 +536,7 @@ function TransactionsView({
                               className="recurring-generated-toggle"
                               onClick={() => toggleRecurringExpand(r.id)}
                             >
-                              {isExpanded ? 'â–²' : 'â–¼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
+                              {isExpanded ? '▲' : '▼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
                             </button>
                             {isExpanded && (
                               <div className="recurring-generated-list">
@@ -624,7 +624,7 @@ function TransactionsView({
                                             }}
                                             style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                                           >
-                                            Delete {sectionSelected.length || 'â€”'}
+                                            Delete {sectionSelected.length || '—'}
                                           </button>
                                         </div>
                                       </div>
@@ -655,7 +655,7 @@ function TransactionsView({
         </div>
       )}
 
-      {/* â”€â”€ Import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Import ────────────────────────────────────────────────────────── */}
       {tab === 'import' && (
         <ImportView
           accounts={accounts}
@@ -688,15 +688,15 @@ function TransactionsView({
               <select className="sort-select" value={flaggedSort} onChange={e => setFlaggedSort(e.target.value)}>
                 <option value="date-desc">Date (newest)</option>
                 <option value="date-asc">Date (oldest)</option>
-                <option value="amount-desc">Amount (high â†’ low)</option>
-                <option value="amount-asc">Amount (low â†’ high)</option>
-                <option value="vendor-asc">Vendor (A â†’ Z)</option>
-                <option value="vendor-desc">Vendor (Z â†’ A)</option>
+                <option value="amount-desc">Amount (high → low)</option>
+                <option value="amount-asc">Amount (low → high)</option>
+                <option value="vendor-asc">Vendor (A → Z)</option>
+                <option value="vendor-desc">Vendor (Z → A)</option>
               </select>
             </div>
           </div>
           {flagged.length === 0 ? (
-            <p className="no-data">No over-budget transactions â€” you're on track!</p>
+            <p className="no-data">No over-budget transactions — you're on track!</p>
           ) : (
             <TransactionList transactions={flagged} accounts={accounts} onEdit={onEdit} onDelete={onDelete} showAll={true} resetSignal={showForm} onStartEdit={() => setShowForm(false)} />
           )}
