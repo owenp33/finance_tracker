@@ -10,12 +10,15 @@ import FilterPanel from './FilterPanel';
 function computeAnalytics(transactions) {
   if (!transactions || transactions.length === 0) return null;
 
-  const expenses = transactions.filter(t => t.amount < 0  && !t.is_transfer);
-  const income   = transactions.filter(t => t.amount >= 0 && !t.is_transfer);
+  const nonTransfers = transactions.filter(t => !t.is_transfer);
+  const expenses = nonTransfers.filter(t => t.amount < 0);
+  const income   = nonTransfers.filter(t => t.amount >= 0);
 
   const totalIncome   = income.reduce((s, t) => s + t.amount, 0);
   const totalExpenses = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
-  const avgTransaction = transactions.reduce((s, t) => s + Math.abs(t.amount), 0) / transactions.length;
+  const avgTransaction = nonTransfers.length > 0
+    ? nonTransfers.reduce((s, t) => s + Math.abs(t.amount), 0) / nonTransfers.length
+    : 0;
 
   const groupBy = (txns, key, getValue) => {
     const map = {};
@@ -53,7 +56,7 @@ function computeAnalytics(transactions) {
   // Monthly summary — sorted newest-first to match backend convention
   // (InsightsView reverses it for the line chart so oldest renders on the left)
   const monthMap = {};
-  for (const t of transactions) {
+  for (const t of nonTransfers) {
     const m = t.date.substring(0, 7);
     if (!monthMap[m]) monthMap[m] = { income: 0, expenses: 0 };
     if (t.amount >= 0) monthMap[m].income   += t.amount;
@@ -72,15 +75,15 @@ function computeAnalytics(transactions) {
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 10);
 
-  // Weekly averages over the span of the filtered transactions
-  const dates  = transactions.map(t => new Date(t.date));
+  // Weekly averages over the span of the non-transfer transactions
+  const dates  = nonTransfers.map(t => new Date(t.date));
   const minMs  = Math.min(...dates);
   const maxMs  = Math.max(...dates);
   const weeks  = Math.max(1, (maxMs - minMs) / (7 * 24 * 60 * 60 * 1000));
 
   return {
     summary: {
-      transaction_count: transactions.length,
+      transaction_count: nonTransfers.length,
       total_income:      totalIncome,
       total_expenses:    totalExpenses,
       net_amount:        totalIncome - totalExpenses,
