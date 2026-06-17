@@ -2,9 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
-const formatDate = (dateStr) => {
+const formatDate = (dateStr, includeYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const opts = { month: 'short', day: 'numeric' };
+  if (includeYear) opts.year = 'numeric';
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', opts);
 };
 
 const formatAmount = (amount) =>
@@ -33,6 +35,11 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
       });
     }
     return result;
+  }, [transactions]);
+
+  const spansMultipleYears = useMemo(() => {
+    const years = new Set(transactions.map(t => t.date.slice(0, 4)));
+    return years.size > 1;
   }, [transactions]);
 
   useEffect(() => {
@@ -144,7 +151,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
             <>
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} · {formatDate(t.date)}</span>
+                <span>{t.category} · {formatDate(t.date, spansMultipleYears)}</span>
               </div>
               <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                 {formatAmount(t.amount)}
@@ -164,7 +171,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
               <span className="tx-cat-dot" style={{ background: getColor(t.category) }} title={t.category} />
               <div className="transaction-info">
                 <strong>{t.vendor}</strong>
-                <span>{t.category} · {formatDate(t.date)}{t.notes ? ` · ${t.notes}` : ''}</span>
+                <span>{t.category} · {formatDate(t.date, spansMultipleYears)}{t.notes ? ` · ${t.notes}` : ''}</span>
               </div>
               <div className="transaction-right">
                 <div className="tx-default-info">

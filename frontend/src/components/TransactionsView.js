@@ -6,9 +6,22 @@ import FilterPanel from './FilterPanel';
 import ImportView from './ImportView';
 import AccountsView from './AccountsView';
 
-const formatDate = (dateStr) => {
+const dateStrToDate = (dateStr) => {
   const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(year, month - 1, day);
+};
+
+const formatDate = (dateOrStr, includeYear = false) => {
+  const dt = typeof dateOrStr === 'string' ? dateStrToDate(dateOrStr) : dateOrStr;
+  const opts = { month: 'short', day: 'numeric' };
+  if (includeYear) opts.year = 'numeric';
+  return dt.toLocaleDateString('en-US', opts);
+};
+
+const subtractDays = (dateStr, days) => {
+  const dt = dateStrToDate(dateStr);
+  dt.setDate(dt.getDate() - days);
+  return dt;
 };
 
 const frequencyLabel = (days) => {
@@ -520,7 +533,17 @@ function TransactionsView({
                       <div className="recurring-item-row">
                         <div className="recurring-info">
                           <strong>{r.vendor}</strong>
-                          <span>{r.category} · {frequencyLabel(r.frequency)} · Next: {formatDate(r.next_date)}</span>
+                          {(() => {
+                            const isFinished = r.number !== -1 && r.idx > r.number;
+                            const displayDate = isFinished ? subtractDays(r.next_date, r.frequency) : r.next_date;
+                            const displayYear = typeof displayDate === 'string' ? dateStrToDate(displayDate).getFullYear() : displayDate.getFullYear();
+                            const spansYears = dateStrToDate(r.date).getFullYear() !== displayYear;
+                            return (
+                              <span>
+                                {r.category} · {frequencyLabel(r.frequency)} · {isFinished ? 'Last' : 'Next'}: {formatDate(displayDate, spansYears)}
+                              </span>
+                            );
+                          })()}
                           {r.notes && <small>{r.notes}</small>}
                         </div>
                         <div className="recurring-item-right">
