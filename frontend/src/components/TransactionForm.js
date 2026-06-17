@@ -128,12 +128,18 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
             </select>
           </div>
           <div className="form-group">
-            <label>Number of occurrences <small>(-1 = infinite)</small></label>
+            <label>Number of occurrences <small>(-1 = infinite, min 2 otherwise)</small></label>
             <input
               type="number"
               min="-1"
               value={recurring.number}
-              onChange={e => setR('number', e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '' || val === '-') { setR('number', val); return; }
+                const n = parseInt(val);
+                if (n === 0 || n === 1) return;
+                setR('number', val);
+              }}
             />
           </div>
         </div>

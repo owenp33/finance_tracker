@@ -19,9 +19,23 @@ def _run_migrations(db):
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_transfer BOOLEAN NOT NULL DEFAULT FALSE',
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_peer_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL',
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reimbursement BOOLEAN NOT NULL DEFAULT FALSE',
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recurring_index INTEGER',
         ]
         for sql in migrations:
             conn.execute(text(sql))
+
+        # Backfill recurring_index for rows generated before this column existed,
+        # so existing recurring chips show the correct occurrence number.
+        conn.execute(text('''
+            UPDATE transactions t
+            SET recurring_index = sub.rn
+            FROM (
+                SELECT id, ROW_NUMBER() OVER (PARTITION BY recurring_id ORDER BY date ASC, id ASC) AS rn
+                FROM transactions
+                WHERE recurring_id IS NOT NULL
+            ) sub
+            WHERE t.id = sub.id AND t.recurring_index IS NULL
+        '''))
         conn.commit()
 
 

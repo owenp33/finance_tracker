@@ -505,6 +505,16 @@ body {
   white-space: nowrap;
 }
 
+.tx-recurring-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #f3e8ff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 .transaction-info {
   display: flex;
   flex-direction: column;

@@ -8,6 +8,7 @@ class TransactionModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=False)
     recurring_id = db.Column(db.Integer, db.ForeignKey('recurring.id'), nullable=True)
+    recurring_index = db.Column(db.Integer, nullable=True)
     date = db.Column(db.Date, nullable=False)
     vendor = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(50), nullable=False)
@@ -45,11 +46,13 @@ class TransactionModel(db.Model):
             'amount_cents': self.amount_cents,
             'notes': self.notes,
             'recurring_id': self.recurring_id,
+            'recurring_index': self.recurring_index,
             'over_budget': self.over_budget,
             'is_transfer': self.is_transfer,
             'is_reimbursement': self.is_reimbursement,
             'transfer_peer_id': self.transfer_peer_id,
             'transfer_peer_account': peer_account,
+            'recurring_number': self.recurring_source.number if self.recurring_id and self.recurring_source else None,
         }
     
     @property

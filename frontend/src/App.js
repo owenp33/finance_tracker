@@ -193,7 +193,7 @@ function App() {
   const handleEditRecurring = async (id, fields) => {
     try {
       await recurringAPI.updateRecurring(id, fields);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }

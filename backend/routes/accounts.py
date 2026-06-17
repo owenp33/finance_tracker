@@ -217,17 +217,20 @@ def add_recurring(account_id):
     start_date = datetime.fromisoformat(data['start_date']).date()
     next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
-    recurring = account_service.add_recurring(
-        account_id=account_id,
-        start_date=start_date,
-        vendor=data['vendor'],
-        category=data['category'],
-        amount=float(data['amount']),
-        next_date=next_date,
-        frequency=int(data['frequency']),
-        number=int(data.get('number', -1)),
-        notes=data.get('notes', '')
-    )
+    try:
+        recurring = account_service.add_recurring(
+            account_id=account_id,
+            start_date=start_date,
+            vendor=data['vendor'],
+            category=data['category'],
+            amount=float(data['amount']),
+            next_date=next_date,
+            frequency=int(data['frequency']),
+            number=int(data.get('number', -1)),
+            notes=data.get('notes', '')
+        )
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
     # Immediately generate any transactions that are already due
     account_service.process_due_recurring(account_id)

@@ -46,7 +46,10 @@ def update_recurring(recurring_id):
     if 'notes' in data:
         update_fields['notes'] = data['notes']
 
-    updated = account_service.update_recurring(recurring_id, **update_fields)
+    try:
+        updated = account_service.update_recurring(recurring_id, **update_fields)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
     return jsonify({
         'success': True,

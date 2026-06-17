@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
@@ -14,6 +14,26 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
+
+  // Fallback for transactions missing a backend-computed recurring_index — only
+  // accurate if every occurrence in the series is present in `transactions`.
+  const recurringOccurrences = useMemo(() => {
+    const groups = {};
+    for (const t of transactions) {
+      if (t.recurring_id && t.recurring_index == null) {
+        if (!groups[t.recurring_id]) groups[t.recurring_id] = [];
+        groups[t.recurring_id].push(t);
+      }
+    }
+    const result = {};
+    for (const group of Object.values(groups)) {
+      group.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
+      group.forEach((t, i) => {
+        result[t.id] = { occurrence: i + 1, total: t.recurring_number ?? -1 };
+      });
+    }
+    return result;
+  }, [transactions]);
 
   useEffect(() => {
     if (resetSignal) {
@@ -160,6 +180,15 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                       Reimbursement
                     </span>
                   )}
+                  {t.recurring_id && (t.recurring_index != null || recurringOccurrences[t.id]) && (() => {
+                    const occurrence = t.recurring_index ?? recurringOccurrences[t.id].occurrence;
+                    const total = t.recurring_number ?? -1;
+                    return (
+                      <span className="tx-recurring-chip" title="Recurring transaction">
+                        {occurrence} / {total === -1 ? '∞' : total}
+                      </span>
+                    );
+                  })()}
                   <div className={`transaction-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                     {formatAmount(t.amount)}
                   </div>

@@ -57,7 +57,7 @@ class AccountService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, is_transfer=False, is_reimbursement=False):
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, recurring_index=None, is_transfer=False, is_reimbursement=False):
         """
         Create a transaction, update the account balance, and re-evaluate
         over_budget flags for the category/period. Single commit for all writes.
@@ -69,6 +69,7 @@ class AccountService:
             category=category,
             notes=notes,
             recurring_id=recurring_id,
+            recurring_index=recurring_index,
             is_transfer=is_transfer,
             is_reimbursement=is_reimbursement,
         )
@@ -341,6 +342,8 @@ class AccountService:
     def add_recurring(self, account_id, start_date, vendor, category, amount,
                       next_date, frequency, number=-1, notes=""):
         """Create a recurring template and commit."""
+        if number in (0, 1):
+            raise ValueError('Number of occurrences must be -1 (infinite) or at least 2')
         rec = RecurringModel(
             account_id=account_id,
             start_date=start_date,
@@ -365,6 +368,9 @@ class AccountService:
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             return False
+
+        if kwargs.get('number') in (0, 1):
+            raise ValueError('Number of occurrences must be -1 (infinite) or at least 2')
 
         old_number = rec.number
 
@@ -442,7 +448,8 @@ class AccountService:
                     category=rec.category,
                     amount=rec.amount,
                     notes=rec.notes or '',
-                    recurring_id=rec.id
+                    recurring_id=rec.id,
+                    recurring_index=rec.idx,
                 )
 
                 rec.next_date = rec.advance_to_next
