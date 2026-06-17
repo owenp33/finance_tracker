@@ -342,8 +342,8 @@ class AccountService:
     def add_recurring(self, account_id, start_date, vendor, category, amount,
                       next_date, frequency, number=-1, notes=""):
         """Create a recurring template and commit."""
-        if number in (0, 1):
-            raise ValueError('Number of occurrences must be -1 (infinite) or at least 2')
+        if number == 0:
+            raise ValueError('Number of occurrences must be -1 (infinite) or at least 1')
         rec = RecurringModel(
             account_id=account_id,
             start_date=start_date,
@@ -362,17 +362,24 @@ class AccountService:
 
     def update_recurring(self, recurring_id, **kwargs):
         """
-        Update a recurring transaction template and clean up excess generated
-        transactions if the occurrence limit (number) was reduced.
+        Update a recurring transaction template.
+        The occurrence limit (number) cannot be reduced below the count of
+        transactions already generated for this recurring item.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             return False
 
-        if kwargs.get('number') in (0, 1):
-            raise ValueError('Number of occurrences must be -1 (infinite) or at least 2')
-
-        old_number = rec.number
+        if 'number' in kwargs:
+            new_number = kwargs['number']
+            if new_number == 0:
+                raise ValueError('Number of occurrences must be -1 (infinite) or at least 1')
+            if new_number != -1:
+                generated_count = TransactionModel.query.filter_by(recurring_id=recurring_id).count()
+                if new_number < generated_count:
+                    raise ValueError(
+                        f'Number of occurrences cannot be less than the {generated_count} transaction(s) already generated'
+                    )
 
         updatable_fields = ['start_date', 'vendor', 'category', 'amount', 'notes', 'next_date', 'frequency', 'number']
         for field in updatable_fields:
@@ -381,26 +388,6 @@ class AccountService:
                     rec.amount = kwargs[field]  # Property converts dollars to cents
                 else:
                     setattr(rec, field, kwargs[field])
-
-        new_number = rec.number
-        number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
-
-        if number_was_reduced:
-            all_generated = (
-                TransactionModel.query
-                .filter_by(recurring_id=recurring_id)
-                .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
-                .all()
-            )
-            excess = all_generated[new_number:]
-            for trans in excess:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents -= trans.amount_cents
-                db.session.delete(trans)
-
-            kept = min(len(all_generated), new_number)
-            rec.idx = kept + 1
 
         db.session.commit()
         return rec

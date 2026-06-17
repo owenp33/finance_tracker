@@ -495,13 +495,20 @@ function TransactionsView({
                         <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} />
                       </div>
                       <div className="form-group recurring-number-group">
-                        <label className="recurring-number-label">
-                          <input type="checkbox" checked={recurringEditFields.number !== -1} onChange={e => setRF('number', e.target.checked ? 2 : -1)} />
-                          Limit occurrences
-                        </label>
-                        {recurringEditFields.number !== -1 && (
-                          <input type="number" min="2" value={recurringEditFields.number} onChange={e => { const n = parseInt(e.target.value); setRF('number', (!n || n < 2) ? 2 : n); }} placeholder="Max occurrences" />
-                        )}
+                        {(() => {
+                          const minNumber = Math.max(1, r.idx - 1);
+                          return (
+                            <>
+                              <label className="recurring-number-label">
+                                <input type="checkbox" checked={recurringEditFields.number !== -1} onChange={e => setRF('number', e.target.checked ? minNumber : -1)} />
+                                Limit occurrences
+                              </label>
+                              {recurringEditFields.number !== -1 && (
+                                <input type="number" min={minNumber} value={recurringEditFields.number} onChange={e => { const n = parseInt(e.target.value); setRF('number', (!n || n < minNumber) ? minNumber : n); }} placeholder="Max occurrences" />
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                       <div className="form-actions">
                         <button className="btn btn-primary btn-sm" onClick={() => saveEditRecurring(r.id)}>Save</button>
