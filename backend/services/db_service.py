@@ -170,6 +170,22 @@ class DbService:
                 .order_by(TransactionModel.date.desc())
                 .all())
 
+    def get_user_transactions_filtered(self, user_id, account_ids=None, start_date=None, end_date=None):
+        """
+        Fetch a user's transactions scoped to specific accounts and/or a date range.
+        Used by the CSV/PDF export endpoints. All filters are optional.
+        """
+        query = TransactionModel.query.join(AccountModel).filter(AccountModel.user_id == user_id)
+
+        if account_ids:
+            query = query.filter(TransactionModel.account_id.in_(account_ids))
+        if start_date is not None:
+            query = query.filter(TransactionModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(TransactionModel.date <= end_date)
+
+        return query.order_by(TransactionModel.date.asc()).all()
+
     def find_transfer_peer(self, user_id, amount_cents, date_obj, exclude_account_id, exclude_id=None):
         """
         Find an unlinked transfer transaction that is the counterpart to a given one.

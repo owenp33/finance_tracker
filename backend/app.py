@@ -86,6 +86,7 @@ def create_app(test_config=None):
     from routes.imports import import_bp
     from routes.health import health_bp
     from routes.budgets import budgets_bp
+    from routes.export import export_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -95,6 +96,7 @@ def create_app(test_config=None):
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(import_bp, url_prefix='/api/import')
     app.register_blueprint(budgets_bp, url_prefix='/api/budgets')
+    app.register_blueprint(export_bp, url_prefix='/api/export')
 
     from middleware.error_handlers import register_error_handlers
     register_error_handlers(app)
