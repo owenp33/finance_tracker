@@ -1,14 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import FilterPanel from '../FilterPanel';
+import ReportPeriodSelector from './ReportPeriodSelector';
 import { exportTransactionsCSV, exportReportPDF } from '../../api/export';
-import { PRESETS, presetDates } from './analytics';
+import { resolvePeriodRange, periodContainingToday } from './reportPeriod';
 
 function ReportsTab({ transactions = [], accounts = [] }) {
   const [startDate,          setStartDate]          = useState('');
   const [endDate,            setEndDate]            = useState('');
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
-  const [datePreset,         setDatePreset]         = useState('all');
+  const [periodMode,         setPeriodMode]         = useState('all');
+  const [period,             setPeriod]             = useState(null);
   const [downloading,        setDownloading]        = useState(null); // 'csv' | 'pdf' | null
   const [downloadError,      setDownloadError]      = useState(null);
 
@@ -17,12 +19,25 @@ function ReportsTab({ transactions = [], accounts = [] }) {
     [transactions],
   );
 
-  const applyPreset = (preset) => {
-    const { start, end } = presetDates(preset);
-    setDatePreset(preset);
-    setStartDate(start);
-    setEndDate(end);
+  const handleModeChange = (newMode) => {
+    setPeriodMode(newMode);
+    if (newMode === 'monthly' || newMode === 'quarterly' || newMode === 'annual') {
+      setPeriod(periodContainingToday(newMode));
+    } else if (newMode === 'all') {
+      setPeriod(null);
+      setStartDate('');
+      setEndDate('');
+    }
+    // 'custom' leaves startDate/endDate as-is for manual entry
   };
+
+  useEffect(() => {
+    if (periodMode === 'monthly' || periodMode === 'quarterly' || periodMode === 'annual') {
+      const { start, end } = resolvePeriodRange(periodMode, period);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  }, [periodMode, period]);
 
   const toggle = (setter, val) => setter(prev => {
     const next = new Set(prev);
@@ -31,7 +46,7 @@ function ReportsTab({ transactions = [], accounts = [] }) {
   });
 
   const clearFilters = () => {
-    applyPreset('all');
+    handleModeChange('all');
     setSelectedAccountIds(new Set());
     setSelectedCategories(new Set());
   };
@@ -85,6 +100,13 @@ function ReportsTab({ transactions = [], accounts = [] }) {
 
       {downloadError && <p className="error-message">{downloadError}</p>}
 
+      <ReportPeriodSelector
+        mode={periodMode}
+        period={period}
+        onModeChange={handleModeChange}
+        onPeriodChange={setPeriod}
+      />
+
       <FilterPanel
         accounts={accounts}
         selectedAccountIds={selectedAccountIds}
@@ -99,13 +121,10 @@ function ReportsTab({ transactions = [], accounts = [] }) {
         dateSectionLabel="Period"
         startDate={startDate}
         endDate={endDate}
-        onStartDateChange={(val) => { setStartDate(val); setDatePreset('custom'); }}
-        onEndDateChange={(val) => { setEndDate(val); setDatePreset('custom'); }}
+        onStartDateChange={(val) => { setStartDate(val); setPeriodMode('custom'); }}
+        onEndDateChange={(val) => { setEndDate(val); setPeriodMode('custom'); }}
         showDateClear={dateActive}
-        onDateClear={() => applyPreset('all')}
-        presets={PRESETS}
-        datePreset={datePreset}
-        onPresetChange={applyPreset}
+        onDateClear={() => handleModeChange('all')}
         activeFilterCount={activeFilterCount}
         onClearAll={clearFilters}
       />

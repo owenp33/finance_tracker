@@ -1780,6 +1780,44 @@ body {
   color: white;
 }
 
+.report-period-selector {
+  margin-bottom: 10px;
+}
+
+.report-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.report-period-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 50%;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.report-period-nav-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.report-period-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  min-width: 110px;
+  text-align: center;
+}
+
 /* === Budgeting View ========================================= */
 .budgeting-view {
   background: white;
