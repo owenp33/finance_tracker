@@ -204,10 +204,12 @@ class AccountService:
                 return False, 'Transaction not found'
 
         # Capture context before deletion — needed for re-evaluation after the row is gone
-        was_expense  = trans.amount_cents < 0
-        user_id      = trans.account.user_id
-        category     = trans.category
-        period       = trans.date.strftime('%Y-%m')
+        was_expense   = trans.amount_cents < 0
+        user_id       = trans.account.user_id
+        category      = trans.category
+        period        = trans.date.strftime('%Y-%m')
+        recurring_id  = trans.recurring_id
+        deleted_index = trans.recurring_index
 
         account = db_service.get_account(trans.account_id)
         if account:
@@ -218,6 +220,24 @@ class AccountService:
 
         if was_expense:
             db_service._reevaluate_category_flags(user_id, category, period)
+
+        # When a generated recurring transaction is deleted, shift sibling indices
+        # so the "X/Y" card numbers on the remaining transactions stay contiguous.
+        if recurring_id is not None and deleted_index is not None:
+            rec = db_service.get_recurring(recurring_id)
+            if rec:
+                rec.idx = max(0, rec.idx - 1)
+                if rec.number > 0:
+                    rec.number -= 1
+                (TransactionModel.query
+                 .filter(
+                     TransactionModel.recurring_id == recurring_id,
+                     TransactionModel.recurring_index > deleted_index,
+                 )
+                 .update(
+                     {'recurring_index': TransactionModel.recurring_index - 1},
+                     synchronize_session='fetch',
+                 ))
 
         db.session.commit()
         return True, None
