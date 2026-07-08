@@ -159,7 +159,11 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {[
+                  ...rows.map((_, i) => i).filter(i => selected.has(i)),
+                  ...rows.map((_, i) => i).filter(i => !selected.has(i)),
+                ].map(i => {
+                  const row = rows[i];
                   const rowClass = [
                     'import-row',
                     row.duplicate    ? 'duplicate'   : '',

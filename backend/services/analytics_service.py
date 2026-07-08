@@ -143,9 +143,11 @@ class AnalyticsService:
         if missing:
             raise ValueError(f"File is missing required columns: {missing}")
 
-        # Truncate to DB column limits
-        df['vendor']   = df['vendor'].str[:100]
-        df['category'] = df['category'].str[:50]
+        # Strip whitespace then truncate to DB column limits.
+        # Stripping prevents duplicate-detection misses caused by leading/trailing
+        # spaces in bank exports (common in generic transfer/payment descriptions).
+        df['vendor']   = df['vendor'].str.strip().str[:100]
+        df['category'] = df['category'].str.strip().str[:50]
 
         return df
 
