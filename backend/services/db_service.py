@@ -126,11 +126,12 @@ class DbService:
         return TransactionModel.query.get(transaction_id)
 
     def transaction_exists(self, account_id, date_obj, vendor, amount_cents):
-        return TransactionModel.query.filter_by(
-            account_id=account_id,
-            date=date_obj,
-            vendor=vendor,
-            amount_cents=amount_cents
+        from sqlalchemy import func as sa_func
+        return TransactionModel.query.filter(
+            TransactionModel.account_id == account_id,
+            TransactionModel.date == date_obj,
+            sa_func.lower(sa_func.trim(TransactionModel.vendor)) == vendor.strip().lower(),
+            TransactionModel.amount_cents == amount_cents,
         ).first() is not None
 
     def get_account_transactions(self, account_id, start_date=None, end_date=None,
