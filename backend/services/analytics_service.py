@@ -163,7 +163,11 @@ class AnalyticsService:
         ext      = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
         mime     = getattr(file, 'content_type', '') or ''
 
-        is_excel = ext in ('xlsx', 'xls') or 'spreadsheet' in mime or 'excel' in mime
+        # Extension takes precedence — Windows browsers often report .csv files
+        # with MIME type application/vnd.ms-excel, which would otherwise trigger
+        # the Excel parser and cause a "not a zip file" error.
+        is_csv   = ext == 'csv'
+        is_excel = not is_csv and (ext in ('xlsx', 'xls') or 'spreadsheet' in mime or 'excel' in mime)
 
         raw = file.read()
         if len(raw) > 10 * 1024 * 1024:
