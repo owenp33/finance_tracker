@@ -71,8 +71,17 @@ if (Test-Stale $ReqFile $ReqStamp) {
     New-Item -ItemType File -Force $ReqStamp | Out-Null
 }
 
-$LockFile  = Join-Path $FrontendDir 'package-lock.json'
-$LockStamp = Join-Path $FrontendDir 'node_modules\.package-lock.json'   # npm rewrites it on every install
+$LockFile    = Join-Path $FrontendDir 'package-lock.json'
+$LockStamp   = Join-Path $FrontendDir 'node_modules\.package-lock.json'   # npm rewrites it on every install
+$NodeVersion = (Get-Content (Join-Path $FrontendDir '.nvmrc') -TotalCount 1).Trim()
+
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Node.js $NodeVersion is required (frontend/.nvmrc) but node is not on PATH."
+}
+$hostNodeMajor = (node --version) -replace '^v(\d+)\..*$', '$1'
+if ($hostNodeMajor -ne $NodeVersion) {
+    Write-Warning "Node $hostNodeMajor is installed, but frontend/.nvmrc expects $NodeVersion."
+}
 if (Test-Stale $LockFile $LockStamp) {
     Write-Host '>> Installing frontend packages...'
     Push-Location $FrontendDir

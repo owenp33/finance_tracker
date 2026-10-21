@@ -1,5 +1,6 @@
 # ── Stage 1: build React ──────────────────────────────────────────────────────
-FROM node:18-slim AS build
+# Keep in sync with frontend/.nvmrc
+FROM node:24-slim AS build
 
 WORKDIR /app
 
