@@ -165,7 +165,7 @@ The budget UI follows SOLID principles explicitly:
 
 The script starts Docker Desktop if needed, brings up the dev database (`docker-compose.dev.yml`), and installs backend and frontend dependencies on first run (and again whenever `requirements.prod.txt` or `package-lock.json` changes). It then runs both servers in one window with labeled output. Ctrl+C stops everything; the database container is stopped but its data is kept.
 
-No `.env` file is needed: the backend's defaults match the dev database. See `backend/.env.example` for optional overrides.
+No `.env` file is needed: the backend's defaults (see `backend/app.py`) match the dev database. To override one locally, put it in `backend/.env` (gitignored).
 
 To run the pieces individually (any OS; on Windows use `venv\Scripts\` instead of `venv/bin/`):
 
