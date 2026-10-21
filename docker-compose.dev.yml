@@ -1,0 +1,30 @@
+# Local development database only. The backend and frontend run on the host
+# (python app.py / npm start), so this stays lightweight and keeps hot reload fast.
+#
+#   docker compose -f docker-compose.dev.yml up -d     # start
+#   docker compose -f docker-compose.dev.yml down      # stop (data is kept)
+#   docker compose -f docker-compose.dev.yml down -v   # stop and erase all dev data
+
+# Separate project name so this volume never collides with the production stack's
+name: finance-tracker-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       finance_app
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: password    # dev only; matches the backend's default DATABASE_URL
+    ports:
+      - "127.0.0.1:5432:5432"        # reachable from this machine only, not the network
+    volumes:
+      - pgdata:/var/lib/postgresql   # Postgres 18+ images keep data in a versioned subdirectory here
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U postgres -d finance_app"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+
+volumes:
+  pgdata:

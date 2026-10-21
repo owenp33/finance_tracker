@@ -4,11 +4,14 @@ These are faster and easier to debug than route tests.
 """
 import pytest
 from datetime import date, timedelta
+from flask_jwt_extended import decode_token
 from extensions import db as _db
 from services.account_service import AccountService
+from services.auth_service import AuthService
 from services.db_service import DbService
 
 svc = AccountService()
+auth_svc = AuthService()
 db_svc = DbService()
 
 
@@ -135,3 +138,11 @@ class TestDeleteRecurring:
         from models.transaction import TransactionModel
         remaining = TransactionModel.query.filter_by(vendor='Spotify').all()
         assert len(remaining) == 0
+
+
+# ── Auth tokens ───────────────────────────────────────────────────────────────
+
+class TestIssueToken:
+    def test_identity_is_user_id_as_string(self, user):
+        claims = decode_token(auth_svc.issue_token(user))
+        assert claims['sub'] == str(user.id)

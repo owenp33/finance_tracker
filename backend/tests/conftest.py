@@ -32,7 +32,7 @@ def client(app):
 
 
 @pytest.fixture(autouse=True)
-def clean_tables():
+def clean_tables(app):
     yield
     _db.session.rollback()
     for table in reversed(_db.metadata.sorted_tables):

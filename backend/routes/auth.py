@@ -2,13 +2,13 @@
 auth.py - Authentication routes
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from datetime import timedelta
-from services import DbService, AccountService
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from services import DbService, AccountService, AuthService
 
 auth_bp = Blueprint('auth', __name__)
 db_service = DbService()
 account_service = AccountService()
+auth_service = AuthService()
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -19,7 +19,7 @@ def register():
     return jsonify({
         'success': True,
         'user': user.to_dict(),
-        'access_token': create_access_token(identity=user.id)
+        'access_token': auth_service.issue_token(user)
     }), 201
 
 
@@ -36,10 +36,7 @@ def login():
     if not user:
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
-    access_token = create_access_token(
-        identity=str(user.id),
-        expires_delta=timedelta(hours=24)
-    )
+    access_token = auth_service.issue_token(user)
 
     total_generated = 0
     for account in db_service.get_user_accounts(user.id):

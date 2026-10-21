@@ -30,6 +30,16 @@ class TestAuth:
         assert resp.status_code == 200
         assert resp.json['user']['username'] == 'testuser'
 
+    def test_register_returns_usable_token(self, client):
+        resp = client.post('/api/auth/register',
+                           json={'username': 'newuser', 'email': 'new@example.com', 'password': 'pw'})
+        assert resp.status_code == 201
+
+        me = client.get('/api/auth/me',
+                        headers={'Authorization': f"Bearer {resp.json['access_token']}"})
+        assert me.status_code == 200
+        assert me.json['user']['username'] == 'newuser'
+
 
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 

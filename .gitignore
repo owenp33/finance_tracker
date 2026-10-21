@@ -5,7 +5,6 @@ CLAUDE.md
 # Virtual environment dependencies
 data-processing/venv/
 venv/
-venv_linux/
 
 # Dependencies
 node_modules/

@@ -76,9 +76,10 @@ money/
 ├── .github/workflows/
 │   ├── ci.yml                  # Run pytest + Jest on push/PR
 │   └── deploy.yml              # Build images → push ghcr.io → SSH deploy
-├── docker-compose.yml
+├── docker-compose.yml          # Production-style stack (db + gunicorn + nginx)
+├── docker-compose.dev.yml      # Local dev database only (Postgres 18)
 ├── .env.example
-└── start-dev.sh                # Local dev startup script (WSL)
+└── dev.ps1                     # One-command local dev (Windows PowerShell)
 ```
 
 ---
@@ -153,19 +154,30 @@ The budget UI follows SOLID principles explicitly:
 
 ---
 
-## Running Locally (WSL / Linux)
+## Local Development
 
-```bash
-# Start everything (PostgreSQL + Flask + React)
-bash start-dev.sh
+**Prerequisites:** Docker Desktop, Python 3.11+, Node.js 18+.
+
+```powershell
+.\dev.ps1            # Postgres (Docker) + Flask on :5000 + React on :3000
+.\dev.ps1 -Ngrok     # same, plus an ngrok tunnel to open the app from another device
 ```
 
-The script starts PostgreSQL, activates the Python venv, launches Flask on `:5000`, and starts the React dev server on `:3000`. It cleans up all processes on Ctrl-C.
+The script starts Docker Desktop if needed, brings up the dev database (`docker-compose.dev.yml`), and installs backend and frontend dependencies on first run (and again whenever `requirements.prod.txt` or `package-lock.json` changes). It then runs both servers in one window with labeled output. Ctrl+C stops everything; the database container is stopped but its data is kept.
 
-**Prerequisites:**
-- WSL with PostgreSQL installed and a `finance_app` database
-- Python venv at `backend/venv` with `requirements.prod.txt` installed
-- Node.js 18+ with dependencies installed in `frontend/`
+No `.env` file is needed: the backend's defaults match the dev database. See `backend/.env.example` for optional overrides.
+
+To run the pieces individually (any OS; on Windows use `venv\Scripts\` instead of `venv/bin/`):
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+cd backend  && python -m venv venv && venv/bin/pip install -r requirements.prod.txt && venv/bin/python app.py
+cd frontend && npm ci && npm start
+```
+
+To erase the dev database and start fresh: `docker compose -f docker-compose.dev.yml down -v`
+
+**ngrok (optional):** install ngrok and run `ngrok config add-authtoken <token>` once. Only the React dev server is tunneled; it proxies `/api` requests to Flask, so a single tunnel covers the whole app.
 
 ---
 
