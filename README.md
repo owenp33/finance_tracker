@@ -62,7 +62,8 @@ money/
 │   │   └── error_handlers.py
 │   ├── Dockerfile
 │   ├── .dockerignore
-│   └── requirements.prod.txt
+│   ├── requirements.prod.txt   # Runtime dependencies (Docker image)
+│   └── requirements.dev.txt    # Runtime + test tooling (local dev, CI)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.js
@@ -160,10 +161,13 @@ The budget UI follows SOLID principles explicitly:
 
 ```powershell
 .\dev.ps1            # Postgres (Docker) + Flask on :5000 + React on :3000
-.\dev.ps1 -Ngrok     # same, plus an ngrok tunnel to open the app from another device
+.\dev.ps1 -Lan       # same, but other devices on your Wi-Fi can open the app (trusted networks only)
+.\dev.ps1 -Ngrok     # same, plus an ngrok tunnel to open the app from anywhere
 ```
 
-The script starts Docker Desktop if needed, brings up the dev database (`docker-compose.dev.yml`), and installs backend and frontend dependencies on first run (and again whenever `requirements.prod.txt` or `package-lock.json` changes). It then runs both servers in one window with labeled output. Ctrl+C stops everything; the database container is stopped but its data is kept.
+The script starts Docker Desktop if needed, brings up the dev database (`docker-compose.dev.yml`), and installs backend and frontend dependencies on first run (and again whenever the backend requirements files or `package-lock.json` change). It then runs both servers in one window with labeled output. Ctrl+C stops everything; the database container is stopped but its data is kept.
+
+By default both dev servers accept connections from this machine only, so nobody else on a shared or public network can reach the app. `-Lan` opens the React dev server to your network; Flask always stays on localhost behind React's `/api` proxy. If Windows Firewall asks about Node.js, allow it on **Private networks** only, so `-Lan` stays closed on public Wi-Fi as well.
 
 No `.env` file is needed: the backend's defaults (see `backend/app.py`) match the dev database. To override one locally, put it in `backend/.env` (gitignored).
 
@@ -171,8 +175,15 @@ To run the pieces individually (any OS; on Windows use `venv\Scripts\` instead o
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
-cd backend  && python -m venv venv && venv/bin/pip install -r requirements.prod.txt && venv/bin/python app.py
+cd backend  && python -m venv venv && venv/bin/pip install -r requirements.dev.txt && venv/bin/python app.py
 cd frontend && npm ci && npm start
+```
+
+To run the tests (neither suite needs the database; backend tests use in-memory SQLite):
+
+```bash
+cd backend  && venv/bin/python -m pytest tests/
+cd frontend && npm test -- --watchAll=false
 ```
 
 To erase the dev database and start fresh: `docker compose -f docker-compose.dev.yml down -v`

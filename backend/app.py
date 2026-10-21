@@ -117,4 +117,6 @@ if __name__ == '__main__':
     app = create_app()
     print("Database tables created")
     print("Server running on http://localhost:5000")
-    app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
+    # Localhost only: the React dev server proxies /api here, so visitors on the
+    # network (dev.ps1 -Lan) or through ngrok never need to reach Flask directly
+    app.run(debug=True, port=5000, host='127.0.0.1', use_reloader=False)

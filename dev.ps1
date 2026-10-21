@@ -6,18 +6,24 @@
     1. Starts Docker Desktop if needed, then the dev database (docker-compose.dev.yml)
     2. Installs backend and frontend dependencies on first run, or after their
        requirements/lockfile change
-    3. Runs the API (:5000) and React (:3000) together in this window with labeled output
-    4. -Ngrok also tunnels the React dev server so the app opens on another device.
-       The dev server proxies /api to Flask, so one tunnel covers both.
+    3. Runs the API (:5000) and React (:3000) together in this window with labeled output.
+       Both accept connections from this machine only.
+    4. -Lan opens the React dev server to your local network (e.g. a phone on your Wi-Fi).
+       Use it on trusted networks only.
+    5. -Ngrok also tunnels the React dev server so the app opens on another device.
+       The dev server proxies /api to Flask, so Flask itself never needs to be exposed.
 
     Ctrl+C stops the API and React, then stops the database container (data is kept).
 
 .EXAMPLE
     .\dev.ps1
 .EXAMPLE
+    .\dev.ps1 -Lan
+.EXAMPLE
     .\dev.ps1 -Ngrok
 #>
 param(
+    [switch]$Lan,
     [switch]$Ngrok
 )
 
@@ -28,9 +34,14 @@ $Python       = Join-Path $BackendDir 'venv\Scripts\python.exe'
 $ComposeFile  = Join-Path $Root 'docker-compose.dev.yml'
 $Concurrently = 'concurrently@9.1.2'   # run via npx; not a project dependency
 
-# True when $Stamp is missing or older than $Source
-function Test-Stale([string]$Source, [string]$Stamp) {
-    -not (Test-Path $Stamp) -or (Get-Item $Source).LastWriteTime -gt (Get-Item $Stamp).LastWriteTime
+# True when $Stamp is missing or older than any of $Sources
+function Test-Stale([string[]]$Sources, [string]$Stamp) {
+    if (-not (Test-Path $Stamp)) { return $true }
+    $stampTime = (Get-Item $Stamp).LastWriteTime
+    foreach ($source in $Sources) {
+        if ((Get-Item $source).LastWriteTime -gt $stampTime) { return $true }
+    }
+    return $false
 }
 
 # ── 1. Database ───────────────────────────────────────────────────────────────
@@ -51,7 +62,8 @@ docker compose -f $ComposeFile up -d --wait
 if ($LASTEXITCODE -ne 0) { throw 'The database container failed to start.' }
 
 # ── 2. Dependencies ───────────────────────────────────────────────────────────
-$ReqFile  = Join-Path $BackendDir 'requirements.prod.txt'
+$ReqFile  = Join-Path $BackendDir 'requirements.dev.txt'    # includes requirements.prod.txt
+$ReqFiles = @($ReqFile, (Join-Path $BackendDir 'requirements.prod.txt'))
 $ReqStamp = Join-Path $BackendDir 'venv\.requirements-installed'
 $PythonVersion = (Get-Content (Join-Path $BackendDir '.python-version') -TotalCount 1).Trim()
 
@@ -64,7 +76,7 @@ $venvVersion = & $Python -c "import sys; print('%d.%d' % sys.version_info[:2])"
 if ($venvVersion -ne $PythonVersion) {
     Write-Warning "backend/venv uses Python $venvVersion, but backend/.python-version expects $PythonVersion. Delete backend/venv to recreate it with the right version."
 }
-if (Test-Stale $ReqFile $ReqStamp) {
+if (Test-Stale $ReqFiles $ReqStamp) {
     Write-Host '>> Installing backend requirements...'
     & $Python -m pip install --disable-pip-version-check -q -r $ReqFile
     if ($LASTEXITCODE -ne 0) { throw 'pip install failed.' }
@@ -97,6 +109,14 @@ $colors   = 'blue,green'
 $commands = @('cd backend && venv\Scripts\python.exe app.py', 'cd frontend && npm start')
 $envOverrides = @{ PYTHONUNBUFFERED = '1' }   # show Flask output immediately through the pipe
 
+if ($Lan) {
+    # Overrides frontend/.env.development: listen on the network, and re-enable the host check
+    # (CRA can only run it when bound to all interfaces). Flask stays on localhost.
+    $envOverrides.HOST = '0.0.0.0'
+    $envOverrides.DANGEROUSLY_DISABLE_HOST_CHECK = 'false'
+    Write-Warning 'The app is reachable from other devices on this network. Use -Lan on trusted networks only.'
+}
+
 if ($Ngrok) {
     if (Get-Command ngrok -ErrorAction SilentlyContinue) {
         # The React dev server rejects unknown Host headers, and hot reload must
@@ -121,6 +141,7 @@ foreach ($key in $envOverrides.Keys) {
 Write-Host ''
 Write-Host '  API:      http://localhost:5000'
 Write-Host '  Frontend: http://localhost:3000'
+if ($Lan) { Write-Host '  Network:  see the "On Your Network" address in the [web] output' }
 Write-Host '  Ctrl+C stops everything.'
 Write-Host ''
 
