@@ -156,7 +156,7 @@ The budget UI follows SOLID principles explicitly:
 
 ## Local Development
 
-**Prerequisites:** Docker Desktop, Python 3.11+, Node.js 18+.
+**Prerequisites:** Docker Desktop, Python 3.13 (pinned in `backend/.python-version`), Node.js 18+.
 
 ```powershell
 .\dev.ps1            # Postgres (Docker) + Flask on :5000 + React on :3000

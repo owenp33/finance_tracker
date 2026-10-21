@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# Keep in sync with backend/.python-version
+FROM python:3.13-slim
 
 WORKDIR /app
 

@@ -53,11 +53,16 @@ if ($LASTEXITCODE -ne 0) { throw 'The database container failed to start.' }
 # ── 2. Dependencies ───────────────────────────────────────────────────────────
 $ReqFile  = Join-Path $BackendDir 'requirements.prod.txt'
 $ReqStamp = Join-Path $BackendDir 'venv\.requirements-installed'
+$PythonVersion = (Get-Content (Join-Path $BackendDir '.python-version') -TotalCount 1).Trim()
 
 if (-not (Test-Path $Python)) {
     Write-Host '>> Creating backend/venv...'
     python -m venv (Join-Path $BackendDir 'venv')
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create backend/venv. Is Python 3 on PATH?' }
+    if ($LASTEXITCODE -ne 0) { throw "Could not create backend/venv. Is Python $PythonVersion on PATH?" }
+}
+$venvVersion = & $Python -c "import sys; print('%d.%d' % sys.version_info[:2])"
+if ($venvVersion -ne $PythonVersion) {
+    Write-Warning "backend/venv uses Python $venvVersion, but backend/.python-version expects $PythonVersion. Delete backend/venv to recreate it with the right version."
 }
 if (Test-Stale $ReqFile $ReqStamp) {
     Write-Host '>> Installing backend requirements...'
