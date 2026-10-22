@@ -4,6 +4,7 @@ auth.py - Authentication routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService, AuthService
+from services.auth_service import RegistrationConflict
 
 auth_bp = Blueprint('auth', __name__)
 db_service = DbService()
@@ -13,9 +14,17 @@ auth_service = AuthService()
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    """Register new user"""
-    data = request.get_json()
-    user = db_service.create_user(data['username'], data['email'], data['password'])
+    """Register a new user. 400 for invalid input, 409 when the username or email is taken."""
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+
+    try:
+        user = auth_service.register(data.get('username'), data.get('email'), data.get('password'))
+    except RegistrationConflict as e:
+        return jsonify({'success': False, 'error': str(e)}), 409
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
     return jsonify({
         'success': True,
         'user': user.to_dict(),
