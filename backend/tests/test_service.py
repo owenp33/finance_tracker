@@ -165,6 +165,10 @@ class TestAuthenticate:
     def test_rejects_unknown_username(self):
         assert auth_svc.authenticate('nobody', 'testpass') is None
 
+    def test_rejects_non_string_input(self, user):
+        assert auth_svc.authenticate('testuser', ['testpass']) is None
+        assert auth_svc.authenticate(123, 'testpass') is None   # Postgres rejects int = varchar
+
 
 class TestRegister:
     def test_trims_input_and_lowercases_email(self):

@@ -21,6 +21,21 @@ class TestAuth:
         resp = client.post('/api/auth/login', json={'username': 'nobody', 'password': 'x'})
         assert resp.status_code == 401
 
+    @pytest.mark.parametrize('body, content_type', [
+        ('null',              'application/json'),
+        ('["testuser"]',      'application/json'),
+        ('username=testuser', 'text/plain'),
+    ])
+    def test_login_malformed_body_returns_400(self, client, body, content_type):
+        resp = client.post('/api/auth/login', data=body, content_type=content_type)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'Missing credentials'}
+
+    def test_login_non_string_password_returns_401(self, client, user):
+        resp = client.post('/api/auth/login', json={'username': 'testuser', 'password': ['testpass']})
+        assert resp.status_code == 401
+        assert resp.json == {'success': False, 'error': 'Invalid credentials'}
+
     def test_protected_route_requires_token(self, client, account):
         resp = client.get(f'/api/accounts/{account.id}/transactions')
         assert resp.status_code == 401

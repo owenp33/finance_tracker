@@ -1,10 +1,11 @@
 """
 auth.py - Authentication routes
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService, AuthService
 from services.auth_service import RegistrationConflict
+from middleware.request_body import json_body
 
 auth_bp = Blueprint('auth', __name__)
 db_service = DbService()
@@ -15,8 +16,7 @@ auth_service = AuthService()
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register a new user. 400 for invalid input, 409 when the username or email is taken."""
-    data = request.get_json(silent=True)
-    data = data if isinstance(data, dict) else {}
+    data = json_body()
 
     try:
         user = auth_service.register(data.get('username'), data.get('email'), data.get('password'))
@@ -35,7 +35,7 @@ def register():
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """Login and process any due recurring transactions"""
-    data = request.get_json()
+    data = json_body()
 
     if not data.get('username') or not data.get('password'):
         return jsonify({'success': False, 'error': 'Missing credentials'}), 400

@@ -72,6 +72,8 @@ class AuthService:
 
     def authenticate(self, username, password):
         """Return the user when the username exists and the password matches; otherwise None."""
+        if not isinstance(username, str) or not isinstance(password, str):
+            return None
         user = db_service.get_user_by_username(username)
         if user and user.verify_password(password):
             return user
