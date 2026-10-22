@@ -45,14 +45,17 @@ function App() {
     localStorage.removeItem('token');
   }, []);
 
+  const startSession = (data) => {
+    setToken(data.access_token);
+    setUser(data.user);
+    setIsAuthenticated(true);
+    localStorage.setItem('token', data.access_token);
+  };
+
   const handleLogin = async (username, password) => {
     try {
       const data = await authAPI.login(username, password);
-      const userData = typeof data.user === 'string' ? JSON.parse(data.user) : data.user;
-      setToken(data.access_token);
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('token', data.access_token);
+      startSession(data);
       if (data.updates?.transactions_generated > 0) {
         alert(`Generated ${data.updates.transactions_generated} recurring transactions`);
       }
@@ -64,11 +67,7 @@ function App() {
   const handleRegister = async (username, email, password) => {
     try {
       const data = await authAPI.register(username, email, password);
-      const userData = typeof data.user === 'object' ? data.user : JSON.parse(data.user);
-      setToken(data.access_token);
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('token', data.access_token);
+      startSession(data);
     } catch (err) {
       setError(err.message);
     }

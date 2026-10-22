@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 
+// Keep in sync with MIN_PASSWORD_LENGTH in backend/services/auth_service.py
+const MIN_PASSWORD_LENGTH = 8;
+
 function AuthScreen({ onLogin, onRegister, error }) {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
@@ -49,11 +52,12 @@ function AuthScreen({ onLogin, onRegister, error }) {
           )}
 
           <div className="form-group">
-            <label>Password</label>
+            <label>Password {!isLogin && <small>(at least {MIN_PASSWORD_LENGTH} characters)</small>}</label>
             <input
               type="password"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              minLength={isLogin ? undefined : MIN_PASSWORD_LENGTH}
               required
             />
           </div>
