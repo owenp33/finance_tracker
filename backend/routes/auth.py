@@ -31,7 +31,7 @@ def login():
     if not data.get('username') or not data.get('password'):
         return jsonify({'success': False, 'error': 'Missing credentials'}), 400
 
-    user = db_service.authenticate_user(data['username'], data['password'])
+    user = auth_service.authenticate(data['username'], data['password'])
 
     if not user:
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401

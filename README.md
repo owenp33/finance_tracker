@@ -266,7 +266,7 @@ mkdir ~/money-tracker
 
 ## Authentication
 
-Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
+Passwords are stored as salted hashes (Werkzeug's `generate_password_hash`, scrypt by default), never in plain text. Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
 
 Recurring generation runs on login and on every page load (via `/api/auth/me`), ensuring newly due transactions appear immediately without a separate trigger.
 

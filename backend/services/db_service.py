@@ -25,11 +25,8 @@ class DbService:
         db.session.commit()
         return user
 
-    def authenticate_user(self, username, password):
-        user = User.query.filter_by(username=username).first()
-        if user and user.verify_password(password):
-            return user
-        return None
+    def get_user_by_username(self, username):
+        return User.query.filter_by(username=username).first()
 
     def get_user_by_id(self, user_id):
         return User.query.get(user_id)

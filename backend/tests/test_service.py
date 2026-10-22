@@ -140,7 +140,31 @@ class TestDeleteRecurring:
         assert len(remaining) == 0
 
 
-# ── Auth tokens ───────────────────────────────────────────────────────────────
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+class TestPasswordHashing:
+    def test_stores_a_hash_not_the_password(self, user):
+        assert user.password_hash != 'testpass'
+        assert user.verify_password('testpass')
+        assert not user.verify_password('wrong')
+
+    def test_hash_fits_the_column(self):
+        # SQLite ignores String lengths, so this guards against Postgres rejecting the insert
+        from werkzeug.security import generate_password_hash
+        from models.user import User
+        assert len(generate_password_hash('testpass')) <= User.password_hash.type.length
+
+
+class TestAuthenticate:
+    def test_returns_user_for_correct_password(self, user):
+        assert auth_svc.authenticate('testuser', 'testpass').id == user.id
+
+    def test_rejects_wrong_password(self, user):
+        assert auth_svc.authenticate('testuser', 'wrong') is None
+
+    def test_rejects_unknown_username(self):
+        assert auth_svc.authenticate('nobody', 'testpass') is None
+
 
 class TestIssueToken:
     def test_identity_is_user_id_as_string(self, user):

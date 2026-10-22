@@ -12,7 +12,7 @@ from datetime import timedelta
 
 
 def _run_migrations(db):
-    """Add any columns introduced after initial schema creation."""
+    """Apply schema changes made after initial creation (create_all never alters existing tables)."""
     from sqlalchemy import text
     with db.engine.connect() as conn:
         migrations = [
@@ -20,6 +20,7 @@ def _run_migrations(db):
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_peer_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL',
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reimbursement BOOLEAN NOT NULL DEFAULT FALSE',
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recurring_index INTEGER',
+            'ALTER TABLE users ALTER COLUMN password_hash TYPE VARCHAR(255)',
         ]
         for sql in migrations:
             conn.execute(text(sql))
