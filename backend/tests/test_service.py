@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from flask_jwt_extended import decode_token
 from extensions import db as _db
 from services.account_service import AccountService
-from services.auth_service import AuthService
+from services.auth_service import AuthService, RegistrationConflict
 from services.db_service import DbService
 
 svc = AccountService()
@@ -164,6 +164,24 @@ class TestAuthenticate:
 
     def test_rejects_unknown_username(self):
         assert auth_svc.authenticate('nobody', 'testpass') is None
+
+
+class TestRegister:
+    def test_trims_input_and_lowercases_email(self):
+        created = auth_svc.register('  newuser ', ' New@Example.COM ', 'long-enough')
+        assert created.username == 'newuser'
+        assert created.email == 'new@example.com'
+        assert created.verify_password('long-enough')
+
+    def test_concurrent_duplicate_becomes_conflict(self, user, monkeypatch):
+        # Another registration wins the race: the pre-checks see nothing, the unique constraint fires
+        from services import auth_service as auth_module
+        monkeypatch.setattr(auth_module.db_service, 'get_user_by_username', lambda _: None)
+        monkeypatch.setattr(auth_module.db_service, 'get_user_by_email', lambda _: None)
+
+        with pytest.raises(RegistrationConflict):
+            auth_svc.register('testuser', 'other@example.com', 'long-enough')
+        assert db_svc.get_user_by_id(user.id) is not None   # session still usable after the rollback
 
 
 class TestIssueToken:

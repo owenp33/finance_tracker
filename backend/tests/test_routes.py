@@ -32,13 +32,48 @@ class TestAuth:
 
     def test_register_returns_usable_token(self, client):
         resp = client.post('/api/auth/register',
-                           json={'username': 'newuser', 'email': 'new@example.com', 'password': 'pw'})
+                           json={'username': 'newuser', 'email': 'new@example.com', 'password': 'long-enough'})
         assert resp.status_code == 201
 
         me = client.get('/api/auth/me',
                         headers={'Authorization': f"Bearer {resp.json['access_token']}"})
         assert me.status_code == 200
         assert me.json['user']['username'] == 'newuser'
+
+
+class TestRegisterValidation:
+    VALID = {'username': 'newuser', 'email': 'new@example.com', 'password': 'long-enough'}
+
+    def _register(self, client, **overrides):
+        return client.post('/api/auth/register', json={**self.VALID, **overrides})
+
+    @pytest.mark.parametrize('overrides, message', [
+        ({'username': None},                'Missing required fields: username'),
+        ({'username': '   '},               'Missing required fields: username'),
+        ({'username': 123},                 'Missing required fields: username'),
+        ({'email': None, 'password': None}, 'Missing required fields: email, password'),
+        ({'username': 'u' * 51},            'Username must be at most 50 characters.'),
+        ({'email': 'not-an-email'},         'Enter a valid email address.'),
+        ({'password': 'short'},             'Password must be at least 8 characters.'),
+    ])
+    def test_invalid_input_returns_400(self, client, overrides, message):
+        resp = self._register(client, **overrides)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': message}
+
+    def test_non_json_body_returns_400(self, client):
+        resp = client.post('/api/auth/register', data='not json', content_type='text/plain')
+        assert resp.status_code == 400
+
+    def test_taken_username_returns_409(self, client, user):
+        resp = self._register(client, username='testuser')
+        assert resp.status_code == 409
+        assert resp.json['error'] == 'That username is already taken.'
+
+    def test_taken_email_returns_409_regardless_of_case(self, client, user):
+        resp = self._register(client, email='TEST@Example.com')
+        assert resp.status_code == 409
+        assert resp.json['error'] == 'An account with that email already exists.'
 
 
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
