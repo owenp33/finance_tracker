@@ -38,6 +38,9 @@ def clean_tables(app):
     for table in reversed(_db.metadata.sorted_tables):
         _db.session.execute(table.delete())
     _db.session.commit()
+    # Start the next test with an empty identity map: SQLite reuses ids after a delete, and a
+    # stale cached object with a reused id breaks the next insert
+    _db.session.remove()
 
 
 @pytest.fixture
