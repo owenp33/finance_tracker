@@ -109,11 +109,18 @@ class TestPreviewParsing:
                        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         assert [(r['date'], r['invalid_date']) for r in resp.json['rows']] == [('2025-01-15', False), ('', True)]
 
-    def test_parenthesized_amount_reads_as_zero(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,(12.34),Test Checking,\n')
+    @pytest.mark.parametrize('raw', ['(12.34)', '$(12.34)', '"($12.34)"'])
+    def test_parenthesized_amount_reads_as_negative(self, client, auth_headers, account, raw):
+        resp = preview(client, auth_headers, HEADER + f'2025-01-15,Grocer,Groceries,{raw},Test Checking,\n')
         row = resp.json['rows'][0]
-        assert row['amount'] == 0.0
-        assert row['zero_amount'] is True
+        assert (row['amount'], row['zero_amount'], row['invalid_amount']) == (-12.34, False, False)
+
+    def test_both_expense_and_income_blank_is_an_invalid_amount(self, client, auth_headers, account):
+        resp = preview(client, auth_headers,
+                       'date,vendor,category,expense,income,account\n'
+                       '2025-01-15,Grocer,Groceries,,,Test Checking\n'
+                       '2025-01-15,Cafe,Dining,abc,,Test Checking\n')
+        assert [(r['amount'], r['invalid_amount']) for r in resp.json['rows']] == [('', True), ('abc', True)]
 
     def test_blank_values_get_defaults(self, client, auth_headers, account):
         resp = preview(client, auth_headers, HEADER + '2025-01-15,,,-5.00,Test Checking,\n')
@@ -204,12 +211,19 @@ class TestPreviewFlags:
         assert [r['duplicate'] for r in resp.json['rows']] == [False, False]
         assert resp.json['summary']['importable'] == 2
 
-    def test_zero_and_blank_amounts_are_flagged(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, HEADER
-                       + '2025-01-15,Grocer,Groceries,0,Test Checking,\n'
-                       + '2025-01-15,Grocer,Groceries,,Test Checking,\n')
-        for row in resp.json['rows']:
-            assert (row['zero_amount'], row['duplicate']) == (True, False)
+    def test_zero_amount_is_flagged(self, client, auth_headers, account):
+        resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,0,Test Checking,\n')
+        row = resp.json['rows'][0]
+        assert (row['zero_amount'], row['invalid_amount'], row['duplicate']) == (True, False, False)
+
+    @pytest.mark.parametrize('raw, shown', [('', ''), ('abc', 'abc'), (' 12.34.56 ', '12.34.56')])
+    def test_unreadable_amount_is_flagged(self, client, auth_headers, account, raw, shown):
+        resp = preview(client, auth_headers, HEADER + f'2025-01-15,Grocer,Groceries,{raw},Test Checking,\n')
+        row = resp.json['rows'][0]
+        assert row['invalid_amount'] is True
+        assert row['amount'] == shown            # the original text, so the user can see what was wrong
+        assert (row['zero_amount'], row['duplicate']) == (False, False)
+        assert resp.json['summary']['importable'] == 0
 
     def test_transfer_and_payment_categories_are_preflagged(self, client, auth_headers, account):
         resp = preview(client, auth_headers, HEADER
@@ -225,9 +239,10 @@ class TestPreviewFlags:
                        + '2025-01-15,Grocer,Groceries,-42.10,Test Checking,\n'   # duplicate
                        + '2025-01-16,Cafe,Dining,-4.50,Mystery Bank,\n'          # unmatched
                        + '2025-01-16,Cafe,Dining,0,Test Checking,\n'             # zero amount
-                       + '1/16/25,Cafe,Dining,-4.50,Test Checking,\n')           # invalid date
-        assert resp.json['summary'] == {'total': 5, 'importable': 1, 'duplicates': 1,
-                                        'unmatched': 1, 'zero_amount': 1, 'invalid_date': 1}
+                       + '1/16/25,Cafe,Dining,-4.50,Test Checking,\n'            # invalid date
+                       + '2025-01-16,Cafe,Dining,abc,Test Checking,\n')          # invalid amount
+        assert resp.json['summary'] == {'total': 6, 'importable': 1, 'duplicates': 1, 'unmatched': 1,
+                                        'zero_amount': 1, 'invalid_date': 1, 'invalid_amount': 1}
 
     def test_preview_writes_nothing(self, client, auth_headers, account):
         preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Test Checking,\n')

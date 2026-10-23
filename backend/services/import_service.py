@@ -2,10 +2,12 @@
 import_service.py - Transaction Import Business Logic
 
 Two-step import: preview() parses an upload and annotates every row (account,
-duplicate, zero amount, invalid date, transfer) without writing; confirm() writes the
-rows the user approved, re-checking ownership and duplicates server-side.
+duplicate, zero amount, invalid date/amount, transfer) without writing; confirm()
+writes the rows the user approved, re-checking ownership and duplicates server-side.
 Depends on import_parser for files, and db_service / account_service for data.
 """
+import math
+import numbers
 from datetime import date, datetime
 from services import import_parser
 from services.db_service import DbService
@@ -70,17 +72,20 @@ class ImportService:
 
     def _preview_row(self, record, account_id, account_name):
         """
-        Build one preview row from a normalized DataFrame record. A row whose date
-        couldn't be read is flagged invalid_date and shows the original text as its date.
+        Build one preview row from a normalized DataFrame record. A date or amount
+        that couldn't be read is flagged (invalid_date / invalid_amount) and the row
+        shows the original text in that field instead.
         """
-        amount       = round(float(record['amount']), 2)
-        amount_cents = int(round(amount * 100))
-        date_obj     = record['date'] if isinstance(record['date'], date) else None
+        amount   = self._amount(record['amount'])
+        date_obj = record['date'] if isinstance(record['date'], date) else None
 
-        zero_amount  = amount_cents == 0
-        invalid_date = date_obj is None
-        is_duplicate = (
+        invalid_amount = amount is None
+        invalid_date   = date_obj is None
+        amount_cents   = None if invalid_amount else int(round(amount * 100))
+        zero_amount    = amount_cents == 0
+        is_duplicate   = (
             not zero_amount
+            and not invalid_amount
             and not invalid_date
             and account_id is not None
             and db_service.transaction_exists(account_id, date_obj, record['vendor'], amount_cents)
@@ -88,18 +93,26 @@ class ImportService:
 
         category = str(record['category'])
         return {
-            'date':         date_obj.isoformat() if date_obj else record['date_raw'],
-            'vendor':       str(record['vendor']),
-            'category':     category,
-            'amount':       amount,
-            'notes':        str(record.get('notes', '') or ''),
-            'account_id':   account_id,
-            'account_name': account_name,
-            'duplicate':    is_duplicate,
-            'zero_amount':  zero_amount,
-            'invalid_date': invalid_date,
-            'is_transfer':  category.strip().lower() in TRANSFER_CATEGORIES,
+            'date':           date_obj.isoformat() if date_obj else record['date_raw'],
+            'vendor':         str(record['vendor']),
+            'category':       category,
+            'amount':         record['amount_raw'] if invalid_amount else amount,
+            'notes':          str(record.get('notes', '') or ''),
+            'account_id':     account_id,
+            'account_name':   account_name,
+            'duplicate':      is_duplicate,
+            'zero_amount':    zero_amount,
+            'invalid_date':   invalid_date,
+            'invalid_amount': invalid_amount,
+            'is_transfer':    category.strip().lower() in TRANSFER_CATEGORIES,
         }
+
+    @staticmethod
+    def _amount(value):
+        """The parsed amount rounded to cents, or None when the parser couldn't read one (None or NaN)."""
+        if isinstance(value, numbers.Real) and math.isfinite(value):
+            return round(float(value), 2)
+        return None
 
     def _summary(self, rows):
         importable = sum(
@@ -107,15 +120,17 @@ class ImportService:
             if not r['duplicate']
             and not r['zero_amount']
             and not r['invalid_date']
+            and not r['invalid_amount']
             and r['account_id'] is not None
         )
         return {
-            'total':        len(rows),
-            'importable':   importable,
-            'duplicates':   sum(r['duplicate'] for r in rows),
-            'unmatched':    sum(r['account_id'] is None for r in rows),
-            'zero_amount':  sum(r['zero_amount'] for r in rows),
-            'invalid_date': sum(r['invalid_date'] for r in rows),
+            'total':          len(rows),
+            'importable':     importable,
+            'duplicates':     sum(r['duplicate'] for r in rows),
+            'unmatched':      sum(r['account_id'] is None for r in rows),
+            'zero_amount':    sum(r['zero_amount'] for r in rows),
+            'invalid_date':   sum(r['invalid_date'] for r in rows),
+            'invalid_amount': sum(r['invalid_amount'] for r in rows),
         }
 
     # CONFIRM ===================================================================

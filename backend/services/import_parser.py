@@ -6,6 +6,7 @@ columns date, vendor, category, amount, notes (plus account when the file has on
 Pure data transformation: no database access.
 """
 import io
+import math
 import re
 from datetime import datetime, date, timedelta
 
@@ -17,17 +18,57 @@ MAX_ROWS = 10_000
 
 # PARSING UTILITIES =============================================================
 
-def clean_currency(value: str) -> float:
-    """Convert currency string to float (handles $, €, £, commas, etc.)"""
-    if pd.isna(value) or value == '':
-        return 0.0
+def _is_blank(value) -> bool:
+    """True for an empty cell: None, NaN/NaT, or a string of only whitespace."""
+    return pd.isna(value) or (isinstance(value, str) and not value.strip())
 
-    cleaned = re.sub(r'[£$€,\s]', '', str(value))
+
+def _raw_text(value) -> str:
+    """A cell's original text, trimmed ('' when blank), shown in the preview when it can't be read."""
+    return '' if _is_blank(value) else str(value).strip()
+
+
+def clean_currency(value) -> float | None:
+    """
+    Convert a currency value to float, or None when it is blank or unreadable (the
+    import preview flags those rows). Handles $, €, £, thousands separators, and
+    accounting-style negatives: (12.34), $(12.34) and ($12.34) all read as -12.34.
+    """
+    if _is_blank(value):
+        return None
+
+    cleaned  = re.sub(r'[£$€,\s]', '', str(value))
+    negative = cleaned.startswith('(') and cleaned.endswith(')')
+    if negative:
+        cleaned = cleaned[1:-1]
 
     try:
-        return float(cleaned)
+        number = float(cleaned)
     except ValueError:
-        return 0.0
+        return None
+    if not math.isfinite(number):
+        return None
+    return -number if negative else number
+
+
+def _income_minus_expense(expense, income) -> float | None:
+    """
+    Combine an expense/withdrawal cell and an income/deposit cell into one signed amount.
+    A blank cell counts as 0 when the other has a value (each row normally fills only one).
+    None when both are blank or a filled cell can't be read.
+    """
+    if _is_blank(expense) and _is_blank(income):
+        return None
+
+    total = 0.0
+    for cell, sign in ((income, 1), (expense, -1)):
+        if _is_blank(cell):
+            continue
+        number = clean_currency(cell)
+        if number is None:
+            return None
+        total += sign * number
+    return total
 
 
 def parse_date(value) -> date | None:
@@ -38,7 +79,7 @@ def parse_date(value) -> date | None:
     objects, Excel serial numbers, and common date strings.
     """
     # Checked first: an empty Excel date cell arrives as NaT, which also passes isinstance(datetime)
-    if pd.isna(value) or (isinstance(value, str) and not value.strip()):
+    if _is_blank(value):
         return None
 
     # pandas reads Excel date cells as Timestamps — extract the date directly
@@ -98,7 +139,8 @@ def normalize_dataframe(df) -> pd.DataFrame:
 
     - Lowercases and strips all column headers
     - Parses the date column (None where unreadable) and keeps the original text as date_raw
-    - Resolves amount from: amount | expense+income | withdrawal+deposit
+    - Resolves amount from: amount | expense+income | withdrawal+deposit (None/NaN where
+      unreadable) and keeps the original text as amount_raw
     - Resolves vendor from: vendor | store
     - Resolves notes from: notes | description
     - Validates required columns are present
@@ -109,7 +151,7 @@ def normalize_dataframe(df) -> pd.DataFrame:
     if 'date' not in df.columns:
         raise ValueError("File is missing required column: 'date'")
 
-    df['date_raw'] = df['date'].apply(lambda v: '' if pd.isna(v) else str(v).strip())
+    df['date_raw'] = df['date'].apply(_raw_text)
     df['date']     = df['date'].apply(parse_date)
 
     has_expense_withdrawal = 'expense' in df.columns or 'withdrawal' in df.columns
@@ -118,11 +160,12 @@ def normalize_dataframe(df) -> pd.DataFrame:
     if has_expense_withdrawal and has_income_deposit:
         expense_col = 'expense' if 'expense' in df.columns else 'withdrawal'
         income_col  = 'income'  if 'income'  in df.columns else 'deposit'
-        df[expense_col] = df[expense_col].apply(clean_currency)
-        df[income_col]  = df[income_col].apply(clean_currency)
-        df['amount'] = df[income_col] - df[expense_col]
+        pairs = list(zip(df[expense_col], df[income_col]))
+        df['amount_raw'] = [' / '.join(t for t in map(_raw_text, pair) if t) for pair in pairs]
+        df['amount']     = [_income_minus_expense(expense, income) for expense, income in pairs]
     elif 'amount' in df.columns:
-        df['amount'] = df['amount'].apply(clean_currency)
+        df['amount_raw'] = df['amount'].apply(_raw_text)
+        df['amount']     = df['amount'].apply(clean_currency)
     else:
         raise ValueError(
             "File must have 'expense'/'withdrawal' + 'income'/'deposit', "
