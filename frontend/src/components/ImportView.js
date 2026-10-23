@@ -33,7 +33,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
       setSummary(data.summary);
       setSelected(new Set(
         data.rows
-          .map((r, i) => (!r.duplicate && !r.zero_amount && r.account_id !== null ? i : null))
+          .map((r, i) => (!r.duplicate && !r.zero_amount && !r.invalid_date && r.account_id !== null ? i : null))
           .filter(i => i !== null)
       ));
       setStep('preview');
@@ -138,6 +138,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
               {summary.duplicates  > 0 && <span className="red">{summary.duplicates} duplicate{summary.duplicates !== 1 ? 's' : ''}</span>}
               {summary.unmatched   > 0 && <span className="orange">{summary.unmatched} unmatched</span>}
               {summary.zero_amount > 0 && <span className="orange">{summary.zero_amount} zero-amount</span>}
+              {summary.invalid_date > 0 && <span className="orange">{summary.invalid_date} invalid date{summary.invalid_date !== 1 ? 's' : ''}</span>}
               <span className="count-badge">{selected.size} selected</span>
             </div>
           )}
@@ -168,6 +169,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                     'import-row',
                     row.duplicate    ? 'duplicate'   : '',
                     row.zero_amount  ? 'zero-amount' : '',
+                    row.invalid_date ? 'invalid-date' : '',
                     row.account_id === null ? 'unmatched' : '',
                     !selected.has(i) ? 'deselected'  : '',
                   ].filter(Boolean).join(' ');
@@ -178,10 +180,14 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                           type="checkbox"
                           checked={selected.has(i)}
                           onChange={() => toggleRow(i)}
-                          disabled={row.account_id === null || row.zero_amount}
+                          disabled={row.account_id === null || row.zero_amount || row.invalid_date}
                         />
                       </td>
-                      <td>{row.date}</td>
+                      <td>
+                        {row.invalid_date
+                          ? <span className="csv-warning" title="Unrecognized date">{row.date || 'missing'}</span>
+                          : row.date}
+                      </td>
                       <td>{row.vendor}</td>
                       <td>{row.category}</td>
                       <td className={row.amount >= 0 ? 'green' : 'red'}>
