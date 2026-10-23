@@ -124,60 +124,69 @@ class ImportService:
         """
         Write approved preview rows and return {imported, skipped, linked}.
         Rows are skipped when the account isn't the user's, a field is malformed,
-        the amount is zero, or an identical transaction already exists. Balances
-        of affected accounts are recalculated, then new transfers are linked to
-        their counterparts.
+        the amount is zero, or an identical transaction existed before this import.
+        Every row is checked before any is inserted, so identical rows within the
+        batch (two same-day purchases) are all kept. Balances of affected accounts
+        are recalculated, then new transfers are linked to their counterparts.
         """
         user_account_ids = {a.id for a in db_service.get_user_accounts(user_id)}
 
-        imported          = 0
-        skipped           = 0
-        affected_accounts = set()
-        new_transfers     = []
-
+        accepted = []
         for row in rows:
-            account_id = row.get('account_id')
-            if not account_id or account_id not in user_account_ids:
-                skipped += 1
-                continue
+            fields = self._confirm_fields(row, user_account_ids)
+            if fields and not db_service.transaction_exists(
+                fields['account_id'], fields['date_obj'], fields['vendor'], fields['amount_cents']
+            ):
+                accepted.append(fields)
 
-            try:
-                date_obj    = datetime.fromisoformat(row['date']).date()
-                amount      = float(row['amount'])
-                vendor      = str(row['vendor'])
-                category    = str(row['category'])
-                is_transfer = bool(row.get('is_transfer', False))
-            except (KeyError, ValueError, TypeError):
-                skipped += 1
-                continue
-
-            amount_cents = int(round(amount * 100))
-            if amount_cents == 0 or db_service.transaction_exists(account_id, date_obj, vendor, amount_cents):
-                skipped += 1
-                continue
-
+        new_transfers = []
+        for fields in accepted:
             tx = account_service.add_transaction(
-                account_id=account_id,
-                date_obj=date_obj,
-                vendor=vendor,
-                category=category,
-                amount=amount,
-                notes=str(row.get('notes', '') or ''),
-                is_transfer=is_transfer,
+                account_id=fields['account_id'],
+                date_obj=fields['date_obj'],
+                vendor=fields['vendor'],
+                category=fields['category'],
+                amount=fields['amount'],
+                notes=fields['notes'],
+                is_transfer=fields['is_transfer'],
             )
-            affected_accounts.add(account_id)
-            imported += 1
-            if is_transfer:
+            if fields['is_transfer']:
                 new_transfers.append(tx)
 
-        for aid in affected_accounts:
+        for aid in {fields['account_id'] for fields in accepted}:
             account_service.recalculate_account_balance(aid)
 
         return {
-            'imported': imported,
-            'skipped':  skipped,
+            'imported': len(accepted),
+            'skipped':  len(rows) - len(accepted),
             'linked':   self._link_transfers(user_id, new_transfers),
         }
+
+    def _confirm_fields(self, row, user_account_ids):
+        """
+        The values to insert for one approved row, or None when it must be skipped:
+        not one of the user's accounts, a malformed field, or a zero amount.
+        """
+        account_id = row.get('account_id')
+        if not account_id or account_id not in user_account_ids:
+            return None
+
+        try:
+            amount = float(row['amount'])
+            fields = {
+                'account_id':   account_id,
+                'date_obj':     datetime.fromisoformat(row['date']).date(),
+                'amount':       amount,
+                'amount_cents': int(round(amount * 100)),   # NaN / inf raise here
+                'vendor':       str(row['vendor']),
+                'category':     str(row['category']),
+                'notes':        str(row.get('notes', '') or ''),
+                'is_transfer':  bool(row.get('is_transfer', False)),
+            }
+        except (KeyError, ValueError, TypeError, OverflowError):
+            return None
+
+        return fields if fields['amount_cents'] != 0 else None
 
     def _link_transfers(self, user_id, transactions):
         """

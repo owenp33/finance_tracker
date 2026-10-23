@@ -197,6 +197,13 @@ class TestPreviewFlags:
                        + '2025-01-15,Grocer,Groceries,-42.11,Test Checking,\n')
         assert [r['duplicate'] for r in resp.json['rows']] == [True, False]
 
+    def test_identical_rows_in_one_file_are_not_duplicates_of_each_other(self, client, auth_headers, account):
+        resp = preview(client, auth_headers, HEADER
+                       + '2025-01-15,Cafe,Dining,-4.50,Test Checking,\n'
+                       + '2025-01-15,Cafe,Dining,-4.50,Test Checking,\n')
+        assert [r['duplicate'] for r in resp.json['rows']] == [False, False]
+        assert resp.json['summary']['importable'] == 2
+
     def test_zero_and_blank_amounts_are_flagged(self, client, auth_headers, account):
         resp = preview(client, auth_headers, HEADER
                        + '2025-01-15,Grocer,Groceries,0,Test Checking,\n'
@@ -308,7 +315,9 @@ class TestConfirm:
         resp = confirm(client, auth_headers, [confirm_row(None)])
         assert (resp.json['imported'], resp.json['skipped']) == (0, 1)
 
-    @pytest.mark.parametrize('overrides', [{'date': 'not-a-date'}, {'amount': 'abc'}, {'vendor': None}])
+    @pytest.mark.parametrize('overrides', [
+        {'date': 'not-a-date'}, {'amount': 'abc'}, {'amount': 'NaN'}, {'amount': 'inf'}, {'vendor': None},
+    ])
     def test_skips_malformed_rows(self, client, auth_headers, account, overrides):
         row = confirm_row(account.id, **overrides)
         if overrides.get('vendor', '') is None:
@@ -327,10 +336,18 @@ class TestConfirm:
         assert (resp.json['imported'], resp.json['skipped']) == (0, 1)
         assert len(transactions_in(account.id)) == 1
 
-    def test_second_identical_row_in_one_batch_is_skipped(self, client, auth_headers, account):
+    def test_identical_rows_in_one_batch_are_all_imported(self, client, auth_headers, account):
+        # Two same-day $4.50 coffees at the same shop are two real purchases
+        coffee = confirm_row(account.id, vendor='Cafe', category='Dining', amount=-4.50)
+        resp = confirm(client, auth_headers, [coffee, dict(coffee)])
+        assert (resp.json['imported'], resp.json['skipped']) == (2, 0)
+        assert len(transactions_in(account.id)) == 2
+        assert _db.session.get(AccountModel, account.id).balance_cents == -900
+
+    def test_identical_batch_rows_are_skipped_when_already_in_the_database(self, client, auth_headers, account):
+        account_svc.add_transaction(account.id, date(2025, 1, 15), 'Grocer', 'Groceries', -42.10)
         resp = confirm(client, auth_headers, [confirm_row(account.id), confirm_row(account.id)])
-        assert (resp.json['imported'], resp.json['skipped']) == (1, 1)
-        assert len(transactions_in(account.id)) == 1
+        assert (resp.json['imported'], resp.json['skipped']) == (0, 2)
 
     @pytest.mark.parametrize('body, message', [
         ({},                       "'transactions' array required"),
