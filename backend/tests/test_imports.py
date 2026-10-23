@@ -235,20 +235,24 @@ class TestPreviewErrors:
          "File must have 'expense'/'withdrawal' + 'income'/'deposit', or a single 'amount' column"),
         ('date,category,amount\n2025-01-15,Groceries,-5\n',
          "File is missing required columns: ['vendor']"),
+        ('date,vendor,amount\n2025-01-15,Grocer,-5\n',
+         "File is missing required columns: ['category']"),
         (b'date,vendor,category,amount\n' + b'x' * (10 * 1024 * 1024),
          'File exceeds the 10 MB size limit'),
         ('date,vendor,category,amount\n' + '2025-01-15,Grocer,Groceries,-1\n' * 10_001,
          'File has 10,001 rows; the limit is 10,000 per import'),
-    ], ids=['no-date-column', 'no-amount-columns', 'no-vendor-column', 'over-10-mb', 'over-10000-rows'])
+    ], ids=['no-date-column', 'no-amount-columns', 'no-vendor-column', 'no-category-column',
+            'over-10-mb', 'over-10000-rows'])
     def test_invalid_files_are_rejected_with_a_reason(self, client, auth_headers, content, message):
         resp = preview(client, auth_headers, content)
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': message}
 
-    def test_missing_category_column_is_rejected(self, client, auth_headers):
-        resp = preview(client, auth_headers, 'date,vendor,amount\n2025-01-15,Grocer,-5\n')
+    def test_unreadable_spreadsheet_is_rejected(self, client, auth_headers):
+        resp = preview(client, auth_headers, b'not really a spreadsheet', filename='bank.xlsx',
+                       content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         assert resp.status_code == 400
-        assert resp.json['success'] is False
+        assert resp.json['error'].startswith('Could not parse file: ')
 
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
@@ -320,6 +324,11 @@ class TestConfirm:
         resp = client.post('/api/import/confirm', json=body, headers=auth_headers)
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': message}
+
+    def test_rejects_a_non_json_body(self, client, auth_headers):
+        resp = client.post('/api/import/confirm', data='rows', content_type='text/plain', headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': "'transactions' array required"}
 
 
 # ── Confirm: transfer linking ─────────────────────────────────────────────────
