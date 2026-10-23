@@ -8,7 +8,7 @@ jest.mock('../api/imports');
 const previewRow = (overrides) => ({
   date: '2025-01-15', vendor: 'Grocer', category: 'Groceries', amount: -5, notes: '',
   account_id: 1, account_name: 'Checking', duplicate: false, zero_amount: false,
-  invalid_date: false, is_transfer: false, ...overrides,
+  invalid_date: false, invalid_amount: false, is_transfer: false, ...overrides,
 });
 
 const showPreview = async (rows, summary) => {
@@ -37,6 +37,29 @@ test('rows with unreadable dates show the original text and cannot be selected',
   const goodRow = screen.getByText('Good').closest('tr');
   expect(within(goodRow).getByRole('checkbox')).toBeChecked();
   expect(screen.getAllByRole('button', { name: 'Import 1 row' })).toHaveLength(2);
+});
+
+test('rows with unreadable amounts show the original text and cannot be selected', async () => {
+  await showPreview(
+    [
+      previewRow({ vendor: 'Good', amount: -12.34 }),
+      previewRow({ vendor: 'Bad amount', amount: 'abc', invalid_amount: true }),
+      previewRow({ vendor: 'No amount', amount: '', invalid_amount: true }),
+    ],
+    { total: 3, importable: 1, duplicates: 0, unmatched: 0, zero_amount: 0, invalid_date: 0, invalid_amount: 2 },
+  );
+
+  expect(await screen.findByText('2 invalid amounts')).toBeInTheDocument();
+  expect(screen.getByText('−$12.34')).toBeInTheDocument();
+
+  const badRow = screen.getByText('Bad amount').closest('tr');
+  expect(within(badRow).getByText('abc')).toHaveClass('csv-warning');
+  expect(badRow).toHaveClass('invalid-amount');
+  expect(within(badRow).getByRole('checkbox')).toBeDisabled();
+  expect(within(badRow).getByRole('checkbox')).not.toBeChecked();
+
+  const blankRow = screen.getByText('No amount').closest('tr');
+  expect(within(blankRow).getByText('missing')).toHaveClass('csv-warning');
 });
 
 test('a blank date is shown as missing', async () => {

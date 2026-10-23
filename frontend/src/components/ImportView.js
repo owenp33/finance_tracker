@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import { previewImport, confirmImport } from '../api/imports';
 
+// A row can be imported only with a matched account and a readable, non-zero date and amount
+const canSelect = (row) =>
+  row.account_id !== null && !row.zero_amount && !row.invalid_date && !row.invalid_amount;
+
+// Pre-selected: importable rows that aren't already in the database
+const selectedByDefault = (row) => canSelect(row) && !row.duplicate;
+
 function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const [step, setStep]               = useState('pick');
   const [file, setFile]               = useState(null);
@@ -33,7 +40,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
       setSummary(data.summary);
       setSelected(new Set(
         data.rows
-          .map((r, i) => (!r.duplicate && !r.zero_amount && !r.invalid_date && r.account_id !== null ? i : null))
+          .map((r, i) => (selectedByDefault(r) ? i : null))
           .filter(i => i !== null)
       ));
       setStep('preview');
@@ -139,6 +146,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
               {summary.unmatched   > 0 && <span className="orange">{summary.unmatched} unmatched</span>}
               {summary.zero_amount > 0 && <span className="orange">{summary.zero_amount} zero-amount</span>}
               {summary.invalid_date > 0 && <span className="orange">{summary.invalid_date} invalid date{summary.invalid_date !== 1 ? 's' : ''}</span>}
+              {summary.invalid_amount > 0 && <span className="orange">{summary.invalid_amount} invalid amount{summary.invalid_amount !== 1 ? 's' : ''}</span>}
               <span className="count-badge">{selected.size} selected</span>
             </div>
           )}
@@ -170,6 +178,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                     row.duplicate    ? 'duplicate'   : '',
                     row.zero_amount  ? 'zero-amount' : '',
                     row.invalid_date ? 'invalid-date' : '',
+                    row.invalid_amount ? 'invalid-amount' : '',
                     row.account_id === null ? 'unmatched' : '',
                     !selected.has(i) ? 'deselected'  : '',
                   ].filter(Boolean).join(' ');
@@ -180,7 +189,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                           type="checkbox"
                           checked={selected.has(i)}
                           onChange={() => toggleRow(i)}
-                          disabled={row.account_id === null || row.zero_amount || row.invalid_date}
+                          disabled={!canSelect(row)}
                         />
                       </td>
                       <td>
@@ -190,9 +199,15 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                       </td>
                       <td>{row.vendor}</td>
                       <td>{row.category}</td>
-                      <td className={row.amount >= 0 ? 'green' : 'red'}>
-                        {row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}
-                      </td>
+                      {row.invalid_amount ? (
+                        <td>
+                          <span className="csv-warning" title="Unrecognized amount">{row.amount || 'missing'}</span>
+                        </td>
+                      ) : (
+                        <td className={row.amount >= 0 ? 'green' : 'red'}>
+                          {row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}
+                        </td>
+                      )}
                       <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
                       <td><small>{row.notes}</small></td>
                       <td>

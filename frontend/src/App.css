@@ -1615,13 +1615,15 @@ body {
 .import-row.duplicate td:first-child { text-decoration: none; }
 
 .import-row.zero-amount td,
-.import-row.invalid-date td {
+.import-row.invalid-date td,
+.import-row.invalid-amount td {
   color: #bbb;
   font-style: italic;
 }
 
 .import-row.zero-amount td:first-child,
-.import-row.invalid-date td:first-child { font-style: normal; }
+.import-row.invalid-date td:first-child,
+.import-row.invalid-amount td:first-child { font-style: normal; }
 
 .import-row.deselected td:not(:first-child) { opacity: 0.4; }
 
