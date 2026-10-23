@@ -19,17 +19,23 @@ class AccountService:
 
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account.
-        Returns (updated_account, error_message).
+        Apply field updates to an account. Editing the name or id string, or sending
+        needs_attention=False ("Looks good"), marks an import-created account as reviewed.
+        Returns (updated_account, error_message); raises ValueError for invalid input.
         """
         account = db_service.get_account(account_id)
         if not account:
             return None, 'Account not found'
 
+        if 'needs_attention' in data and data['needs_attention'] is not False:
+            raise ValueError('needs_attention can only be set to false')
+
         if 'account_name' in data:
             account.acct_name = data['account_name']
         if 'account_id' in data:
             account.acct_id_str = data['account_id']
+        if {'needs_attention', 'account_name', 'account_id'} & data.keys():
+            account.needs_attention = False
 
         db.session.commit()
         return account, None

@@ -6,10 +6,11 @@ class AccountModel(db.Model):
     __tablename__ = 'accounts'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    acct_id_str = db.Column(db.String(24), nullable=False) #Discover 1234
-    acct_name = db.Column(db.String(40), nullable=False) #Owen's Credit Card
+    acct_id_str = db.Column(db.String(100), nullable=False) #Discover 1234 (imports match on this or the name)
+    acct_name = db.Column(db.String(100), nullable=False) #Owen's Credit Card
     balance_cents = db.Column(db.Integer, default=0)  # Was: balance (Float)
-    
+    needs_attention = db.Column(db.Boolean, nullable=False, default=False)  # created by an import, not yet reviewed
+
     # Relationships: One account has many transactions
     transactions = db.relationship('TransactionModel', backref='account', cascade="all, delete-orphan")
     recurring = db.relationship('RecurringModel', backref='account', cascade="all, delete-orphan")
@@ -31,5 +32,6 @@ class AccountModel(db.Model):
             'account_name': str(self.acct_name),
             'balance': self.balance,
             'transaction_count': len(self.transactions),
-            'recurring_count': len(self.recurring)
+            'recurring_count': len(self.recurring),
+            'needs_attention': bool(self.needs_attention),
         }

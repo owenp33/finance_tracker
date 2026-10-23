@@ -21,6 +21,9 @@ def _run_migrations(db):
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reimbursement BOOLEAN NOT NULL DEFAULT FALSE',
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recurring_index INTEGER',
             'ALTER TABLE users ALTER COLUMN password_hash TYPE VARCHAR(255)',
+            'ALTER TABLE accounts ALTER COLUMN acct_id_str TYPE VARCHAR(100)',
+            'ALTER TABLE accounts ALTER COLUMN acct_name TYPE VARCHAR(100)',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT FALSE',
         ]
         for sql in migrations:
             conn.execute(text(sql))

@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, AccountService
 from middleware.ownership import owns_account
+from middleware.request_body import json_body
 from datetime import datetime, date, timedelta
 
 
@@ -80,9 +81,11 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string."""
-    data = request.get_json()
-    acc, error = account_service.update_account(account_id, data)
+    """Update account name or id string, or mark it reviewed with {"needs_attention": false}."""
+    try:
+        acc, error = account_service.update_account(account_id, json_body())
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     if error:
         return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'account': acc.to_dict()}), 200

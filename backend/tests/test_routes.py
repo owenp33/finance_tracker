@@ -91,6 +91,29 @@ class TestRegisterValidation:
         assert resp.json['error'] == 'An account with that email already exists.'
 
 
+# ── Accounts ──────────────────────────────────────────────────────────────────
+
+class TestAccountRoutes:
+    def test_list_includes_needs_attention(self, client, auth_headers, account):
+        resp = client.get('/api/accounts', headers=auth_headers)
+        assert resp.json['accounts'][0]['needs_attention'] is False
+
+    def test_looks_good_clears_needs_attention(self, client, auth_headers, account):
+        from extensions import db as _db
+        account.needs_attention = True
+        _db.session.commit()
+        resp = client.patch(f'/api/accounts/{account.id}', json={'needs_attention': False},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['account']['needs_attention'] is False
+
+    def test_invalid_needs_attention_returns_400(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'needs_attention': 'yes'},
+                            headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'needs_attention can only be set to false'}
+
+
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 
 class TestTransactionRoutes:

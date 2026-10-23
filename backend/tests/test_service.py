@@ -15,6 +15,33 @@ auth_svc = AuthService()
 db_svc = DbService()
 
 
+# ── Accounts ──────────────────────────────────────────────────────────────────
+
+class TestAccountReview:
+    def test_new_accounts_do_not_need_attention(self, account):
+        assert account.to_dict()['needs_attention'] is False
+
+    @pytest.mark.parametrize('changes', [
+        {'account_name': 'Renamed'}, {'account_id': 'new-id'}, {'needs_attention': False},
+    ])
+    def test_editing_or_marking_reviewed_clears_needs_attention(self, account, changes):
+        account.needs_attention = True
+        _db.session.commit()
+        updated, error = svc.update_account(account.id, changes)
+        assert error is None
+        assert updated.needs_attention is False
+
+    def test_needs_attention_cannot_be_set_back_to_true(self, account):
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'needs_attention': True})
+
+    def test_columns_fit_long_bank_labels(self):
+        # SQLite ignores String lengths, so this guards against Postgres rejecting long import labels
+        from models.account import AccountModel
+        assert AccountModel.acct_id_str.type.length >= 100
+        assert AccountModel.acct_name.type.length >= 100
+
+
 # ── Transaction CRUD ──────────────────────────────────────────────────────────
 
 class TestAddTransaction:
