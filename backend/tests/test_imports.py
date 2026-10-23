@@ -87,11 +87,27 @@ class TestPreviewParsing:
     @pytest.mark.parametrize('raw', ['01/15/2025', '2025-01-15', '01-15-2025', '2025-01-15 08:30:00', '45672'])
     def test_supported_date_formats(self, client, auth_headers, account, raw):
         resp = preview(client, auth_headers, HEADER + f'{raw},Grocer,Groceries,-5.00,Test Checking,\n')
-        assert resp.json['rows'][0]['date'] == '2025-01-15'
+        row = resp.json['rows'][0]
+        assert (row['date'], row['invalid_date']) == ('2025-01-15', False)
 
-    def test_unparseable_date_falls_back_to_today(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, HEADER + '1/5/25,Grocer,Groceries,-5.00,Test Checking,\n')
-        assert resp.json['rows'][0]['date'] == date.today().isoformat()
+    @pytest.mark.parametrize('raw, shown', [('1/5/25', '1/5/25'), (' Jan 5 ', 'Jan 5'), ('', '')])
+    def test_unparseable_date_is_flagged(self, client, auth_headers, account, raw, shown):
+        account_svc.add_transaction(account.id, date.today(), 'Grocer', 'Groceries', -5.00)
+        resp = preview(client, auth_headers, HEADER + f'{raw},Grocer,Groceries,-5.00,Test Checking,\n')
+        row = resp.json['rows'][0]
+        assert row['invalid_date'] is True
+        assert row['date'] == shown            # the original text, so the user can see what was wrong
+        assert row['duplicate'] is False       # no date to compare, so no duplicate check
+        assert resp.json['summary']['importable'] == 0
+
+    def test_empty_excel_date_cell_is_flagged(self, client, auth_headers, account):
+        buf = io.BytesIO()
+        pd.DataFrame({'date': [datetime(2025, 1, 15), None], 'vendor': ['Grocer', 'Cafe'],
+                      'category': ['Groceries', 'Dining'], 'amount': [-5.0, -4.5],
+                      'account': ['Test Checking', 'Test Checking']}).to_excel(buf, index=False)
+        resp = preview(client, auth_headers, buf.getvalue(), filename='bank.xlsx',
+                       content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        assert [(r['date'], r['invalid_date']) for r in resp.json['rows']] == [('2025-01-15', False), ('', True)]
 
     def test_parenthesized_amount_reads_as_zero(self, client, auth_headers, account):
         resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,(12.34),Test Checking,\n')
@@ -201,9 +217,10 @@ class TestPreviewFlags:
                        + '2025-01-16,Cafe,Dining,-4.50,Test Checking,\n'         # importable
                        + '2025-01-15,Grocer,Groceries,-42.10,Test Checking,\n'   # duplicate
                        + '2025-01-16,Cafe,Dining,-4.50,Mystery Bank,\n'          # unmatched
-                       + '2025-01-16,Cafe,Dining,0,Test Checking,\n')            # zero amount
-        assert resp.json['summary'] == {'total': 4, 'importable': 1, 'duplicates': 1,
-                                        'unmatched': 1, 'zero_amount': 1}
+                       + '2025-01-16,Cafe,Dining,0,Test Checking,\n'             # zero amount
+                       + '1/16/25,Cafe,Dining,-4.50,Test Checking,\n')           # invalid date
+        assert resp.json['summary'] == {'total': 5, 'importable': 1, 'duplicates': 1,
+                                        'unmatched': 1, 'zero_amount': 1, 'invalid_date': 1}
 
     def test_preview_writes_nothing(self, client, auth_headers, account):
         preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Test Checking,\n')

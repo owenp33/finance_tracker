@@ -2,11 +2,11 @@
 import_service.py - Transaction Import Business Logic
 
 Two-step import: preview() parses an upload and annotates every row (account,
-duplicate, zero amount, transfer) without writing; confirm() writes the rows the
-user approved, re-checking ownership and duplicates server-side.
+duplicate, zero amount, invalid date, transfer) without writing; confirm() writes the
+rows the user approved, re-checking ownership and duplicates server-side.
 Depends on import_parser for files, and db_service / account_service for data.
 """
-from datetime import datetime
+from datetime import date, datetime
 from services import import_parser
 from services.db_service import DbService
 from services.account_service import AccountService
@@ -69,20 +69,26 @@ class ImportService:
         return lookup
 
     def _preview_row(self, record, account_id, account_name):
-        """Build one preview row from a normalized DataFrame record."""
+        """
+        Build one preview row from a normalized DataFrame record. A row whose date
+        couldn't be read is flagged invalid_date and shows the original text as its date.
+        """
         amount       = round(float(record['amount']), 2)
         amount_cents = int(round(amount * 100))
+        date_obj     = record['date'] if isinstance(record['date'], date) else None
 
         zero_amount  = amount_cents == 0
+        invalid_date = date_obj is None
         is_duplicate = (
             not zero_amount
+            and not invalid_date
             and account_id is not None
-            and db_service.transaction_exists(account_id, record['date'], record['vendor'], amount_cents)
+            and db_service.transaction_exists(account_id, date_obj, record['vendor'], amount_cents)
         )
 
         category = str(record['category'])
         return {
-            'date':         record['date'].isoformat(),
+            'date':         date_obj.isoformat() if date_obj else record['date_raw'],
             'vendor':       str(record['vendor']),
             'category':     category,
             'amount':       amount,
@@ -91,6 +97,7 @@ class ImportService:
             'account_name': account_name,
             'duplicate':    is_duplicate,
             'zero_amount':  zero_amount,
+            'invalid_date': invalid_date,
             'is_transfer':  category.strip().lower() in TRANSFER_CATEGORIES,
         }
 
@@ -99,14 +106,16 @@ class ImportService:
             1 for r in rows
             if not r['duplicate']
             and not r['zero_amount']
+            and not r['invalid_date']
             and r['account_id'] is not None
         )
         return {
-            'total':       len(rows),
-            'importable':  importable,
-            'duplicates':  sum(r['duplicate'] for r in rows),
-            'unmatched':   sum(r['account_id'] is None for r in rows),
-            'zero_amount': sum(r['zero_amount'] for r in rows),
+            'total':        len(rows),
+            'importable':   importable,
+            'duplicates':   sum(r['duplicate'] for r in rows),
+            'unmatched':    sum(r['account_id'] is None for r in rows),
+            'zero_amount':  sum(r['zero_amount'] for r in rows),
+            'invalid_date': sum(r['invalid_date'] for r in rows),
         }
 
     # CONFIRM ===================================================================

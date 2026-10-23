@@ -30,12 +30,17 @@ def clean_currency(value: str) -> float:
         return 0.0
 
 
-def parse_date(value) -> date:
+def parse_date(value) -> date | None:
     """
-    Parse a date value into a Python date object.
+    Parse a date value into a Python date object, or None when it is blank or not in
+    a recognized format (the import preview flags those rows instead of guessing).
     Handles pandas Timestamps (returned by read_excel), Python datetime/date
     objects, Excel serial numbers, and common date strings.
     """
+    # Checked first: an empty Excel date cell arrives as NaT, which also passes isinstance(datetime)
+    if pd.isna(value) or (isinstance(value, str) and not value.strip()):
+        return None
+
     # pandas reads Excel date cells as Timestamps — extract the date directly
     if isinstance(value, pd.Timestamp):
         return value.date()
@@ -43,9 +48,6 @@ def parse_date(value) -> date:
         return value.date()
     if isinstance(value, date):
         return value
-
-    if pd.isna(value) or value == '':
-        return date.today()
 
     date_str = str(value).strip()
 
@@ -63,8 +65,7 @@ def parse_date(value) -> date:
         except ValueError:
             continue
 
-    print(f"Warning: Could not parse date '{date_str}', using today's date")
-    return date.today()
+    return None
 
 
 # FILE PARSING ==================================================================
@@ -96,7 +97,7 @@ def normalize_dataframe(df) -> pd.DataFrame:
     Normalize a raw financial DataFrame to standard columns.
 
     - Lowercases and strips all column headers
-    - Parses the date column
+    - Parses the date column (None where unreadable) and keeps the original text as date_raw
     - Resolves amount from: amount | expense+income | withdrawal+deposit
     - Resolves vendor from: vendor | store
     - Resolves notes from: notes | description
@@ -108,7 +109,8 @@ def normalize_dataframe(df) -> pd.DataFrame:
     if 'date' not in df.columns:
         raise ValueError("File is missing required column: 'date'")
 
-    df['date'] = df['date'].apply(parse_date)
+    df['date_raw'] = df['date'].apply(lambda v: '' if pd.isna(v) else str(v).strip())
+    df['date']     = df['date'].apply(parse_date)
 
     has_expense_withdrawal = 'expense' in df.columns or 'withdrawal' in df.columns
     has_income_deposit     = 'income'  in df.columns or 'deposit'    in df.columns
