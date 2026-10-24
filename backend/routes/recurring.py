@@ -4,12 +4,12 @@ recurring.py - Recurring transaction routes
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from datetime import datetime
-from services import DbService, AccountService
+from services import DbService, RecurringService
 from middleware.ownership import owns_recurring
 
 recurring_bp = Blueprint('recurring', __name__)
-db_service      = DbService()
-account_service = AccountService()
+db_service        = DbService()
+recurring_service = RecurringService()
 
 
 @recurring_bp.route('/<int:recurring_id>', methods=['GET'])
@@ -49,7 +49,7 @@ def update_recurring(recurring_id):
         update_fields['notes'] = data['notes']
 
     try:
-        updated = account_service.update_recurring(recurring_id, **update_fields)
+        updated = recurring_service.update_recurring(recurring_id, **update_fields)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
@@ -67,7 +67,7 @@ def delete_recurring(recurring_id):
     """Delete a recurring transaction template"""
     delete_generated = request.args.get('delete_generated', 'false').lower() == 'true'
 
-    account_service.delete_recurring(recurring_id, delete_generated=delete_generated)
+    recurring_service.delete_recurring(recurring_id, delete_generated=delete_generated)
 
     return jsonify({
         'success': True,

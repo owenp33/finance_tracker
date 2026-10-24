@@ -3,7 +3,7 @@ accounts.py - Account management routes
 """
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from services import DbService, AccountService
+from services import DbService, AccountService, RecurringService
 from middleware.ownership import owns_account
 from middleware.request_body import json_body
 from datetime import datetime, date, timedelta
@@ -12,6 +12,7 @@ from datetime import datetime, date, timedelta
 accounts_bp = Blueprint('accounts', __name__)
 db_service = DbService()
 account_service = AccountService()
+recurring_service = RecurringService()
 
 
 @accounts_bp.route('', methods=['GET'])
@@ -221,7 +222,7 @@ def add_recurring(account_id):
     next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
     try:
-        recurring = account_service.add_recurring(
+        recurring = recurring_service.add_recurring(
             account_id=account_id,
             start_date=start_date,
             vendor=data['vendor'],
@@ -238,6 +239,6 @@ def add_recurring(account_id):
         return jsonify({'success': False, 'error': str(e)}), 400
 
     # Immediately generate any transactions that are already due
-    account_service.process_due_recurring(account_id)
+    recurring_service.process_due_recurring(account_id)
 
     return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201

@@ -116,8 +116,7 @@ transactions, recurring templates, and budgets, plus two queries used by busines
 with the opposite amount in another of the user's accounts, within ±5 days; the earliest such
 match wins). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
-**`AccountService`** (`account_service.py`): accounts, transactions, transfers, and recurring
-templates.
+**`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
   `opening_balance` (the starting balance, in dollars), and `needs_attention`, which may only be
   set to `false`. Names and id strings are trimmed and must be non-empty text within the column
@@ -133,10 +132,15 @@ templates.
 - Transfers: `link_transfer`, `unlink_transfer` (clears the flag and the link on both sides),
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
-- Recurring: `add_recurring`, `update_recurring`, `delete_recurring`, `process_due_recurring`
-  (see [Recurring transactions](#recurring-transactions)).
 - `recalculate_account_balance(account_id)` resets `balance_cents` to the starting balance plus
   the sum of the account's transactions.
+
+**`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
+`update_recurring`, `delete_recurring`) and generating their due occurrences
+(`process_due_recurring`); see [Recurring transactions](#recurring-transactions). Occurrences are
+created through `AccountService.add_transaction`, so balances and budget flags have one code path.
+Deleting a single generated transaction (which shrinks its series) is still handled by
+`AccountService.delete_transaction`.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
@@ -380,7 +384,10 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
   scheduler (`tests/conftest.py`). No database server is needed.
 - Fixtures: `app`, `client`, `user`, `account`, `auth_headers` (a logged-in user's
   `Authorization` header), and `pin_today` (call it with a date to fix `date.today()` inside
-  `AccountService`, so recurring tests don't depend on when they run). After each test, `clean_tables` empties every table and resets the
+  `RecurringService`, so recurring tests don't depend on when they run).
+- Never import `wsgi` in a check script: it builds the real app, which runs the migrations and the
+  scheduler's catch-up against whatever database `DATABASE_URL` points at. Use
+  `create_app({'TESTING': True, ...})` instead. After each test, `clean_tables` empties every table and resets the
   session: SQLite reuses ids after a delete, and a stale cached object with a reused id breaks the
   next insert.
 - Every test file must pass on its own, and the suite must pass in reverse file order.

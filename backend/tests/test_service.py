@@ -8,10 +8,12 @@ from datetime import date, timedelta
 from flask_jwt_extended import decode_token
 from extensions import db as _db
 from services.account_service import AccountService
+from services.recurring_service import RecurringService
 from services.auth_service import AuthService, RegistrationConflict
 from services.db_service import DbService
 
 svc = AccountService()
+recurring_svc = RecurringService()
 auth_svc = AuthService()
 db_svc = DbService()
 
@@ -170,7 +172,7 @@ class TestUpdateTransaction:
 
 class TestProcessDueRecurring:
     def _make_recurring(self, account, next_date, number=-1):
-        return svc.add_recurring(
+        return recurring_svc.add_recurring(
             account_id=account.id,
             start_date=next_date,
             vendor='Quizlet',
@@ -184,20 +186,20 @@ class TestProcessDueRecurring:
     def test_generates_transaction_when_due(self, account):
         past = date.today() - timedelta(days=1)
         self._make_recurring(account, past)
-        count = svc.process_due_recurring(account.id)
+        count = recurring_svc.process_due_recurring(account.id)
         assert count >= 1
 
     def test_advances_next_date(self, account):
         past = date.today() - timedelta(days=1)
         rec = self._make_recurring(account, past)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         _db.session.refresh(rec)
         assert rec.next_date > date.today()
 
     def test_respects_occurrence_limit(self, account):
         past = date.today() - timedelta(days=100)
         rec = self._make_recurring(account, past, number=2)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         from models.transaction import TransactionModel
         generated = TransactionModel.query.filter_by(recurring_id=rec.id).all()
         assert len(generated) == 2
@@ -205,13 +207,13 @@ class TestProcessDueRecurring:
     def test_does_not_generate_future_transactions(self, account):
         future = date.today() + timedelta(days=10)
         rec = self._make_recurring(account, future)
-        count = svc.process_due_recurring(account.id)
+        count = recurring_svc.process_due_recurring(account.id)
         assert count == 0
 
     def test_generated_transaction_linked_to_recurring(self, account):
         past = date.today() - timedelta(days=1)
         rec = self._make_recurring(account, past)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         from models.transaction import TransactionModel
         tx = TransactionModel.query.filter_by(recurring_id=rec.id).first()
         assert tx is not None
@@ -222,7 +224,7 @@ class TestProcessDueRecurring:
 # ── Recurring schedules ───────────────────────────────────────────────────────
 
 def _schedule(account, start, frequency=1, unit='months', number=-1):
-    return svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
+    return recurring_svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
                              number=number, frequency_unit=unit)
 
 
@@ -234,48 +236,48 @@ def _generated_dates(rec):
 class TestRecurringSchedules:
     def test_monthly_repeats_on_the_same_day(self, account):
         rec = _schedule(account, date(2025, 1, 15), number=3)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         assert _generated_dates(rec) == [date(2025, 1, 15), date(2025, 2, 15), date(2025, 3, 15)]
 
     def test_short_months_use_their_last_day_without_drifting(self, account):
         rec = _schedule(account, date(2025, 1, 31), number=4)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         assert _generated_dates(rec) == [date(2025, 1, 31), date(2025, 2, 28), date(2025, 3, 31), date(2025, 4, 30)]
 
     def test_yearly_from_a_leap_day(self, account):
         rec = _schedule(account, date(2024, 2, 29), frequency=12, number=2)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         assert _generated_dates(rec) == [date(2024, 2, 29), date(2025, 2, 28)]
 
     def test_quarterly_crosses_years(self, account):
         rec = _schedule(account, date(2024, 11, 30), frequency=3, number=3)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         assert _generated_dates(rec) == [date(2024, 11, 30), date(2025, 2, 28), date(2025, 5, 30)]
 
     def test_day_based_schedules_still_count_days(self, account):
         rec = _schedule(account, date(2026, 7, 20), frequency=14, unit='days', number=3)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         assert _generated_dates(rec) == [date(2026, 7, 20), date(2026, 8, 3), date(2026, 8, 17)]
 
     def test_moving_the_next_date_re_anchors_a_monthly_template(self, account):
         rec = _schedule(account, date(2099, 1, 31))
-        svc.update_recurring(rec.id, next_date=date(2099, 3, 15))
+        recurring_svc.update_recurring(rec.id, next_date=date(2099, 3, 15))
         assert (rec.day_of_month, rec.advance_to_next) == (15, date(2099, 4, 15))
 
     def test_re_saving_an_unchanged_next_date_keeps_the_anchor(self, account):
         rec = _schedule(account, date(2025, 1, 31), number=1)
-        svc.process_due_recurring(account.id)   # next date is now Feb 28, clamped from the 31st
-        svc.update_recurring(rec.id, next_date=date(2025, 2, 28), amount=-80.0)
+        recurring_svc.process_due_recurring(account.id)   # next date is now Feb 28, clamped from the 31st
+        recurring_svc.update_recurring(rec.id, next_date=date(2025, 2, 28), amount=-80.0)
         assert (rec.day_of_month, rec.advance_to_next) == (31, date(2025, 3, 31))
 
     def test_switching_to_months_anchors_on_the_next_date(self, account):
         rec = _schedule(account, date(2099, 1, 31), frequency=30, unit='days')
-        svc.update_recurring(rec.id, frequency=1, frequency_unit='months')
+        recurring_svc.update_recurring(rec.id, frequency=1, frequency_unit='months')
         assert (rec.day_of_month, rec.advance_to_next) == (31, date(2099, 2, 28))
 
     def test_switching_to_days_drops_the_anchor(self, account):
         rec = _schedule(account, date(2099, 1, 31))
-        svc.update_recurring(rec.id, frequency=14, frequency_unit='days')
+        recurring_svc.update_recurring(rec.id, frequency=14, frequency_unit='days')
         assert (rec.day_of_month, rec.advance_to_next) == (None, date(2099, 2, 14))
 
     @pytest.mark.parametrize('frequency, unit, error', [
@@ -290,21 +292,21 @@ class TestRecurringSchedules:
             _schedule(account, date(2099, 1, 1), frequency=frequency, unit=unit)
         rec = _schedule(account, date(2099, 1, 1))
         with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
-            svc.update_recurring(rec.id, frequency=frequency, frequency_unit=unit)
+            recurring_svc.update_recurring(rec.id, frequency=frequency, frequency_unit=unit)
 
     def test_to_dict_reports_the_unit_and_the_last_occurrence(self, account):
         rec = _schedule(account, date(2025, 1, 31), number=2)
         assert rec.to_dict()['last_date'] is None
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         d = rec.to_dict()
         assert (d['frequency_unit'], d['last_date'], d['next_date']) == ('months', '2025-02-28', '2025-03-31')
 
 
 class TestSkipPastOccurrences:
     def _add(self, account, start, frequency=1, unit='months', skip_past=True, number=-1):
-        rec = svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
+        rec = recurring_svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
                                 number=number, frequency_unit=unit, skip_past=skip_past)
-        svc.process_due_recurring(account.id)
+        recurring_svc.process_due_recurring(account.id)
         return rec
 
     def test_starts_at_the_next_occurrence_without_generating_history(self, account, pin_today):
@@ -344,20 +346,20 @@ class TestSkipPastOccurrences:
 class TestDeleteRecurring:
     def test_delete_keeps_generated_by_default(self, account):
         past = date.today() - timedelta(days=1)
-        rec = svc.add_recurring(account.id, past, 'Spotify', 'Subscriptions', -9.99, past, 30)
-        svc.process_due_recurring(account.id)
+        rec = recurring_svc.add_recurring(account.id, past, 'Spotify', 'Subscriptions', -9.99, past, 30)
+        recurring_svc.process_due_recurring(account.id)
         rec_id = rec.id
-        svc.delete_recurring(rec_id, delete_generated=False)
+        recurring_svc.delete_recurring(rec_id, delete_generated=False)
         from models.transaction import TransactionModel
         orphaned = TransactionModel.query.filter_by(recurring_id=None, vendor='Spotify').all()
         assert len(orphaned) >= 1
 
     def test_delete_removes_generated_when_flagged(self, account):
         past = date.today() - timedelta(days=1)
-        rec = svc.add_recurring(account.id, past, 'Spotify', 'Subscriptions', -9.99, past, 30)
-        svc.process_due_recurring(account.id)
+        rec = recurring_svc.add_recurring(account.id, past, 'Spotify', 'Subscriptions', -9.99, past, 30)
+        recurring_svc.process_due_recurring(account.id)
         rec_id = rec.id
-        svc.delete_recurring(rec_id, delete_generated=True)
+        recurring_svc.delete_recurring(rec_id, delete_generated=True)
         from models.transaction import TransactionModel
         remaining = TransactionModel.query.filter_by(vendor='Spotify').all()
         assert len(remaining) == 0
