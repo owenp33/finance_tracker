@@ -4,11 +4,14 @@ import_service.py - Transaction Import Business Logic
 Two-step import: preview() parses an upload and annotates every row (account,
 duplicate, zero amount, invalid date/amount, transfer) without writing; confirm()
 writes the rows the user approved, re-checking ownership and duplicates server-side.
+Rows whose account isn't found can create new accounts (flagged needs_attention),
+go into one of the user's existing accounts, or be skipped.
 Depends on import_parser for files, and db_service / account_service for data.
 """
 import math
 import numbers
 from datetime import date, datetime
+from models.account import AccountModel
 from services import import_parser
 from services.db_service import DbService
 from services.account_service import AccountService
@@ -19,58 +22,118 @@ account_service = AccountService()
 # Rows in these categories are pre-flagged as transfers in the preview
 TRANSFER_CATEGORIES = ('transfer', 'payment')
 
+# What to do with rows whose account isn't found: create it, use an existing account, or skip
+UNMATCHED_OPTIONS = ('create', 'account', 'skip')
+
+# A malformed account column must not flood the user's account list
+MAX_NEW_ACCOUNTS = 25
+
+ACCOUNT_NAME_LENGTH = AccountModel.acct_name.type.length
+
+
+def _account_key(name):
+    """How account names are compared: ignoring case and surrounding whitespace."""
+    return name.strip().lower()
+
 
 class ImportService:
 
     # PREVIEW ===================================================================
 
-    def preview(self, user_id, file, fallback_account_id=None):
+    def preview(self, user_id, file, unmatched='create', target_account_id=None):
         """
         Parse an uploaded file and return {rows, summary, unmatched_account_names}.
-        Rows are matched to accounts by the file's 'account' column, or assigned
-        fallback_account_id when the file has none. Writes nothing.
-        Raises ValueError when the file can't be read.
+        Rows are matched to accounts by the file's 'account' column. Rows whose account
+        isn't found, and every row of a file without an account column, follow `unmatched`:
+          'create'  -> a new account named after the row's account value (or the file name);
+                       the row is marked new_account and the account is created on confirm
+          'account' -> the user's account target_account_id
+          'skip'    -> left unmatched, so the row can't be imported
+        Writes nothing. Raises ValueError when the options are invalid, the file can't
+        be read, or it would create more than MAX_NEW_ACCOUNTS accounts.
         """
-        df = import_parser.load_file(file)
+        user_accounts   = db_service.get_user_accounts(user_id)
+        accounts_by_key = self._account_lookup(user_accounts)
+        target          = self._unmatched_target(unmatched, target_account_id, user_accounts)
 
-        user_accounts    = db_service.get_user_accounts(user_id)
-        accounts_by_key  = self._account_lookup(user_accounts)
-        fallback_account = next((a for a in user_accounts if a.id == fallback_account_id), None)
-        has_account_col  = 'account' in df.columns
+        df                = import_parser.load_file(file)
+        has_account_col   = 'account' in df.columns
+        file_account_name = self._file_account_name(file)
 
         rows            = []
-        unmatched_names = set()
+        unmatched_names = {}   # account key -> first spelling seen, for names not found
+        new_names       = {}   # account key -> first spelling seen, for accounts to create
 
         for _, record in df.iterrows():
-            if has_account_col:
-                raw_name = str(record.get('account', '')).strip()
-                account  = accounts_by_key.get(raw_name.lower())
-                if account:
-                    account_id, account_name = account.id, account.acct_name
-                else:
-                    unmatched_names.add(raw_name)
-                    account_id, account_name = None, raw_name
-            else:
-                account_id   = fallback_account_id
-                account_name = fallback_account.acct_name if fallback_account else None
+            raw_name = record['account'] if has_account_col else ''
+            if raw_name and _account_key(raw_name) not in accounts_by_key:
+                unmatched_names.setdefault(_account_key(raw_name), raw_name)
 
-            rows.append(self._preview_row(record, account_id, account_name))
+            account_id, account_name, new_account = self._resolve_account(
+                raw_name, accounts_by_key, unmatched, target, file_account_name
+            )
+            if new_account:
+                account_name = new_names.setdefault(_account_key(account_name), account_name)
+
+            rows.append(self._preview_row(record, account_id, account_name, new_account))
+
+        summary = self._summary(rows)
+        self._check_new_account_limit(len(summary['new_accounts']))
 
         return {
             'rows':                    rows,
-            'summary':                 self._summary(rows),
-            'unmatched_account_names': list(unmatched_names),
+            'summary':                 summary,
+            'unmatched_account_names': list(unmatched_names.values()),
         }
 
     def _account_lookup(self, accounts):
-        """Map each account's lowercased name and id string to the account."""
+        """Map each account's name and id string (compared via _account_key) to the account."""
         lookup = {}
         for a in accounts:
-            lookup[a.acct_name.lower().strip()]  = a
-            lookup[a.acct_id_str.lower().strip()] = a
+            lookup[_account_key(a.acct_name)]   = a
+            lookup[_account_key(a.acct_id_str)] = a
         return lookup
 
-    def _preview_row(self, record, account_id, account_name):
+    def _unmatched_target(self, unmatched, target_account_id, user_accounts):
+        """Validate the unmatched-rows option; return the target account for 'account', else None."""
+        if unmatched not in UNMATCHED_OPTIONS:
+            raise ValueError(f'Unknown option for unmatched accounts: {unmatched}')
+        if unmatched != 'account':
+            return None
+
+        target = next((a for a in user_accounts if a.id == target_account_id), None)
+        if target is None:
+            raise ValueError('Choose one of your accounts for the unmatched rows')
+        return target
+
+    def _file_account_name(self, file):
+        """Name for rows without an account value: the uploaded file's name minus its extension."""
+        filename = (getattr(file, 'filename', '') or '').replace('\\', '/').rsplit('/', 1)[-1]
+        stem     = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        return stem.strip()[:ACCOUNT_NAME_LENGTH] or 'Imported'
+
+    def _resolve_account(self, raw_name, accounts_by_key, unmatched, target, file_account_name):
+        """
+        (account_id, account_name, new_account) for one preview row. raw_name is the
+        row's account value: '' when the cell is blank or the file has no account column.
+        """
+        if raw_name:
+            account = accounts_by_key.get(_account_key(raw_name))
+            if account:
+                return account.id, account.acct_name, False
+
+        if unmatched == 'account':
+            return target.id, target.acct_name, False
+        if unmatched == 'skip':
+            return None, raw_name or None, False
+
+        name = (raw_name or file_account_name)[:ACCOUNT_NAME_LENGTH]
+        existing = accounts_by_key.get(_account_key(name))   # e.g. created by an earlier import of this file
+        if existing:
+            return existing.id, existing.acct_name, False
+        return None, name, True
+
+    def _preview_row(self, record, account_id, account_name, new_account):
         """
         Build one preview row from a normalized DataFrame record. A date or amount
         that couldn't be read is flagged (invalid_date / invalid_amount) and the row
@@ -100,6 +163,7 @@ class ImportService:
             'notes':          str(record.get('notes', '') or ''),
             'account_id':     account_id,
             'account_name':   account_name,
+            'new_account':    new_account,
             'duplicate':      is_duplicate,
             'zero_amount':    zero_amount,
             'invalid_date':   invalid_date,
@@ -114,48 +178,93 @@ class ImportService:
             return round(float(value), 2)
         return None
 
-    def _summary(self, rows):
-        importable = sum(
-            1 for r in rows
-            if not r['duplicate']
-            and not r['zero_amount']
-            and not r['invalid_date']
-            and not r['invalid_amount']
-            and r['account_id'] is not None
+    @staticmethod
+    def _importable(row):
+        """True when nothing stops a preview row from being imported."""
+        return (
+            (row['account_id'] is not None or row['new_account'])
+            and not row['duplicate']
+            and not row['zero_amount']
+            and not row['invalid_date']
+            and not row['invalid_amount']
         )
+
+    def _summary(self, rows):
+        importable = [r for r in rows if self._importable(r)]
         return {
             'total':          len(rows),
-            'importable':     importable,
+            'importable':     len(importable),
             'duplicates':     sum(r['duplicate'] for r in rows),
-            'unmatched':      sum(r['account_id'] is None for r in rows),
+            'unmatched':      sum(r['account_id'] is None and not r['new_account'] for r in rows),
             'zero_amount':    sum(r['zero_amount'] for r in rows),
             'invalid_date':   sum(r['invalid_date'] for r in rows),
             'invalid_amount': sum(r['invalid_amount'] for r in rows),
+            # Accounts confirm would create: only those with at least one importable row
+            'new_accounts':   list(dict.fromkeys(r['account_name'] for r in importable if r['new_account'])),
         }
+
+    @staticmethod
+    def _check_new_account_limit(count):
+        if count > MAX_NEW_ACCOUNTS:
+            raise ValueError(
+                f'This import would create {count} new accounts (the limit is {MAX_NEW_ACCOUNTS}). '
+                "Check the file's account column, or choose another option."
+            )
 
     # CONFIRM ===================================================================
 
     def confirm(self, user_id, rows):
         """
-        Write approved preview rows and return {imported, skipped, linked}.
-        Rows are skipped when the account isn't the user's, a field is malformed,
-        the amount is zero, or an identical transaction existed before this import.
-        Every row is checked before any is inserted, so identical rows within the
-        batch (two same-day purchases) are all kept. Balances of affected accounts
-        are recalculated, then new transfers are linked to their counterparts.
+        Write approved preview rows and return {imported, skipped, linked, created_accounts}.
+        Rows are skipped when they aren't objects, the account isn't the user's (or a new
+        account has no usable name), a field is malformed, the amount is zero, or an
+        identical transaction existed before this import. Every row is checked before
+        any is inserted, so identical rows within the batch (two same-day purchases)
+        are all kept.
+        Rows marked new_account create one account per name, flagged needs_attention,
+        reusing an account that matches by now; only accounts with at least one accepted
+        row are created. Raises ValueError, before writing anything, when more than
+        MAX_NEW_ACCOUNTS would be created. Balances of affected accounts are then
+        recalculated and new transfers linked to their counterparts.
         """
-        user_account_ids = {a.id for a in db_service.get_user_accounts(user_id)}
+        user_accounts    = db_service.get_user_accounts(user_id)
+        user_account_ids = {a.id for a in user_accounts}
+        accounts_by_key  = self._account_lookup(user_accounts)
 
-        accepted = []
+        accepted  = []
+        new_names = {}   # account key -> first spelling seen
         for row in rows:
-            fields = self._confirm_fields(row, user_account_ids)
-            if fields and not db_service.transaction_exists(
-                fields['account_id'], fields['date_obj'], fields['vendor'], fields['amount_cents']
-            ):
-                accepted.append(fields)
+            if not isinstance(row, dict):
+                continue
+            fields = self._confirm_fields(row)
+            if fields is None:
+                continue
+
+            account_id, new_name = self._confirm_account(row, user_account_ids, accounts_by_key)
+            if account_id is not None:
+                if db_service.transaction_exists(
+                    account_id, fields['date_obj'], fields['vendor'], fields['amount_cents']
+                ):
+                    continue
+            elif new_name:
+                new_names.setdefault(_account_key(new_name), new_name)
+            else:
+                continue
+
+            fields['account_id']      = account_id
+            fields['new_account_key'] = None if account_id is not None else _account_key(new_name)
+            accepted.append(fields)
+
+        self._check_new_account_limit(len(new_names))
+        created_ids = {
+            key: db_service.create_account(user_id, name, name, needs_attention=True).id
+            for key, name in new_names.items()
+        }
 
         new_transfers = []
         for fields in accepted:
+            if fields['account_id'] is None:
+                fields['account_id'] = created_ids[fields['new_account_key']]
             tx = account_service.add_transaction(
                 account_id=fields['account_id'],
                 date_obj=fields['date_obj'],
@@ -172,24 +281,17 @@ class ImportService:
             account_service.recalculate_account_balance(aid)
 
         return {
-            'imported': len(accepted),
-            'skipped':  len(rows) - len(accepted),
-            'linked':   self._link_transfers(user_id, new_transfers),
+            'imported':         len(accepted),
+            'skipped':          len(rows) - len(accepted),
+            'linked':           self._link_transfers(user_id, new_transfers),
+            'created_accounts': list(new_names.values()),
         }
 
-    def _confirm_fields(self, row, user_account_ids):
-        """
-        The values to insert for one approved row, or None when it must be skipped:
-        not one of the user's accounts, a malformed field, or a zero amount.
-        """
-        account_id = row.get('account_id')
-        if not account_id or account_id not in user_account_ids:
-            return None
-
+    def _confirm_fields(self, row):
+        """The values to insert for one approved row, or None when a field is malformed or the amount is zero."""
         try:
             amount = float(row['amount'])
             fields = {
-                'account_id':   account_id,
                 'date_obj':     datetime.fromisoformat(row['date']).date(),
                 'amount':       amount,
                 'amount_cents': int(round(amount * 100)),   # NaN / inf raise here
@@ -202,6 +304,23 @@ class ImportService:
             return None
 
         return fields if fields['amount_cents'] != 0 else None
+
+    def _confirm_account(self, row, user_account_ids, accounts_by_key):
+        """
+        Where an approved row goes: (account_id, None) for one of the user's accounts,
+        (None, name) for a new account to create, or (None, None) to skip the row.
+        """
+        account_id = row.get('account_id')
+        if account_id:
+            return (account_id, None) if account_id in user_account_ids else (None, None)
+
+        name = row.get('account_name')
+        if not row.get('new_account') or not isinstance(name, str) or not name.strip():
+            return None, None
+
+        name     = name.strip()[:ACCOUNT_NAME_LENGTH]
+        existing = accounts_by_key.get(_account_key(name))
+        return (existing.id, None) if existing else (None, name)
 
     def _link_transfers(self, user_id, transactions):
         """

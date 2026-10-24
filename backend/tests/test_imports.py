@@ -171,27 +171,99 @@ class TestPreviewAccounts:
         for row in resp.json['rows']:
             assert (row['account_id'], row['account_name']) == (account.id, 'Test Checking')
 
-    def test_unmatched_account_names_are_listed(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Mystery Bank,\n')
-        row = resp.json['rows'][0]
-        assert (row['account_id'], row['account_name']) == (None, 'Mystery Bank')
-        assert resp.json['unmatched_account_names'] == ['Mystery Bank']
-
     def test_other_users_accounts_are_not_matched(self, client, auth_headers, account, other_users_account):
         resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Other Checking,\n')
         assert resp.json['rows'][0]['account_id'] is None
 
-    def test_fallback_account_is_used_without_an_account_column(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, 'date,vendor,category,amount\n2025-01-15,Grocer,Groceries,-5.00\n',
-                       account_id=str(account.id))
+
+# ── Preview: rows whose account isn't found ───────────────────────────────────
+
+NO_ACCOUNT_COLUMN = 'date,vendor,category,amount\n2025-01-15,Grocer,Groceries,-5.00\n'
+TOO_MANY_ACCOUNTS = ("This import would create 26 new accounts (the limit is 25). "
+                     "Check the file's account column, or choose another option.")
+
+
+class TestPreviewUnmatchedAccounts:
+    def test_creates_new_accounts_by_default(self, client, auth_headers, account):
+        resp = preview(client, auth_headers, HEADER
+                       + '2025-01-15,Grocer,Groceries,-5.00,Mystery Bank,\n'
+                       + '2025-01-16,Grocer,Groceries,-6.00, mystery bank ,\n'
+                       + '2025-01-17,Grocer,Groceries,-7.00,Test Checking,\n')
+        rows = resp.json['rows']
+        assert [(r['account_id'], r['account_name'], r['new_account']) for r in rows] == [
+            (None, 'Mystery Bank', True),
+            (None, 'Mystery Bank', True),         # same account, first spelling wins
+            (account.id, 'Test Checking', False),
+        ]
+        assert resp.json['summary']['new_accounts'] == ['Mystery Bank']
+        assert (resp.json['summary']['importable'], resp.json['summary']['unmatched']) == (3, 0)
+        assert resp.json['unmatched_account_names'] == ['Mystery Bank']
+
+    def test_no_account_column_creates_an_account_named_after_the_file(self, client, auth_headers):
+        resp = preview(client, auth_headers, NO_ACCOUNT_COLUMN, filename='chase_2025.csv')
+        row = resp.json['rows'][0]
+        assert (row['account_id'], row['account_name'], row['new_account']) == (None, 'chase_2025', True)
+
+    def test_blank_account_cell_uses_the_file_name_account(self, client, auth_headers):
+        resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,,\n',
+                       filename='chase_2025.csv')
+        assert resp.json['rows'][0]['account_name'] == 'chase_2025'
+
+    def test_file_name_account_created_by_an_earlier_import_is_reused(self, client, auth_headers, user):
+        existing = AccountModel(user_id=user.id, acct_id_str='chase_2025', acct_name='chase_2025')
+        _db.session.add(existing)
+        _db.session.commit()
+        resp = preview(client, auth_headers, NO_ACCOUNT_COLUMN, filename='chase_2025.csv')
+        row = resp.json['rows'][0]
+        assert (row['account_id'], row['new_account']) == (existing.id, False)
+
+    def test_long_account_names_are_cut_to_the_column_limit(self, client, auth_headers):
+        resp = preview(client, auth_headers, HEADER + f'2025-01-15,Grocer,Groceries,-5.00,{"A" * 120},\n')
+        assert resp.json['rows'][0]['account_name'] == 'A' * 100
+
+    def test_put_unmatched_rows_into_an_existing_account(self, client, auth_headers, account, savings):
+        resp = preview(client, auth_headers, HEADER
+                       + '2025-01-15,Grocer,Groceries,-5.00,Mystery Bank,\n'
+                       + '2025-01-16,Grocer,Groceries,-6.00,Test Checking,\n',
+                       unmatched='account', target_account_id=str(savings.id))
+        assert [(r['account_id'], r['new_account']) for r in resp.json['rows']] == [
+            (savings.id, False), (account.id, False),   # matched rows keep their own account
+        ]
+        assert resp.json['summary']['new_accounts'] == []
+
+    def test_put_rows_of_a_file_without_account_column_into_an_existing_account(self, client, auth_headers, account):
+        resp = preview(client, auth_headers, NO_ACCOUNT_COLUMN,
+                       unmatched='account', target_account_id=str(account.id))
         row = resp.json['rows'][0]
         assert (row['account_id'], row['account_name']) == (account.id, 'Test Checking')
 
-    def test_without_account_column_or_fallback_rows_are_unmatched(self, client, auth_headers, account):
-        resp = preview(client, auth_headers, 'date,vendor,category,amount\n2025-01-15,Grocer,Groceries,-5.00\n')
+    def test_skip_leaves_unmatched_rows_out(self, client, auth_headers, account):
+        resp = preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Mystery Bank,\n',
+                       unmatched='skip')
         row = resp.json['rows'][0]
-        assert (row['account_id'], row['account_name']) == (None, None)
-        assert resp.json['unmatched_account_names'] == []
+        assert (row['account_id'], row['account_name'], row['new_account']) == (None, 'Mystery Bank', False)
+        assert (resp.json['summary']['importable'], resp.json['summary']['unmatched']) == (0, 1)
+
+    @pytest.mark.parametrize('form, message', [
+        ({'unmatched': 'guess'},                              'Unknown option for unmatched accounts: guess'),
+        ({'unmatched': 'account'},                            'Choose one of your accounts for the unmatched rows'),
+        ({'unmatched': 'account', 'target_account_id': '0'},  'Choose one of your accounts for the unmatched rows'),
+    ])
+    def test_invalid_options_are_rejected(self, client, auth_headers, account, form, message):
+        resp = preview(client, auth_headers, NO_ACCOUNT_COLUMN, **form)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': message}
+
+    def test_another_users_account_cannot_be_the_target(self, client, auth_headers, account, other_users_account):
+        resp = preview(client, auth_headers, NO_ACCOUNT_COLUMN,
+                       unmatched='account', target_account_id=str(other_users_account.id))
+        assert resp.status_code == 400
+
+    def test_more_than_25_new_accounts_is_rejected(self, client, auth_headers):
+        rows = ''.join(f'2025-01-15,Grocer,Groceries,-5.00,Bank {i},\n' for i in range(26))
+        resp = preview(client, auth_headers, HEADER + rows)
+        assert resp.status_code == 400
+        assert resp.json['error'] == TOO_MANY_ACCOUNTS
 
 
 # ── Preview: row flags and summary ────────────────────────────────────────────
@@ -237,12 +309,14 @@ class TestPreviewFlags:
         resp = preview(client, auth_headers, HEADER
                        + '2025-01-16,Cafe,Dining,-4.50,Test Checking,\n'         # importable
                        + '2025-01-15,Grocer,Groceries,-42.10,Test Checking,\n'   # duplicate
-                       + '2025-01-16,Cafe,Dining,-4.50,Mystery Bank,\n'          # unmatched
+                       + '2025-01-16,Cafe,Dining,-4.50,Mystery Bank,\n'          # unmatched (skipped)
                        + '2025-01-16,Cafe,Dining,0,Test Checking,\n'             # zero amount
                        + '1/16/25,Cafe,Dining,-4.50,Test Checking,\n'            # invalid date
-                       + '2025-01-16,Cafe,Dining,abc,Test Checking,\n')          # invalid amount
+                       + '2025-01-16,Cafe,Dining,abc,Test Checking,\n',          # invalid amount
+                       unmatched='skip')
         assert resp.json['summary'] == {'total': 6, 'importable': 1, 'duplicates': 1, 'unmatched': 1,
-                                        'zero_amount': 1, 'invalid_date': 1, 'invalid_amount': 1}
+                                        'zero_amount': 1, 'invalid_date': 1, 'invalid_amount': 1,
+                                        'new_accounts': []}
 
     def test_preview_writes_nothing(self, client, auth_headers, account):
         preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Test Checking,\n')
@@ -307,7 +381,7 @@ class TestConfirm:
             confirm_row(account.id, date='2025-01-16', vendor='Employer', category='Income', amount=100.0),
         ])
         assert resp.status_code == 200
-        assert resp.json == {'success': True, 'imported': 2, 'skipped': 0, 'linked': 0,
+        assert resp.json == {'success': True, 'imported': 2, 'skipped': 0, 'linked': 0, 'created_accounts': [],
                              'message': 'Imported 2 transactions, skipped 0 duplicates/invalid'}
         saved = transactions_in(account.id)
         assert [(t.date, t.vendor, t.category, t.amount_cents, t.notes) for t in saved] == [
@@ -378,6 +452,58 @@ class TestConfirm:
         resp = client.post('/api/import/confirm', data='rows', content_type='text/plain', headers=auth_headers)
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': "'transactions' array required"}
+
+
+# ── Confirm: creating accounts ────────────────────────────────────────────────
+
+def new_account_row(name, **overrides):
+    """A preview row whose account doesn't exist yet and will be created on confirm."""
+    return confirm_row(None, account_name=name, new_account=True, **overrides)
+
+
+class TestConfirmNewAccounts:
+    def test_creates_the_account_flagged_and_imports_its_rows(self, client, auth_headers, user):
+        resp = confirm(client, auth_headers, [
+            new_account_row('Mystery Bank'),
+            new_account_row(' mystery bank ', vendor='Cafe', amount=-4.50),
+        ])
+        assert resp.status_code == 200
+        assert (resp.json['imported'], resp.json['skipped'], resp.json['created_accounts']) == (2, 0, ['Mystery Bank'])
+        assert resp.json['message'] == 'Imported 2 transactions, skipped 0 duplicates/invalid, created 1 new account'
+
+        [created] = AccountModel.query.filter_by(user_id=user.id).all()
+        assert (created.acct_name, created.acct_id_str, created.needs_attention) == ('Mystery Bank', 'Mystery Bank', True)
+        assert len(transactions_in(created.id)) == 2
+        assert created.balance_cents == -4660
+
+    def test_reuses_an_account_that_matches_by_now(self, client, auth_headers, account):
+        # e.g. the user created the account by hand between preview and confirm
+        resp = confirm(client, auth_headers, [new_account_row('test checking')])
+        assert (resp.json['imported'], resp.json['created_accounts']) == (1, [])
+        assert len(transactions_in(account.id)) == 1
+        assert _db.session.get(AccountModel, account.id).needs_attention is False
+
+    def test_no_account_is_created_when_none_of_its_rows_are_accepted(self, client, auth_headers, user):
+        resp = confirm(client, auth_headers, [new_account_row('Mystery Bank', date='not-a-date')])
+        assert (resp.json['imported'], resp.json['skipped'], resp.json['created_accounts']) == (0, 1, [])
+        assert AccountModel.query.filter_by(user_id=user.id).count() == 0
+
+    @pytest.mark.parametrize('name', ['', '   ', None, 123])
+    def test_rows_without_a_usable_account_name_are_skipped(self, client, auth_headers, user, name):
+        resp = confirm(client, auth_headers, [new_account_row(name)])
+        assert (resp.json['imported'], resp.json['skipped']) == (0, 1)
+        assert AccountModel.query.filter_by(user_id=user.id).count() == 0
+
+    def test_more_than_25_new_accounts_is_rejected_and_nothing_is_written(self, client, auth_headers, user):
+        resp = confirm(client, auth_headers, [new_account_row(f'Bank {i}') for i in range(26)])
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': TOO_MANY_ACCOUNTS}
+        assert AccountModel.query.filter_by(user_id=user.id).count() == 0
+        assert TransactionModel.query.count() == 0
+
+    def test_entries_that_are_not_objects_are_skipped(self, client, auth_headers, account):
+        resp = confirm(client, auth_headers, ['not a row', confirm_row(account.id)])
+        assert (resp.json['imported'], resp.json['skipped']) == (1, 1)
 
 
 # ── Confirm: transfer linking ─────────────────────────────────────────────────

@@ -24,8 +24,8 @@ import_service = ImportService()
 def preview_csv():
     """
     Parse the uploaded 'file' and return its rows without writing anything.
-    Optional form field 'account_id' assigns every row to that account when the
-    file has no 'account' column.
+    Optional form fields choose what happens to rows whose account isn't found:
+    'unmatched' = create (default) | account | skip, and 'target_account_id' for 'account'.
     """
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file provided'}), 400
@@ -38,7 +38,8 @@ def preview_csv():
         result = import_service.preview(
             get_jwt_identity(),
             file,
-            fallback_account_id=request.form.get('account_id', type=int),
+            unmatched=request.form.get('unmatched', 'create'),
+            target_account_id=request.form.get('target_account_id', type=int),
         )
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -52,11 +53,11 @@ def confirm_import():
     """
     Commit a list of approved rows to the database.
 
-    Expects JSON body: { "transactions": [ { account_id, date, vendor,
-                                             category, amount, notes, is_transfer }, ... ] }
+    Expects JSON body: { "transactions": [ { account_id, account_name, new_account, date,
+                                             vendor, category, amount, notes, is_transfer }, ... ] }
 
     Ownership and duplicate checks are re-run server-side — the client's
-    preview state is not trusted.
+    preview state is not trusted. Rows marked new_account create their account.
     """
     rows = json_body().get('transactions')
     if not isinstance(rows, list):
@@ -64,10 +65,14 @@ def confirm_import():
     if not rows:
         return jsonify({'success': False, 'error': 'No transactions provided'}), 400
 
-    result = import_service.confirm(get_jwt_identity(), rows)
+    try:
+        result = import_service.confirm(get_jwt_identity(), rows)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
-    return jsonify({
-        'success': True,
-        'message': f"Imported {result['imported']} transactions, skipped {result['skipped']} duplicates/invalid",
-        **result,
-    }), 200
+    message = f"Imported {result['imported']} transactions, skipped {result['skipped']} duplicates/invalid"
+    created = len(result['created_accounts'])
+    if created:
+        message += f", created {created} new account{'s' if created != 1 else ''}"
+
+    return jsonify({'success': True, 'message': message, **result}), 200
