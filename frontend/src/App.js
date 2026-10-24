@@ -218,12 +218,15 @@ function App() {
     }
   };
 
+  // Resolves to whether the save worked, so the edit form can stay open after an error
   const handleEditAccount = async (id, fields) => {
     try {
       await accountsAPI.updateAccount(id, fields);
       await loadAccounts();
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     }
   };
 

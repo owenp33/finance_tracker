@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { formatDollars } from '../utils/money';
 
 const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -27,6 +28,7 @@ function AccountsView({
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [editingAccountName, setEditingAccountName] = useState('');
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
+  const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
   const [pairingTxId, setPairingTxId] = useState(null);
   const [pairingToAccountId, setPairingToAccountId] = useState('');
   const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
@@ -122,8 +124,9 @@ function AccountsView({
                 {editingAccountId === a.id ? (
                   <div className="account-edit-form">
                     <div className="form-group">
-                      <label>Account ID</label>
+                      <label htmlFor={`account-${a.id}-id`}>Account ID</label>
                       <input
+                        id={`account-${a.id}-id`}
                         type="text"
                         value={editingAccountIdStr}
                         onChange={e => setEditingAccountIdStr(e.target.value)}
@@ -132,20 +135,42 @@ function AccountsView({
                       />
                     </div>
                     <div className="form-group">
-                      <label>Display Name</label>
+                      <label htmlFor={`account-${a.id}-name`}>Display Name</label>
                       <input
+                        id={`account-${a.id}-name`}
                         type="text"
                         value={editingAccountName}
                         onChange={e => setEditingAccountName(e.target.value)}
                         placeholder="e.g., Chase Checking"
                       />
                     </div>
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-opening`}>Starting balance</label>
+                      <input
+                        id={`account-${a.id}-opening`}
+                        type="number"
+                        step="0.01"
+                        value={editingOpeningBalance}
+                        onChange={e => setEditingOpeningBalance(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <small className="account-field-hint">
+                        What the account held before its earliest transaction here. Use a negative
+                        amount for money owed, like a credit card balance. If you later import older
+                        transactions, subtract their total from this.
+                      </small>
+                    </div>
                     <div className="account-edit-actions">
                       <button
                         className="btn btn-primary btn-sm"
+                        disabled={editingOpeningBalance.trim() === ''}
                         onClick={async () => {
-                          await onEditAccount(a.id, { account_id: editingAccountIdStr, account_name: editingAccountName });
-                          setEditingAccountId(null);
+                          const saved = await onEditAccount(a.id, {
+                            account_id: editingAccountIdStr,
+                            account_name: editingAccountName,
+                            opening_balance: Number(editingOpeningBalance),
+                          });
+                          if (saved) setEditingAccountId(null);
                         }}
                       >Save</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>Cancel</button>
@@ -174,15 +199,21 @@ function AccountsView({
                               {accountTransfers.length} transfer{accountTransfers.length !== 1 ? 's' : ''}
                             </span>
                           )}
+                          {a.opening_balance !== 0 && (
+                            <span className="account-opening-balance">
+                              Starting balance {formatDollars(a.opening_balance)}
+                            </span>
+                          )}
                         </small>
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
-                            Created by an import. Check its name and account ID, then edit it or click “Looks good”.
+                            Created by an import. Check its name, account ID, and starting balance, then
+                            edit it or click “Looks good”.
                           </small>
                         )}
                       </div>
                       <div className={`account-balance ${a.balance >= 0 ? 'green' : 'red'}`}>
-                        ${a.balance?.toFixed(2) ?? '0.00'}
+                        {formatDollars(a.balance)}
                       </div>
                       <div className="account-actions">
                         {a.needs_attention && (
@@ -198,6 +229,7 @@ function AccountsView({
                             setEditingAccountId(a.id);
                             setEditingAccountName(a.account_name);
                             setEditingAccountIdStr(a.account_id);
+                            setEditingOpeningBalance(String(a.opening_balance ?? 0));
                           }}
                         ><Pencil size={14} /></button>
                         <button

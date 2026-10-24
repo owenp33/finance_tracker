@@ -2527,6 +2527,18 @@ body {
   font-size: 0.95rem;
 }
 
+.account-field-hint {
+  display: block;
+  max-width: 440px;
+  margin-top: 4px;
+  color: #888;
+  font-size: 0.8rem;
+}
+
+.account-opening-balance {
+  margin-left: 6px;
+}
+
 .account-edit-actions {
   display: flex;
   gap: 8px;
