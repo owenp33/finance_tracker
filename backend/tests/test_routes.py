@@ -2,6 +2,8 @@
 HTTP integration tests — hit the actual Flask routes via test client.
 These verify the full request/response cycle including auth middleware.
 """
+from datetime import date
+
 import pytest
 
 
@@ -242,3 +244,37 @@ class TestRecurringRoutes:
         txns_resp = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers)
         vendors = [t['vendor'] for t in txns_resp.json['transactions']]
         assert 'Quizlet' in vendors
+
+    def _add(self, client, account, auth_headers, **fields):
+        body = {'start_date': '2099-01-31', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75,
+                'frequency': 1, 'frequency_unit': 'months', **fields}
+        return client.post(f'/api/accounts/{account.id}/recurring', json=body, headers=auth_headers)
+
+    def test_add_monthly_recurring(self, client, account, auth_headers):
+        resp = self._add(client, account, auth_headers)
+        assert resp.status_code == 201
+        assert (resp.json['recurring']['frequency'], resp.json['recurring']['frequency_unit']) == (1, 'months')
+
+    @pytest.mark.parametrize('fields, error', [
+        ({'frequency': 0}, 'Frequency must be a whole number of at least 1.'),
+        ({'frequency_unit': 'weeks'}, "Frequency unit must be 'days' or 'months'."),
+    ], ids=['zero-frequency', 'unknown-unit'])
+    def test_add_invalid_schedule_returns_400(self, client, account, auth_headers, fields, error):
+        resp = self._add(client, account, auth_headers, **fields)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
+    def test_add_skipping_past_occurrences(self, client, account, auth_headers, pin_today):
+        pin_today(date(2026, 10, 24))
+        resp = self._add(client, account, auth_headers, start_date='2025-01-31', skip_past=True)
+        assert resp.status_code == 201
+        assert (resp.json['recurring']['date'], resp.json['recurring']['next_date']) == ('2026-10-31', '2026-10-31')
+        txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
+        assert txns == []
+
+    def test_switch_a_template_to_monthly(self, client, account, auth_headers):
+        rec_id = self._add(client, account, auth_headers, frequency=30, frequency_unit='days').json['recurring']['id']
+        resp = client.patch(f'/api/recurring/{rec_id}', json={'frequency': 1, 'frequency_unit': 'months'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['recurring']['frequency_unit'] == 'months'

@@ -229,8 +229,10 @@ def add_recurring(account_id):
             amount=float(data['amount']),
             next_date=next_date,
             frequency=int(data['frequency']),
+            frequency_unit=data.get('frequency_unit', 'days'),
             number=int(data.get('number', -1)),
-            notes=data.get('notes', '')
+            notes=data.get('notes', ''),
+            skip_past=data.get('skip_past') is True,
         )
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400

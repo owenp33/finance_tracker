@@ -133,7 +133,8 @@ templates.
 - Transfers: `link_transfer`, `unlink_transfer` (clears the flag and the link on both sides),
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
-- Recurring: `add_recurring`, `update_recurring`, `delete_recurring`, `process_due_recurring`.
+- Recurring: `add_recurring`, `update_recurring`, `delete_recurring`, `process_due_recurring`
+  (see [Recurring transactions](#recurring-transactions)).
 - `recalculate_account_balance(account_id)` resets `balance_cents` to the starting balance plus
   the sum of the account's transactions.
 
@@ -174,7 +175,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
 | `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention` |
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `over_budget`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
-| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` (days), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
+| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
@@ -282,15 +283,27 @@ It is checked only against rows that existed before the import, so identical row
 ## Recurring transactions
 
 A template generates a transaction for each occurrence that is due: generation runs while
-`next_date <= today` and (`number == -1` or `idx <= number`), advancing `next_date` by `frequency`
-days and `idx` by one each time. `idx` starts at 1.
+`next_date <= today` and (`number == -1` or `idx <= number`), advancing `next_date` by one repeat
+and `idx` by one each time. `idx` starts at 1.
+
+**Schedules.** A template repeats every `frequency` days (`frequency_unit = 'days'`) or every
+`frequency` calendar months (`'months'`: monthly is 1, quarterly 3, yearly 12). A monthly template
+falls on `day_of_month`, or on the last day of a shorter month, without drifting: a template on
+the 31st runs Jan 31, Feb 28, Mar 31. `RecurringModel.shift()` does this date math, and `to_dict`
+reports `last_date` (the latest occurrence generated so far) so clients don't repeat it.
+`day_of_month` is set from the next date when a template is created or becomes monthly, and again
+when its next date moves to a different day; re-saving an unchanged next date keeps it. The
+frequency must be a whole number of at least 1.
 
 Generation runs when a template is created, on login, on every `GET /api/auth/me` (each page load),
 and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily at 00:05
 server local time.
 
-A template whose start date is in the past generates every missed occurrence at once. To track a
-bill that already has imported history, start the template at its next future date.
+**Past start dates.** A template whose next date is in the past generates every missed
+occurrence when it is created. With `skip_past`, it instead starts at its first occurrence on or
+after today (that becomes its `start_date` and `next_date`, with `idx` 1), keeping its rhythm and
+its day of the month, so a bill whose history was imported isn't generated again. An occurrence
+that falls on today is still generated.
 
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated
@@ -322,6 +335,11 @@ Details worth knowing:
   non-text, or over-100-character name or id string is a 400, and so is a starting balance that
   isn't a number or is beyond ±$10,000,000. Account responses include `balance` and
   `opening_balance`.
+- `POST /accounts/<id>/recurring` takes `start_date`, `vendor`, `category`, `amount`, `frequency`,
+  and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
+  `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
+  after today instead of generating past ones); it generates any occurrences already due.
+  `PATCH /recurring/<id>` takes any of those fields. An invalid schedule is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked
@@ -360,8 +378,9 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 
 - Tests run against in-memory SQLite with `TESTING=True`, which skips the migrations and the
   scheduler (`tests/conftest.py`). No database server is needed.
-- Fixtures: `app`, `client`, `user`, `account`, and `auth_headers` (a logged-in user's
-  `Authorization` header). After each test, `clean_tables` empties every table and resets the
+- Fixtures: `app`, `client`, `user`, `account`, `auth_headers` (a logged-in user's
+  `Authorization` header), and `pin_today` (call it with a date to fix `date.today()` inside
+  `AccountService`, so recurring tests don't depend on when they run). After each test, `clean_tables` empties every table and resets the
   session: SQLite reuses ids after a delete, and a stale cached object with a reused id breaks the
   next insert.
 - Every test file must pass on its own, and the suite must pass in reverse file order.

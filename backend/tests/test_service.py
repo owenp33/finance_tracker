@@ -219,6 +219,126 @@ class TestProcessDueRecurring:
         assert tx.amount == pytest.approx(-20.67)
 
 
+# ── Recurring schedules ───────────────────────────────────────────────────────
+
+def _schedule(account, start, frequency=1, unit='months', number=-1):
+    return svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
+                             number=number, frequency_unit=unit)
+
+
+def _generated_dates(rec):
+    from models.transaction import TransactionModel
+    return [t.date for t in TransactionModel.query.filter_by(recurring_id=rec.id).order_by(TransactionModel.date)]
+
+
+class TestRecurringSchedules:
+    def test_monthly_repeats_on_the_same_day(self, account):
+        rec = _schedule(account, date(2025, 1, 15), number=3)
+        svc.process_due_recurring(account.id)
+        assert _generated_dates(rec) == [date(2025, 1, 15), date(2025, 2, 15), date(2025, 3, 15)]
+
+    def test_short_months_use_their_last_day_without_drifting(self, account):
+        rec = _schedule(account, date(2025, 1, 31), number=4)
+        svc.process_due_recurring(account.id)
+        assert _generated_dates(rec) == [date(2025, 1, 31), date(2025, 2, 28), date(2025, 3, 31), date(2025, 4, 30)]
+
+    def test_yearly_from_a_leap_day(self, account):
+        rec = _schedule(account, date(2024, 2, 29), frequency=12, number=2)
+        svc.process_due_recurring(account.id)
+        assert _generated_dates(rec) == [date(2024, 2, 29), date(2025, 2, 28)]
+
+    def test_quarterly_crosses_years(self, account):
+        rec = _schedule(account, date(2024, 11, 30), frequency=3, number=3)
+        svc.process_due_recurring(account.id)
+        assert _generated_dates(rec) == [date(2024, 11, 30), date(2025, 2, 28), date(2025, 5, 30)]
+
+    def test_day_based_schedules_still_count_days(self, account):
+        rec = _schedule(account, date(2026, 7, 20), frequency=14, unit='days', number=3)
+        svc.process_due_recurring(account.id)
+        assert _generated_dates(rec) == [date(2026, 7, 20), date(2026, 8, 3), date(2026, 8, 17)]
+
+    def test_moving_the_next_date_re_anchors_a_monthly_template(self, account):
+        rec = _schedule(account, date(2099, 1, 31))
+        svc.update_recurring(rec.id, next_date=date(2099, 3, 15))
+        assert (rec.day_of_month, rec.advance_to_next) == (15, date(2099, 4, 15))
+
+    def test_re_saving_an_unchanged_next_date_keeps_the_anchor(self, account):
+        rec = _schedule(account, date(2025, 1, 31), number=1)
+        svc.process_due_recurring(account.id)   # next date is now Feb 28, clamped from the 31st
+        svc.update_recurring(rec.id, next_date=date(2025, 2, 28), amount=-80.0)
+        assert (rec.day_of_month, rec.advance_to_next) == (31, date(2025, 3, 31))
+
+    def test_switching_to_months_anchors_on_the_next_date(self, account):
+        rec = _schedule(account, date(2099, 1, 31), frequency=30, unit='days')
+        svc.update_recurring(rec.id, frequency=1, frequency_unit='months')
+        assert (rec.day_of_month, rec.advance_to_next) == (31, date(2099, 2, 28))
+
+    def test_switching_to_days_drops_the_anchor(self, account):
+        rec = _schedule(account, date(2099, 1, 31))
+        svc.update_recurring(rec.id, frequency=14, frequency_unit='days')
+        assert (rec.day_of_month, rec.advance_to_next) == (None, date(2099, 2, 14))
+
+    @pytest.mark.parametrize('frequency, unit, error', [
+        (0, 'days', 'Frequency must be a whole number of at least 1.'),
+        (-1, 'months', 'Frequency must be a whole number of at least 1.'),
+        (1.5, 'days', 'Frequency must be a whole number of at least 1.'),
+        (True, 'days', 'Frequency must be a whole number of at least 1.'),
+        (1, 'weeks', "Frequency unit must be 'days' or 'months'."),
+    ], ids=['zero', 'negative', 'fraction', 'bool', 'unknown-unit'])
+    def test_rejects_invalid_schedules(self, account, frequency, unit, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            _schedule(account, date(2099, 1, 1), frequency=frequency, unit=unit)
+        rec = _schedule(account, date(2099, 1, 1))
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_recurring(rec.id, frequency=frequency, frequency_unit=unit)
+
+    def test_to_dict_reports_the_unit_and_the_last_occurrence(self, account):
+        rec = _schedule(account, date(2025, 1, 31), number=2)
+        assert rec.to_dict()['last_date'] is None
+        svc.process_due_recurring(account.id)
+        d = rec.to_dict()
+        assert (d['frequency_unit'], d['last_date'], d['next_date']) == ('months', '2025-02-28', '2025-03-31')
+
+
+class TestSkipPastOccurrences:
+    def _add(self, account, start, frequency=1, unit='months', skip_past=True, number=-1):
+        rec = svc.add_recurring(account.id, start, 'ASPIRE', 'Loan', -75.0, start, frequency,
+                                number=number, frequency_unit=unit, skip_past=skip_past)
+        svc.process_due_recurring(account.id)
+        return rec
+
+    def test_starts_at_the_next_occurrence_without_generating_history(self, account, pin_today):
+        pin_today(date(2026, 10, 24))
+        rec = self._add(account, date(2025, 1, 31))
+        assert (rec.start_date, rec.next_date, rec.day_of_month, rec.idx) == (date(2026, 10, 31), date(2026, 10, 31), 31, 1)
+        assert _generated_dates(rec) == []
+
+    def test_keeps_the_monthly_day_when_the_next_occurrence_is_clamped(self, account, pin_today):
+        pin_today(date(2026, 11, 5))
+        rec = self._add(account, date(2025, 1, 31))
+        assert (rec.next_date, rec.advance_to_next) == (date(2026, 11, 30), date(2026, 12, 31))
+
+    def test_day_based_schedules_keep_their_rhythm(self, account, pin_today):
+        pin_today(date(2026, 10, 24))
+        rec = self._add(account, date(2026, 7, 20), frequency=14, unit='days')
+        assert rec.next_date == date(2026, 10, 26)
+
+    def test_an_occurrence_due_today_is_generated(self, account, pin_today):
+        pin_today(date(2026, 10, 24))
+        rec = self._add(account, date(2026, 10, 10), frequency=14, unit='days')
+        assert (_generated_dates(rec), rec.next_date) == ([date(2026, 10, 24)], date(2026, 11, 7))
+
+    def test_a_future_start_is_unchanged(self, account, pin_today):
+        pin_today(date(2026, 10, 24))
+        rec = self._add(account, date(2026, 11, 3))
+        assert (rec.start_date, rec.next_date) == (date(2026, 11, 3), date(2026, 11, 3))
+
+    def test_without_it_past_occurrences_are_generated(self, account, pin_today):
+        pin_today(date(2026, 10, 24))
+        rec = self._add(account, date(2026, 8, 3), skip_past=False)
+        assert (_generated_dates(rec), rec.next_date) == ([date(2026, 8, 3), date(2026, 9, 3), date(2026, 10, 3)], date(2026, 11, 3))
+
+
 # ── Delete recurring ──────────────────────────────────────────────────────────
 
 class TestDeleteRecurring:

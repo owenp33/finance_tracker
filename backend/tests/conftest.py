@@ -44,6 +44,19 @@ def clean_tables(app):
 
 
 @pytest.fixture
+def pin_today(monkeypatch):
+    """Call with a date to make date.today() return it inside AccountService (recurring generation)."""
+    def pin(day):
+        class PinnedDate(date):
+            @classmethod
+            def today(cls):
+                return day
+        monkeypatch.setattr('services.account_service.date', PinnedDate)
+        return day
+    return pin
+
+
+@pytest.fixture
 def user():
     u = User(username='testuser', email='test@example.com')
     u.set_password('testpass')

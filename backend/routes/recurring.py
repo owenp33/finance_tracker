@@ -41,6 +41,8 @@ def update_recurring(recurring_id):
         update_fields['next_date'] = datetime.fromisoformat(data['next_date']).date()
     if 'frequency' in data:
         update_fields['frequency'] = int(data['frequency'])
+    if 'frequency_unit' in data:
+        update_fields['frequency_unit'] = data['frequency_unit']
     if 'number' in data:
         update_fields['number'] = int(data['number'])
     if 'notes' in data:

@@ -25,6 +25,8 @@ def _run_migrations(db):
             'ALTER TABLE accounts ALTER COLUMN acct_name TYPE VARCHAR(100)',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT FALSE',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
+            "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
+            'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
         ]
         for sql in migrations:
             conn.execute(text(sql))
