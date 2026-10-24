@@ -1,7 +1,10 @@
 import { uploadFile, fetchAPI } from './client';
 
-export const previewImport = (file, accountId) => {
-  const extraFields = accountId ? { account_id: accountId } : {};
+// unmatched: what to do with rows whose account isn't found — 'create' | 'account' | 'skip'.
+// targetAccountId is the account those rows go into when unmatched is 'account'.
+export const previewImport = (file, { unmatched = 'create', targetAccountId = null } = {}) => {
+  const extraFields = { unmatched };
+  if (unmatched === 'account' && targetAccountId) extraFields.target_account_id = targetAccountId;
   return uploadFile('/api/import/preview', file, extraFields);
 };
 

@@ -2,17 +2,30 @@ import { useState } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import { previewImport, confirmImport } from '../api/imports';
 
-// A row can be imported only with a matched account and a readable, non-zero date and amount
+// A row can be imported with an account (existing, or created on import) and a readable,
+// non-zero date and amount
 const canSelect = (row) =>
-  row.account_id !== null && !row.zero_amount && !row.invalid_date && !row.invalid_amount;
+  (row.account_id !== null || row.new_account)
+  && !row.zero_amount && !row.invalid_date && !row.invalid_amount;
 
 // Pre-selected: importable rows that aren't already in the database
 const selectedByDefault = (row) => canSelect(row) && !row.duplicate;
 
+// Why a row can't be imported, or isn't pre-selected; shown when hovering its checkbox
+const rowIssue = (row) => {
+  if (row.invalid_date)   return 'Unreadable date';
+  if (row.invalid_amount) return 'Unreadable amount';
+  if (row.zero_amount)    return 'Zero amount';
+  if (row.account_id === null && !row.new_account) return 'No matching account';
+  if (row.duplicate)      return 'Already in your transactions';
+  return undefined;
+};
+
 function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const [step, setStep]               = useState('pick');
   const [file, setFile]               = useState(null);
-  const [fallbackId, setFallbackId]   = useState('');
+  const [unmatched, setUnmatched]     = useState('create');   // rows whose account isn't found
+  const [targetAccountId, setTargetAccountId] = useState('');
   const [rows, setRows]               = useState([]);
   const [summary, setSummary]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
@@ -35,7 +48,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
     if (!file) return;
     setLoading(true);
     try {
-      const data = await previewImport(file, fallbackId || null);
+      const data = await previewImport(file, { unmatched, targetAccountId: targetAccountId || null });
       setRows(data.rows);
       setSummary(data.summary);
       setSelected(new Set(
@@ -76,7 +89,8 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const reset = () => {
     setStep('pick');
     setFile(null);
-    setFallbackId('');
+    setUnmatched('create');
+    setTargetAccountId('');
     setRows([]);
     setSummary(null);
     setSelected(new Set());
@@ -106,7 +120,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
             <p>date, vendor, category, <em>expense/withdrawal</em>, <em>income/deposit</em>, account, notes/description</p>
             <p>date, vendor, category, <em>amount</em>, account, notes/description</p>
             <p className="csv-format-note">
-              The <em>account</em> column is matched to your existing accounts by name.
+              The <em>account</em> column is matched to your accounts by name or account ID.
             </p>
           </div>
 
@@ -117,19 +131,57 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
           </div>
 
           {file && (
-            <div className="form-group">
-              <label>
-                Fallback account <small>(only needed if your file has no account column)</small>
+            <fieldset className="form-group import-unmatched">
+              <legend>When an account isn't found</legend>
+              <label className="import-option">
+                <input
+                  type="radio"
+                  name="unmatched"
+                  checked={unmatched === 'create'}
+                  onChange={() => setUnmatched('create')}
+                />
+                Create accounts automatically
+                <small>(marked “Needs attention” in Accounts so you can review them)</small>
               </label>
-              <select value={fallbackId} onChange={e => setFallbackId(e.target.value)}>
-                <option value="">— file has an account column —</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-              </select>
-            </div>
+              {accounts.length > 0 && (
+                <div className="import-option">
+                  <label>
+                    <input
+                      type="radio"
+                      name="unmatched"
+                      checked={unmatched === 'account'}
+                      onChange={() => setUnmatched('account')}
+                    />
+                    Put those rows into
+                  </label>
+                  <select
+                    aria-label="Account for unmatched rows"
+                    value={targetAccountId}
+                    onChange={e => { setTargetAccountId(e.target.value); setUnmatched('account'); }}
+                  >
+                    <option value="">Choose an account…</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                  </select>
+                </div>
+              )}
+              <label className="import-option">
+                <input
+                  type="radio"
+                  name="unmatched"
+                  checked={unmatched === 'skip'}
+                  onChange={() => setUnmatched('skip')}
+                />
+                Skip those rows
+              </label>
+            </fieldset>
           )}
 
           <div className="form-actions">
-            <button className="btn btn-primary" onClick={handlePreview} disabled={!file || loading}>
+            <button
+              className="btn btn-primary"
+              onClick={handlePreview}
+              disabled={!file || loading || (unmatched === 'account' && !targetAccountId)}
+            >
               {loading ? 'Scanning…' : 'Preview'}
             </button>
           </div>
@@ -147,8 +199,20 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
               {summary.zero_amount > 0 && <span className="orange">{summary.zero_amount} zero-amount</span>}
               {summary.invalid_date > 0 && <span className="orange">{summary.invalid_date} invalid date{summary.invalid_date !== 1 ? 's' : ''}</span>}
               {summary.invalid_amount > 0 && <span className="orange">{summary.invalid_amount} invalid amount{summary.invalid_amount !== 1 ? 's' : ''}</span>}
+              {summary.new_accounts?.length > 0 && (
+                <span className="green">
+                  {summary.new_accounts.length} new account{summary.new_accounts.length !== 1 ? 's' : ''}
+                </span>
+              )}
               <span className="count-badge">{selected.size} selected</span>
             </div>
+          )}
+
+          {summary?.new_accounts?.length > 0 && (
+            <p className="csv-format-note">
+              New accounts will be created: {summary.new_accounts.join(', ')}. They're marked
+              “Needs attention” in Accounts so you can rename them.
+            </p>
           )}
 
           <div className="form-actions import-actions-top">
@@ -179,12 +243,12 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                     row.zero_amount  ? 'zero-amount' : '',
                     row.invalid_date ? 'invalid-date' : '',
                     row.invalid_amount ? 'invalid-amount' : '',
-                    row.account_id === null ? 'unmatched' : '',
+                    row.account_id === null && !row.new_account ? 'unmatched' : '',
                     !selected.has(i) ? 'deselected'  : '',
                   ].filter(Boolean).join(' ');
                   return (
                     <tr key={i} className={rowClass}>
-                      <td>
+                      <td title={rowIssue(row)}>
                         <input
                           type="checkbox"
                           checked={selected.has(i)}
@@ -208,7 +272,10 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                           {row.amount >= 0 ? '+' : '−'}${Math.abs(row.amount).toFixed(2)}
                         </td>
                       )}
-                      <td>{row.account_name ?? <span className="csv-warning">unmatched</span>}</td>
+                      <td>
+                        {row.account_name ?? <span className="csv-warning">unmatched</span>}
+                        {row.new_account && <span className="new-account-badge">new</span>}
+                      </td>
                       <td><small>{row.notes}</small></td>
                       <td>
                         <button
