@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Pencil, Trash2, Info } from 'lucide-react';
 import TransactionForm from '../TransactionForm';
 import TransactionList from '../TransactionList';
-import { sortList, dateStrToDate, formatDate, subtractDays, frequencyLabel } from './utils';
+import FrequencySelect from './FrequencySelect';
+import { sortList, dateStrToDate, formatDate, frequencyLabel } from './utils';
 
 function RecurringTab({
   transactions,
@@ -45,7 +46,7 @@ function RecurringTab({
     setEditingRecurringId(r.id);
     setRecurringEditFields({
       vendor: r.vendor, category: r.category, amount: r.amount,
-      frequency: r.frequency, next_date: r.next_date,
+      frequency: r.frequency, frequency_unit: r.frequency_unit, next_date: r.next_date,
       notes: r.notes || '', number: r.number ?? -1,
     });
   };
@@ -113,15 +114,13 @@ function RecurringTab({
                     <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label>Frequency</label>
-                    <select value={recurringEditFields.frequency} onChange={e => setRF('frequency', parseInt(e.target.value))}>
-                      <option value={7}>Weekly (7 days)</option>
-                      <option value={14}>Biweekly (14 days)</option>
-                      <option value={30}>Monthly (30 days)</option>
-                      <option value={60}>Every 2 months (60 days)</option>
-                      <option value={90}>Quarterly (90 days)</option>
-                      <option value={365}>Yearly (365 days)</option>
-                    </select>
+                    <label htmlFor={`recurring-${r.id}-frequency`}>Repeats</label>
+                    <FrequencySelect
+                      id={`recurring-${r.id}-frequency`}
+                      frequency={recurringEditFields.frequency}
+                      unit={recurringEditFields.frequency_unit}
+                      onChange={schedule => setRecurringEditFields(prev => ({ ...prev, ...schedule }))}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Next Date</label>
@@ -159,12 +158,11 @@ function RecurringTab({
                       <strong>{r.vendor}</strong>
                       {(() => {
                         const isFinished = r.number !== -1 && r.idx > r.number;
-                        const displayDate = isFinished ? subtractDays(r.next_date, r.frequency) : r.next_date;
-                        const displayYear = typeof displayDate === 'string' ? dateStrToDate(displayDate).getFullYear() : displayDate.getFullYear();
-                        const spansYears = dateStrToDate(r.date).getFullYear() !== displayYear;
+                        const displayDate = isFinished ? r.last_date : r.next_date;
+                        const spansYears = dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear();
                         return (
                           <span>
-                            {r.category} · {frequencyLabel(r.frequency)} · {isFinished ? 'Last' : 'Next'}: {formatDate(displayDate, spansYears)}
+                            {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {isFinished ? 'Last' : 'Next'}: {formatDate(displayDate, spansYears)}
                           </span>
                         );
                       })()}

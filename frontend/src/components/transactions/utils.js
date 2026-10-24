@@ -14,15 +14,27 @@ export const formatDate = (dateOrStr, includeYear = false) => {
   return dt.toLocaleDateString('en-US', opts);
 };
 
-export const subtractDays = (dateStr, days) => {
-  const dt = dateStrToDate(dateStr);
-  dt.setDate(dt.getDate() - days);
-  return dt;
+// The repeat schedules offered for recurring templates: every N days or N calendar months
+export const FREQUENCY_OPTIONS = [
+  { frequency: 7,  unit: 'days',   label: 'Weekly' },
+  { frequency: 14, unit: 'days',   label: 'Biweekly' },
+  { frequency: 1,  unit: 'months', label: 'Monthly' },
+  { frequency: 3,  unit: 'months', label: 'Quarterly' },
+  { frequency: 12, unit: 'months', label: 'Annually' },
+];
+
+// A schedule as one <select> value ("1:months") and back
+export const frequencyValue = (frequency, unit) => `${frequency}:${unit}`;
+export const parseFrequencyValue = (value) => {
+  const [frequency, unit] = value.split(':');
+  return { frequency: Number(frequency), frequency_unit: unit };
 };
 
-export const frequencyLabel = (days) => {
-  const map = { 7: 'Weekly', 14: 'Biweekly', 30: 'Monthly', 60: 'Every 2 months', 90: 'Quarterly', 365: 'Yearly' };
-  return map[days] || `Every ${days} days`;
+export const frequencyLabel = (frequency, unit) => {
+  const option = FREQUENCY_OPTIONS.find(o => o.frequency === frequency && o.unit === unit);
+  if (option) return option.label;
+  const noun = unit === 'months' ? 'month' : 'day';
+  return `Every ${frequency} ${noun}${frequency === 1 ? '' : 's'}`;
 };
 
 export function getMonthRange(yearMonth) {
