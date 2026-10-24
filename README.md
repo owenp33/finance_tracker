@@ -2,6 +2,8 @@
 
 A self-hosted personal finance dashboard for tracking spending across multiple bank accounts, managing monthly budgets, and importing transactions from CSV/Excel exports.
 
+For how the backend is organized (layers, conventions, invariants, the API, and how to add a feature), see [docs/backend.md](docs/backend.md).
+
 ---
 
 ## Features
