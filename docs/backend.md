@@ -112,9 +112,10 @@ HTTP request
 
 **`DbService`** (`db_service.py`): data access. CRUD and lookups for users, accounts,
 transactions, recurring templates, and budgets, plus two queries used by business logic:
-`transaction_exists` (the import duplicate check) and `find_transfer_peer` (an unlinked transfer
+`transaction_exists` (the import duplicate check), `find_transfer_peer` (an unlinked transfer
 with the opposite amount in another of the user's accounts, within ±5 days; the earliest such
-match wins). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
+match wins), and `find_recurring_candidates` (transactions in no recurring series with a given
+account, vendor and amount, within a window of days around a date, nearest first). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
@@ -136,8 +137,9 @@ match wins). It also holds `_reevaluate_category_flags` (see [Known limitations]
   the sum of the account's transactions.
 
 **`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
-`update_recurring`, `delete_recurring`) and generating their due occurrences
-(`process_due_recurring`); see [Recurring transactions](#recurring-transactions). Occurrences are
+`update_recurring`, `delete_recurring`), generating their due occurrences
+(`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
+`unlink_transaction`); see [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances and budget flags have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -308,6 +310,22 @@ occurrence when it is created. With `skip_past`, it instead starts at its first 
 after today (that becomes its `start_date` and `next_date`, with `idx` 1), keeping its rhythm and
 its day of the month, so a bill whose history was imported isn't generated again. An occurrence
 that falls on today is still generated.
+
+**Series membership.** A series is the set of transactions whose `recurring_id` points at the
+template, generated or linked; `recurring_index` numbers them 1, 2, ... by date, and `idx` is
+always one more than their count.
+- **Matching** (`match_candidates`): a transaction counts as an occurrence when it is in no
+  series, on the same account, with the same vendor (case and surrounding spaces ignored) and the
+  exact same amount, within ±`MATCH_WINDOW_DAYS` (3) of the occurrence date.
+- **Linking** (`link_transaction`) makes an existing transaction an occurrence without changing
+  its fields or the balance; a manual link doesn't have to match. The transaction must be on the
+  template's account, in no other series, and dated no later than the next occurrence plus the
+  window. Near the next occurrence (within the window, while the series is still running), it
+  fills it: `next_date` moves on. Older, it joins the history: a limited series' `number` grows
+  by one, so the occurrences still to come stay the same, and `start_date` moves back if needed.
+- **Unlinking** (`unlink_transaction`) keeps the transaction and shrinks the series the way
+  deleting a generated transaction does: later occurrences renumber, a limited `number` drops by
+  one, and `next_date` stays.
 
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated

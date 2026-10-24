@@ -1,10 +1,11 @@
 """
 recurring_service.py - Recurring Transaction Business Logic
 
-Templates (create, update, delete) and generating their due occurrences. Transactions are
-created through AccountService.add_transaction, so balances and budget flags stay in one place.
+Templates (create, update, delete), generating their due occurrences, and which existing
+transactions belong to a series. Transactions are created through AccountService.add_transaction,
+so balances and budget flags stay in one place.
 """
-from datetime import date
+from datetime import date, timedelta
 from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel, FREQUENCY_UNITS
@@ -14,6 +15,9 @@ from services.db_service import DbService
 db_service = DbService()
 account_service = AccountService()
 
+# A transaction up to this many days from an occurrence still counts as that occurrence
+MATCH_WINDOW_DAYS = 3
+
 
 def _check_schedule(frequency, unit):
     """Raise ValueError unless a recurring template repeats every whole number (≥ 1) of days or months."""
@@ -22,6 +26,16 @@ def _check_schedule(frequency, unit):
     # 0 would never advance the next date, so generation would loop forever
     if isinstance(frequency, bool) or not isinstance(frequency, int) or frequency < 1:
         raise ValueError('Frequency must be a whole number of at least 1.')
+
+
+def _renumber(rec):
+    """Number a series' transactions 1, 2, ... by date, and point idx at the next occurrence."""
+    db.session.flush()
+    db.session.expire(rec, ['generated_transactions'])   # reload: membership just changed
+    occurrences = sorted(rec.generated_transactions, key=lambda t: (t.date, t.id))
+    for index, transaction in enumerate(occurrences, start=1):
+        transaction.recurring_index = index
+    rec.idx = len(occurrences) + 1
 
 
 class RecurringService:
@@ -129,6 +143,74 @@ class RecurringService:
         db.session.delete(rec)
         db.session.commit()
         return True
+
+    # SERIES MEMBERSHIP =========================================================
+
+    def match_candidates(self, rec, occurrence_date):
+        """
+        Transactions in no series that could be rec's occurrence on occurrence_date: same account,
+        vendor and amount, within ±MATCH_WINDOW_DAYS. Nearest first.
+        """
+        return db_service.find_recurring_candidates(
+            rec.account_id, rec.vendor, rec.amount_cents, occurrence_date, MATCH_WINDOW_DAYS
+        )
+
+    def link_transaction(self, recurring_id, transaction_id):
+        """
+        Make an existing transaction an occurrence of a series, leaving its fields and the balance
+        alone (a manual link needn't match). It must be on the series' account, in no other
+        series, and dated no later than the next occurrence plus the match window. Near the next
+        occurrence, it fills it and the next date moves on; older, it joins the history (a limited
+        series' total grows by one so its remaining occurrences stay the same, and the start date
+        moves back if needed). Occurrence numbers follow date order. Raises ValueError otherwise.
+        """
+        rec = db_service.get_recurring(recurring_id)
+        if not rec:
+            raise ValueError('Recurring transaction not found.')
+        tx = db_service.get_transaction(transaction_id)
+        if not tx:
+            raise ValueError('Transaction not found.')
+        if tx.account_id != rec.account_id:
+            raise ValueError('A transaction can only join a recurring series on its own account.')
+        if tx.recurring_id is not None:
+            raise ValueError('That transaction is already part of a recurring series.')
+        window = timedelta(days=MATCH_WINDOW_DAYS)
+        if tx.date > rec.next_date + window:
+            next_label = f'{rec.next_date:%b} {rec.next_date.day}, {rec.next_date.year}'
+            raise ValueError(f"That transaction is dated after the series' next occurrence ({next_label}).")
+
+        is_active = rec.number == -1 or rec.idx <= rec.number
+        if is_active and tx.date >= rec.next_date - window:
+            rec.next_date = rec.advance_to_next
+        elif rec.number != -1:
+            rec.number += 1
+        rec.start_date = min(rec.start_date, tx.date)
+
+        tx.recurring_id = rec.id
+        _renumber(rec)
+        db.session.commit()
+        return rec
+
+    def unlink_transaction(self, transaction_id):
+        """
+        Take a transaction out of its series, keeping the transaction. Like deleting a generated
+        transaction, this shrinks the series: later occurrences renumber and a limited series'
+        total drops by one. Raises ValueError when it isn't in a series.
+        """
+        tx = db_service.get_transaction(transaction_id)
+        if not tx:
+            raise ValueError('Transaction not found.')
+        if tx.recurring_id is None:
+            raise ValueError("That transaction isn't part of a recurring series.")
+
+        rec = db_service.get_recurring(tx.recurring_id)
+        tx.recurring_id = None
+        tx.recurring_index = None
+        if rec.number > 0:
+            rec.number -= 1
+        _renumber(rec)
+        db.session.commit()
+        return rec
 
     # GENERATION ================================================================
 

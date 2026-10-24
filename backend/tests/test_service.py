@@ -7,6 +7,7 @@ import pytest
 from datetime import date, timedelta
 from flask_jwt_extended import decode_token
 from extensions import db as _db
+from models.account import AccountModel
 from services.account_service import AccountService
 from services.recurring_service import RecurringService
 from services.auth_service import AuthService, RegistrationConflict
@@ -339,6 +340,111 @@ class TestSkipPastOccurrences:
         pin_today(date(2026, 10, 24))
         rec = self._add(account, date(2026, 8, 3), skip_past=False)
         assert (_generated_dates(rec), rec.next_date) == ([date(2026, 8, 3), date(2026, 9, 3), date(2026, 10, 3)], date(2026, 11, 3))
+
+
+class TestSeriesMembership:
+    """Matching existing transactions to a series, linking them in, and taking them out."""
+
+    def _series(self, account, pin_today, number=-1):
+        """A monthly -$20 Anthropic series that has generated Mar 2, Apr 2 and May 2 (next: Jun 2)."""
+        pin_today(date(2026, 5, 10))
+        rec = recurring_svc.add_recurring(account.id, date(2026, 3, 2), 'Anthropic', 'Subscriptions', -20.0,
+                                          date(2026, 3, 2), 1, number=number, frequency_unit='months')
+        recurring_svc.process_due_recurring(account.id)
+        return rec
+
+    def _charge(self, account, day, vendor='Anthropic', amount=-20.0):
+        return svc.add_transaction(account.id, day, vendor, 'Subscriptions', amount)
+
+    def _occurrences(self, rec):
+        from models.transaction import TransactionModel
+        rows = TransactionModel.query.filter_by(recurring_id=rec.id).order_by(TransactionModel.recurring_index)
+        return [(t.recurring_index, t.date) for t in rows]
+
+    def _other_account(self, account):
+        other = AccountModel(user_id=account.user_id, acct_id_str='card-1', acct_name='Card')
+        _db.session.add(other)
+        _db.session.commit()
+        return other
+
+    def test_candidates_share_account_vendor_and_amount_within_three_days_nearest_first(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        one_day = self._charge(account, date(2026, 6, 3), vendor=' anthropic ')
+        two_days = self._charge(account, date(2026, 5, 31))
+        self._charge(account, date(2026, 6, 6))                      # 4 days away
+        self._charge(account, date(2026, 6, 2), amount=-25.0)        # another amount
+        self._charge(account, date(2026, 6, 2), vendor='Netflix')    # another vendor
+        svc.add_transaction(self._other_account(account).id, date(2026, 6, 2), 'Anthropic', 'Subscriptions', -20.0)
+        assert recurring_svc.match_candidates(rec, date(2026, 6, 2)) == [one_day, two_days]
+
+    def test_candidates_leave_out_transactions_already_in_a_series(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        assert recurring_svc.match_candidates(rec, date(2026, 5, 2)) == []
+
+    def test_linking_an_older_transaction_extends_the_history(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        recurring_svc.link_transaction(rec.id, self._charge(account, date(2026, 2, 3)).id)
+        assert self._occurrences(rec) == [(1, date(2026, 2, 3)), (2, date(2026, 3, 2)), (3, date(2026, 4, 2)), (4, date(2026, 5, 2))]
+        assert (rec.start_date, rec.next_date, rec.idx, rec.number) == (date(2026, 2, 3), date(2026, 6, 2), 5, -1)
+
+    def test_a_limited_series_keeps_its_remaining_occurrences(self, account, pin_today):
+        rec = self._series(account, pin_today, number=5)    # 3 generated, 2 to go
+        recurring_svc.link_transaction(rec.id, self._charge(account, date(2026, 2, 3)).id)
+        assert (rec.idx, rec.number) == (5, 6)              # still 2 to go
+
+    @pytest.mark.parametrize('day', [date(2026, 5, 30), date(2026, 6, 5)], ids=['3-days-early', '3-days-late'])
+    def test_a_transaction_near_the_next_occurrence_fills_it(self, account, pin_today, day):
+        rec = self._series(account, pin_today, number=5)
+        recurring_svc.link_transaction(rec.id, self._charge(account, day).id)
+        assert (rec.next_date, rec.idx, rec.number) == (date(2026, 7, 2), 5, 5)   # 1 to go
+        assert self._occurrences(rec)[-1] == (4, day)
+
+    def test_linking_leaves_the_transaction_and_balance_alone(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        older = self._charge(account, date(2026, 2, 3), amount=-19.0)   # a manual link needn't match
+        balance = db_svc.get_account(account.id).balance
+        recurring_svc.link_transaction(rec.id, older.id)
+        assert (older.amount, older.vendor) == (-19.0, 'Anthropic')
+        assert db_svc.get_account(account.id).balance == balance
+
+    def test_rejects_a_transaction_on_another_account(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        elsewhere = svc.add_transaction(self._other_account(account).id, date(2026, 2, 3), 'Anthropic', 'Subscriptions', -20.0)
+        with pytest.raises(ValueError, match='^A transaction can only join a recurring series on its own account.$'):
+            recurring_svc.link_transaction(rec.id, elsewhere.id)
+
+    def test_rejects_a_transaction_already_in_a_series(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        from models.transaction import TransactionModel
+        generated = TransactionModel.query.filter_by(recurring_id=rec.id).first()
+        with pytest.raises(ValueError, match='^That transaction is already part of a recurring series.$'):
+            recurring_svc.link_transaction(rec.id, generated.id)
+
+    def test_rejects_a_transaction_after_the_next_occurrence(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        with pytest.raises(ValueError, match=r"^That transaction is dated after the series' next occurrence \(Jun 2, 2026\)\.$"):
+            recurring_svc.link_transaction(rec.id, self._charge(account, date(2026, 6, 6)).id)
+
+    def test_missing_records_are_reported(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        with pytest.raises(ValueError, match='^Transaction not found.$'):
+            recurring_svc.link_transaction(rec.id, 999999)
+        with pytest.raises(ValueError, match='^Recurring transaction not found.$'):
+            recurring_svc.link_transaction(999999, self._charge(account, date(2026, 2, 3)).id)
+
+    def test_unlinking_keeps_the_transaction_and_shrinks_the_series(self, account, pin_today):
+        rec = self._series(account, pin_today, number=5)
+        from models.transaction import TransactionModel
+        april = TransactionModel.query.filter_by(recurring_id=rec.id, recurring_index=2).one()
+        recurring_svc.unlink_transaction(april.id)
+        assert (april.recurring_id, april.recurring_index) == (None, None)
+        assert self._occurrences(rec) == [(1, date(2026, 3, 2)), (2, date(2026, 5, 2))]
+        assert (rec.idx, rec.number, rec.next_date) == (3, 4, date(2026, 6, 2))
+
+    def test_unlinking_a_transaction_outside_any_series_is_rejected(self, account):
+        loose = svc.add_transaction(account.id, date(2026, 2, 3), 'Anthropic', 'Subscriptions', -20.0)
+        with pytest.raises(ValueError, match="^That transaction isn't part of a recurring series.$"):
+            recurring_svc.unlink_transaction(loose.id)
 
 
 # ── Delete recurring ──────────────────────────────────────────────────────────
