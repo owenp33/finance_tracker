@@ -47,23 +47,36 @@ test('creating accounts automatically is the default, and those rows are pre-sel
   expect(within(row).getByRole('checkbox')).toBeChecked();
 });
 
-test('unmatched rows can go into an existing account instead', async () => {
+const unmatchedDropdown = () => screen.getByRole('combobox', { name: "When an account isn't found" });
+const optionLabels = () => within(unmatchedDropdown()).getAllByRole('option').map(o => o.textContent);
+
+test('the unmatched-accounts dropdown lists creating, each account, and skipping', async () => {
+  await chooseFile([{ id: 1, account_name: 'Checking' }, { id: 2, account_name: 'Savings' }]);
+  expect(optionLabels()).toEqual([
+    'Create accounts automatically', 'Put rows into Checking', 'Put rows into Savings', 'Skip those rows',
+  ]);
+  expect(unmatchedDropdown()).toHaveDisplayValue('Create accounts automatically');
+});
+
+test('choosing an account sends its rows there', async () => {
   previewImport.mockResolvedValue({ rows: [], summary: summary() });
   await chooseFile();
-
-  await userEvent.click(screen.getByRole('radio', { name: 'Put those rows into' }));
-  expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled();   // until an account is chosen
-
-  await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Account for unmatched rows' }), '1');
+  await userEvent.selectOptions(unmatchedDropdown(), 'Put rows into Checking');
   await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
   expect(previewImport).toHaveBeenCalledWith(expect.any(File), { unmatched: 'account', targetAccountId: '1' });
 });
 
+test('choosing to skip sends no account', async () => {
+  previewImport.mockResolvedValue({ rows: [], summary: summary() });
+  await chooseFile();
+  await userEvent.selectOptions(unmatchedDropdown(), 'Skip those rows');
+  await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(previewImport).toHaveBeenCalledWith(expect.any(File), { unmatched: 'skip', targetAccountId: null });
+});
+
 test('without any accounts, only creating or skipping is offered', async () => {
   await chooseFile([]);
-  expect(screen.getByRole('radio', { name: /Create accounts automatically/ })).toBeChecked();
-  expect(screen.getByRole('radio', { name: 'Skip those rows' })).toBeInTheDocument();
-  expect(screen.queryByRole('radio', { name: 'Put those rows into' })).not.toBeInTheDocument();
+  expect(optionLabels()).toEqual(['Create accounts automatically', 'Skip those rows']);
 });
 
 test('hovering a row that is not selected explains why', async () => {

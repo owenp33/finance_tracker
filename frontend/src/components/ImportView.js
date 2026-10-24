@@ -21,11 +21,16 @@ const rowIssue = (row) => {
   return undefined;
 };
 
+// The "When an account isn't found" dropdown value: 'create', 'skip', or 'account:<id>'
+const parseUnmatchedChoice = (choice) =>
+  choice.startsWith('account:')
+    ? { unmatched: 'account', targetAccountId: choice.slice('account:'.length) }
+    : { unmatched: choice, targetAccountId: null };
+
 function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const [step, setStep]               = useState('pick');
   const [file, setFile]               = useState(null);
-  const [unmatched, setUnmatched]     = useState('create');   // rows whose account isn't found
-  const [targetAccountId, setTargetAccountId] = useState('');
+  const [unmatchedChoice, setUnmatchedChoice] = useState('create');
   const [rows, setRows]               = useState([]);
   const [summary, setSummary]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
@@ -48,7 +53,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
     if (!file) return;
     setLoading(true);
     try {
-      const data = await previewImport(file, { unmatched, targetAccountId: targetAccountId || null });
+      const data = await previewImport(file, parseUnmatchedChoice(unmatchedChoice));
       setRows(data.rows);
       setSummary(data.summary);
       setSelected(new Set(
@@ -89,8 +94,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const reset = () => {
     setStep('pick');
     setFile(null);
-    setUnmatched('create');
-    setTargetAccountId('');
+    setUnmatchedChoice('create');
     setRows([]);
     setSummary(null);
     setSelected(new Set());
@@ -131,57 +135,29 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
           </div>
 
           {file && (
-            <fieldset className="form-group import-unmatched">
-              <legend>When an account isn't found</legend>
-              <label className="import-option">
-                <input
-                  type="radio"
-                  name="unmatched"
-                  checked={unmatched === 'create'}
-                  onChange={() => setUnmatched('create')}
-                />
-                Create accounts automatically
-                <small>(marked “Needs attention” in Accounts so you can review them)</small>
-              </label>
-              {accounts.length > 0 && (
-                <div className="import-option">
-                  <label>
-                    <input
-                      type="radio"
-                      name="unmatched"
-                      checked={unmatched === 'account'}
-                      onChange={() => setUnmatched('account')}
-                    />
-                    Put those rows into
-                  </label>
-                  <select
-                    aria-label="Account for unmatched rows"
-                    value={targetAccountId}
-                    onChange={e => { setTargetAccountId(e.target.value); setUnmatched('account'); }}
-                  >
-                    <option value="">Choose an account…</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                  </select>
-                </div>
+            <div className="form-group">
+              <label htmlFor="import-unmatched">When an account isn't found</label>
+              <select
+                id="import-unmatched"
+                value={unmatchedChoice}
+                onChange={e => setUnmatchedChoice(e.target.value)}
+              >
+                <option value="create">Create accounts automatically</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={`account:${a.id}`}>{`Put rows into ${a.account_name}`}</option>
+                ))}
+                <option value="skip">Skip those rows</option>
+              </select>
+              {unmatchedChoice === 'create' && (
+                <p className="csv-format-note">
+                  New accounts are marked “Needs attention” in Accounts so you can review them.
+                </p>
               )}
-              <label className="import-option">
-                <input
-                  type="radio"
-                  name="unmatched"
-                  checked={unmatched === 'skip'}
-                  onChange={() => setUnmatched('skip')}
-                />
-                Skip those rows
-              </label>
-            </fieldset>
+            </div>
           )}
 
           <div className="form-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handlePreview}
-              disabled={!file || loading || (unmatched === 'account' && !targetAccountId)}
-            >
+            <button className="btn btn-primary" onClick={handlePreview} disabled={!file || loading}>
               {loading ? 'Scanning…' : 'Preview'}
             </button>
           </div>
