@@ -113,6 +113,21 @@ class TestAccountRoutes:
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': 'needs_attention can only be set to false'}
 
+    def test_rename_returns_the_trimmed_name(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'account_name': ' Joint Checking '},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['account']['account_name'] == 'Joint Checking'
+
+    @pytest.mark.parametrize('body, error', [
+        ({'account_name': 'x' * 101}, 'Display name must be at most 100 characters.'),
+        ({'account_id': '  '}, "Account ID can't be empty."),
+    ], ids=['long-name', 'blank-id'])
+    def test_invalid_name_or_id_returns_400(self, client, auth_headers, account, body, error):
+        resp = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
 
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 

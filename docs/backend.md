@@ -119,8 +119,10 @@ match wins). It also holds `_reevaluate_category_flags` (see [Known limitations]
 **`AccountService`** (`account_service.py`): accounts, transactions, transfers, and recurring
 templates.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
-  and `needs_attention`, which may only be set to `false` (anything else raises `ValueError`).
-  Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
+  and `needs_attention`, which may only be set to `false`. Names and id strings are trimmed and
+  must be non-empty text within the column length (100). Invalid input raises `ValueError` before
+  anything changes; the messages name the fields as the edit form shows them ("Display name",
+  "Account ID"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
 - `delete_account` unlinks the account's transfers, then deletes it; its transactions and
   recurring templates cascade.
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance and the
@@ -306,7 +308,8 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 
 Details worth knowing:
 - `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, and `needs_attention: false`
-  ("Looks good"). Any of them clears `needs_attention`.
+  ("Looks good"). Any of them clears `needs_attention`. A blank, non-text, or over-100-character
+  name or id string is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked
@@ -390,8 +393,9 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 
 - **Input validation is incomplete.** Older routes still read bodies with `request.get_json()` and
   index fields directly, so a missing field or malformed date there is a generic 500 instead of a
-  400. `AccountService.update_transaction` returns raw exception text as its 400 message. An
-  account name or id string over 100 characters reaches Postgres and fails with a 500.
+  400. `AccountService.update_transaction` returns raw exception text as its 400 message.
+  `POST /api/accounts` doesn't validate its fields yet (editing does), so a name or id string over
+  100 characters reaches Postgres there and fails with a 500.
 - **Auth failures use a different error shape.** Flask-JWT-Extended answers a missing, invalid, or
   expired token with `{'msg': ...}` rather than `{'success': False, 'error': ...}`.
 - **Over-budget flags can go stale.** `update_transaction` re-evaluates only when

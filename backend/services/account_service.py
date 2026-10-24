@@ -6,11 +6,27 @@ Depends on db_service.py for raw data access.
 """
 from datetime import date
 from extensions import db
+from models.account import AccountModel
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
 from services.db_service import DbService
 
 db_service = DbService()
+
+
+def _account_label(value, column, shown_as):
+    """
+    The trimmed value for an account's name or id string column. Raises ValueError, naming
+    the field as the edit form shows it, when the value isn't text, is blank, or is too long.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f'{shown_as} must be text.')
+    label = value.strip()
+    if not label:
+        raise ValueError(f"{shown_as} can't be empty.")
+    if len(label) > column.type.length:
+        raise ValueError(f'{shown_as} must be at most {column.type.length} characters.')
+    return label
 
 
 class AccountService:
@@ -21,19 +37,25 @@ class AccountService:
         """
         Apply field updates to an account. Editing the name or id string, or sending
         needs_attention=False ("Looks good"), marks an import-created account as reviewed.
-        Returns (updated_account, error_message); raises ValueError for invalid input.
+        Names and id strings are trimmed. Returns (updated_account, error_message); raises
+        ValueError for invalid input, before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
             return None, 'Account not found'
 
+        # Validate every field before changing any
         if 'needs_attention' in data and data['needs_attention'] is not False:
             raise ValueError('needs_attention can only be set to false')
-
+        name = account.acct_name
         if 'account_name' in data:
-            account.acct_name = data['account_name']
+            name = _account_label(data['account_name'], AccountModel.acct_name, 'Display name')
+        id_str = account.acct_id_str
         if 'account_id' in data:
-            account.acct_id_str = data['account_id']
+            id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
+
+        account.acct_name   = name
+        account.acct_id_str = id_str
         if {'needs_attention', 'account_name', 'account_id'} & data.keys():
             account.needs_attention = False
 

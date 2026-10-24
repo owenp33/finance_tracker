@@ -42,6 +42,36 @@ class TestAccountReview:
         assert AccountModel.acct_name.type.length >= 100
 
 
+class TestAccountEditValidation:
+    def test_names_and_id_strings_are_trimmed(self, account):
+        updated, _ = svc.update_account(account.id, {'account_name': '  Amex Gold ', 'account_id': ' amex-1001  '})
+        assert (updated.acct_name, updated.acct_id_str) == ('Amex Gold', 'amex-1001')
+
+    def test_accepts_the_full_column_length(self, account):
+        updated, _ = svc.update_account(account.id, {'account_name': 'n' * 100, 'account_id': 'i' * 100})
+        assert (len(updated.acct_name), len(updated.acct_id_str)) == (100, 100)
+
+    @pytest.mark.parametrize('field, shown_as', [('account_name', 'Display name'), ('account_id', 'Account ID')])
+    @pytest.mark.parametrize('value, problem', [
+        ('', "can't be empty."),
+        ('   ', "can't be empty."),
+        ('x' * 101, 'must be at most 100 characters.'),
+        (None, 'must be text.'),
+        (1234, 'must be text.'),
+    ], ids=['empty', 'blank', 'too-long', 'null', 'number'])
+    def test_rejects_invalid_values(self, account, field, shown_as, value, problem):
+        with pytest.raises(ValueError, match=f'^{shown_as} {problem}$'):
+            svc.update_account(account.id, {field: value})
+
+    def test_a_rejected_edit_changes_nothing(self, account):
+        account.needs_attention = True
+        _db.session.commit()
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'account_name': 'Valid name', 'account_id': ''})
+        assert account.acct_name == 'Test Checking'
+        assert account.needs_attention is True
+
+
 # ── Transaction CRUD ──────────────────────────────────────────────────────────
 
 class TestAddTransaction:
