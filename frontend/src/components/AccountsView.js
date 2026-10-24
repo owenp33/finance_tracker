@@ -163,7 +163,10 @@ function AccountsView({
                         {expandedAccountIds.has(a.id) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
                       <div className="account-info">
-                        <strong>{a.account_name}</strong>
+                        <strong>
+                          {a.account_name}
+                          {a.needs_attention && <span className="needs-attention-badge">Needs attention</span>}
+                        </strong>
                         <small>
                           {a.account_id}
                           {accountTransfers.length > 0 && (
@@ -172,11 +175,22 @@ function AccountsView({
                             </span>
                           )}
                         </small>
+                        {a.needs_attention && (
+                          <small className="needs-attention-hint">
+                            Created by an import. Check its name and account ID, then edit it or click “Looks good”.
+                          </small>
+                        )}
                       </div>
                       <div className={`account-balance ${a.balance >= 0 ? 'green' : 'red'}`}>
                         ${a.balance?.toFixed(2) ?? '0.00'}
                       </div>
                       <div className="account-actions">
+                        {a.needs_attention && (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => onEditAccount(a.id, { needs_attention: false })}
+                          >Looks good</button>
+                        )}
                         <button
                           className="btn btn-ghost btn-sm icon-btn"
                           title="Edit"

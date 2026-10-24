@@ -1751,6 +1751,24 @@ body {
   color: #e03131;
 }
 
+/* Accounts created by an import that haven't been reviewed yet */
+.attention-badge,
+.needs-attention-badge {
+  background: #fff4e6;
+  color: #e67700;
+}
+
+.needs-attention-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.account-info .needs-attention-hint { color: #e67700; }
+
 /* === Orange utility ======================================== */
 .orange { color: #e67700; }
 

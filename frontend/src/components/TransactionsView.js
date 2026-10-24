@@ -28,14 +28,19 @@ function TransactionsView({
 }) {
   const [tab, setTab] = useState('all');
 
-  const flaggedCount = transactions.filter(t => t.over_budget).length;
+  const flaggedCount        = transactions.filter(t => t.over_budget).length;
+  const needsAttentionCount = accounts.filter(a => a.needs_attention).length;
 
   return (
     <div className="transactions-view">
       <div className="tab-bar">
         <button className={`tab-btn${tab === 'all'       ? ' active' : ''}`} onClick={() => setTab('all')}>All</button>
         <button className={`tab-btn${tab === 'recurring' ? ' active' : ''}`} onClick={() => setTab('recurring')}>Recurring</button>
-        <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>Accounts</button>
+        <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>
+          Accounts {needsAttentionCount > 0 && (
+            <span className="count-badge attention-badge" title="Accounts that need attention">{needsAttentionCount}</span>
+          )}
+        </button>
         <button className={`tab-btn${tab === 'import'    ? ' active' : ''}`} onClick={() => setTab('import')}>Import</button>
         <button className={`tab-btn${tab === 'flagged'   ? ' active' : ''}`} onClick={() => setTab('flagged')}>
           Flagged {flaggedCount > 0 && <span className="count-badge flagged-badge">{flaggedCount}</span>}
