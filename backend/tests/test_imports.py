@@ -394,6 +394,11 @@ class TestConfirm:
                                        confirm_row(account.id, vendor='Employer', amount=100.0)])
         assert _db.session.get(AccountModel, account.id).balance_cents == 5790
 
+    def test_the_balance_keeps_the_starting_balance(self, client, auth_headers, account):
+        account_svc.update_account(account.id, {'opening_balance': 1000})
+        confirm(client, auth_headers, [confirm_row(account.id, amount=-42.10)])
+        assert _db.session.get(AccountModel, account.id).balance_cents == 100000 - 4210
+
     def test_skips_rows_for_accounts_the_user_does_not_own(self, client, auth_headers, account,
                                                            other_users_account):
         resp = confirm(client, auth_headers, [confirm_row(other_users_account.id)])

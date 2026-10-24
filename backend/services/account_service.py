@@ -4,6 +4,8 @@ account_service.py - Account & Transaction Business Logic
 Orchestrates business rules around accounts, transactions, and recurring items.
 Depends on db_service.py for raw data access.
 """
+import math
+import numbers
 from datetime import date
 from extensions import db
 from models.account import AccountModel
@@ -29,16 +31,30 @@ def _account_label(value, column, shown_as):
     return label
 
 
+# Dollars. Keeps balance_cents (a 32-bit INTEGER in Postgres) far from overflowing.
+MAX_OPENING_BALANCE = 10_000_000
+
+
+def _opening_balance(value):
+    """The starting balance in dollars. Raises ValueError unless it's a finite number within ±MAX_OPENING_BALANCE."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError('Starting balance must be a number.')
+    if abs(value) > MAX_OPENING_BALANCE:
+        raise ValueError(f'Starting balance must be between -${MAX_OPENING_BALANCE:,} and ${MAX_OPENING_BALANCE:,}.')
+    return value
+
+
 class AccountService:
 
     # ACCOUNT OPERATIONS ========================================================
 
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account. Editing the name or id string, or sending
-        needs_attention=False ("Looks good"), marks an import-created account as reviewed.
-        Names and id strings are trimmed. Returns (updated_account, error_message); raises
-        ValueError for invalid input, before changing anything.
+        Apply field updates to an account. Editing the name, id string, or starting balance
+        (opening_balance, in dollars), or sending needs_attention=False ("Looks good"), marks an
+        import-created account as reviewed. Names and id strings are trimmed; changing the
+        starting balance moves the balance by the same amount. Returns (updated_account,
+        error_message); raises ValueError for invalid input, before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
@@ -53,10 +69,17 @@ class AccountService:
         id_str = account.acct_id_str
         if 'account_id' in data:
             id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
+        opening = account.opening_balance
+        if 'opening_balance' in data:
+            opening = _opening_balance(data['opening_balance'])
 
         account.acct_name   = name
         account.acct_id_str = id_str
-        if {'needs_attention', 'account_name', 'account_id'} & data.keys():
+        # The balance includes the starting balance, so it moves by the same difference
+        old_opening_cents = account.opening_balance_cents
+        account.opening_balance = opening
+        account.balance_cents += account.opening_balance_cents - old_opening_cents
+        if {'needs_attention', 'account_name', 'account_id', 'opening_balance'} & data.keys():
             account.needs_attention = False
 
         db.session.commit()
@@ -500,11 +523,12 @@ class AccountService:
     # UTILITY OPERATIONS ========================================================
 
     def recalculate_account_balance(self, account_id):
-        """Audit helper to ensure balance matches sum of transaction history"""
+        """Reset the balance to the starting balance plus the account's transactions; returns it in dollars."""
         account = db_service.get_account(account_id)
         if account:
-            total_cents = sum(trans.amount_cents for trans in account.transactions)
-            account.balance_cents = total_cents
+            account.balance_cents = account.opening_balance_cents + sum(
+                trans.amount_cents for trans in account.transactions
+            )
             db.session.commit()
-            return total_cents / 100.0
+            return account.balance
         return 0

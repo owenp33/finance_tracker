@@ -2,6 +2,7 @@
 Service-layer tests — hit the business logic directly without HTTP.
 These are faster and easier to debug than route tests.
 """
+import re
 import pytest
 from datetime import date, timedelta
 from flask_jwt_extended import decode_token
@@ -23,6 +24,7 @@ class TestAccountReview:
 
     @pytest.mark.parametrize('changes', [
         {'account_name': 'Renamed'}, {'account_id': 'new-id'}, {'needs_attention': False},
+        {'opening_balance': 250},
     ])
     def test_editing_or_marking_reviewed_clears_needs_attention(self, account, changes):
         account.needs_attention = True
@@ -70,6 +72,50 @@ class TestAccountEditValidation:
             svc.update_account(account.id, {'account_name': 'Valid name', 'account_id': ''})
         assert account.acct_name == 'Test Checking'
         assert account.needs_attention is True
+
+
+class TestStartingBalance:
+    def test_new_accounts_start_at_zero(self, account):
+        assert account.to_dict()['opening_balance'] == 0
+
+    def test_setting_it_shifts_the_balance_by_the_difference(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Grocer', 'Groceries', -20.00)
+        svc.update_account(account.id, {'opening_balance': 1000})
+        assert (account.opening_balance, account.balance) == (1000, 980)
+        svc.update_account(account.id, {'opening_balance': -815.07})
+        assert (account.opening_balance, account.balance) == (-815.07, pytest.approx(-835.07))
+
+    def test_recalculating_includes_it(self, account):
+        svc.update_account(account.id, {'opening_balance': 100})
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Grocer', 'Groceries', -20.00)
+        account.balance_cents = 0   # out of sync, as recalculation exists to fix
+        _db.session.commit()
+        assert svc.recalculate_account_balance(account.id) == 80
+        assert account.balance_cents == 8000
+
+    @pytest.mark.parametrize('value, error', [
+        ('1000', 'Starting balance must be a number.'),
+        (None, 'Starting balance must be a number.'),
+        (True, 'Starting balance must be a number.'),
+        (float('nan'), 'Starting balance must be a number.'),
+        (float('inf'), 'Starting balance must be a number.'),
+        (10_000_000.01, 'Starting balance must be between -$10,000,000 and $10,000,000.'),
+        (-10_000_000.01, 'Starting balance must be between -$10,000,000 and $10,000,000.'),
+    ], ids=['string', 'null', 'bool', 'nan', 'inf', 'too-high', 'too-low'])
+    def test_rejects_invalid_values(self, account, value, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_account(account.id, {'opening_balance': value})
+
+    def test_accepts_the_limits(self, account):
+        svc.update_account(account.id, {'opening_balance': 10_000_000})
+        svc.update_account(account.id, {'opening_balance': -10_000_000})
+        assert account.opening_balance_cents == -1_000_000_000
+
+    def test_a_rejected_edit_changes_nothing(self, account):
+        svc.update_account(account.id, {'opening_balance': 50})
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'opening_balance': 75, 'account_name': ''})
+        assert (account.opening_balance, account.balance) == (50, 50)
 
 
 # ── Transaction CRUD ──────────────────────────────────────────────────────────

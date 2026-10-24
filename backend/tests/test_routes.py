@@ -128,6 +128,18 @@ class TestAccountRoutes:
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': error}
 
+    def test_setting_the_starting_balance_returns_the_new_balance(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 1500.25},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['opening_balance'], resp.json['account']['balance']) == (1500.25, 1500.25)
+
+    def test_invalid_starting_balance_returns_400(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 'lots'},
+                            headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'Starting balance must be a number.'}
+
 
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 

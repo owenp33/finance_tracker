@@ -24,6 +24,7 @@ def _run_migrations(db):
             'ALTER TABLE accounts ALTER COLUMN acct_id_str TYPE VARCHAR(100)',
             'ALTER TABLE accounts ALTER COLUMN acct_name TYPE VARCHAR(100)',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT FALSE',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
         ]
         for sql in migrations:
             conn.execute(text(sql))

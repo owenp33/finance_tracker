@@ -119,10 +119,13 @@ match wins). It also holds `_reevaluate_category_flags` (see [Known limitations]
 **`AccountService`** (`account_service.py`): accounts, transactions, transfers, and recurring
 templates.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
-  and `needs_attention`, which may only be set to `false`. Names and id strings are trimmed and
-  must be non-empty text within the column length (100). Invalid input raises `ValueError` before
-  anything changes; the messages name the fields as the edit form shows them ("Display name",
-  "Account ID"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
+  `opening_balance` (the starting balance, in dollars), and `needs_attention`, which may only be
+  set to `false`. Names and id strings are trimmed and must be non-empty text within the column
+  length (100). The starting balance must be a finite number within ±`MAX_OPENING_BALANCE`
+  ($10,000,000, which keeps `balance_cents` far from the 32-bit integer limit); changing it moves
+  the balance by the same amount. Invalid input raises `ValueError` before anything changes; the
+  messages name the fields as the edit form shows them ("Display name", "Account ID", "Starting
+  balance"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
 - `delete_account` unlinks the account's transfers, then deletes it; its transactions and
   recurring templates cascade.
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance and the
@@ -131,8 +134,8 @@ templates.
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
 - Recurring: `add_recurring`, `update_recurring`, `delete_recurring`, `process_due_recurring`.
-- `recalculate_account_balance(account_id)` resets `balance_cents` to the sum of the account's
-  transactions.
+- `recalculate_account_balance(account_id)` resets `balance_cents` to the starting balance plus
+  the sum of the account's transactions.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
@@ -169,7 +172,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | Table | Key columns |
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
-| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `needs_attention` |
+| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention` |
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `over_budget`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` (days), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
@@ -184,11 +187,17 @@ the account's database id is `id`.
 Every change must keep these true.
 
 - **Sign.** `amount_cents < 0` is an expense; `> 0` is income or a reimbursement.
+- **Balance = starting balance + transactions.** `balance_cents` always equals
+  `opening_balance_cents` plus the sum of the account's `amount_cents`. The starting balance is
+  what the account held before its earliest transaction in the app. It is a field on the account,
+  not a transaction, so it never counts as income in reports, budgets, or analytics. Importing
+  older history later means lowering it by that history's total.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
   delete, transfer pairing, and deleting a recurring template with its generated transactions.
-  Import confirm resyncs each affected account with `recalculate_account_balance`. A new mutation
-  path must keep the balance correct.
+  Changing the starting balance moves the balance by the difference. Import confirm resyncs each
+  affected account with `recalculate_account_balance`. A new mutation path must keep the balance
+  correct.
 - **`over_budget` is a stored per-row flag.** Any change to a category's spending in a period must
   call `_reevaluate_category_flags(user_id, category, 'YYYY-MM')` before committing. It walks the
   period's expenses in date order, treats reimbursements as a credit up front, and flags each
@@ -198,7 +207,8 @@ Every change must keep these true.
   notes, and negated amount to the other. Unlink a pair before deleting either side (the foreign
   key is circular).
 - **Accounts created by an import** start with `needs_attention = True`. Editing the account's
-  name or id string, or sending `needs_attention: false` ("Looks good"), clears it.
+  name, id string, or starting balance, or sending `needs_attention: false` ("Looks good"),
+  clears it.
 - **Passwords** are stored only as Werkzeug hashes (scrypt by default, 162 characters, hence the
   255-character column). Plaintext is never stored or compared.
 - **`MIN_PASSWORD_LENGTH`** (8) is defined in both `services/auth_service.py` and the frontend's
@@ -307,9 +317,11 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
 
 Details worth knowing:
-- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, and `needs_attention: false`
-  ("Looks good"). Any of them clears `needs_attention`. A blank, non-text, or over-100-character
-  name or id string is a 400.
+- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` (dollars),
+  and `needs_attention: false` ("Looks good"). Any of them clears `needs_attention`. A blank,
+  non-text, or over-100-character name or id string is a 400, and so is a starting balance that
+  isn't a number or is beyond ±$10,000,000. Account responses include `balance` and
+  `opening_balance`.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked
