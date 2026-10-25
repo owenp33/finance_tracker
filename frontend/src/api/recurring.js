@@ -28,5 +28,8 @@ export const getSuggestions = (id) =>
 export const linkToRecurring = (id, transactionId) =>
   fetchAPI(`/api/recurring/${id}/transactions/${transactionId}`, { method: 'POST' }).then(d => d.recurring);
 
+export const unlinkFromRecurring = (id, transactionId) =>
+  fetchAPI(`/api/recurring/${id}/transactions/${transactionId}`, { method: 'DELETE' }).then(d => d.recurring);
+
 export const dismissSuggestion = (id, transactionId) =>
   fetchAPI(`/api/recurring/${id}/dismissals/${transactionId}`, { method: 'POST' }).then(d => d.recurring);

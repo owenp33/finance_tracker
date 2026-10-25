@@ -181,3 +181,32 @@ test('the All tab marks unrelated transactions and adds them back to their serie
   await userEvent.click(screen.getByRole('button', { name: 'Add to ASPIRE series' }));
   expect(onLinkToRecurring).toHaveBeenCalledWith(5, [496]);
 });
+
+// ── Removing from the series, and finished templates ─────────────────────────
+
+test("a template's transactions can be removed from the series", async () => {
+  const series = [
+    { id: 31, date: '2026-09-02', vendor: 'Anthropic', category: 'Subscriptions', amount: -20, recurring_id: 1, recurring_index: 6 },
+    { id: 32, date: '2026-10-02', vendor: 'Anthropic', category: 'Subscriptions', amount: -20, recurring_id: 1, recurring_index: 7 },
+  ];
+  const onUnlinkFromRecurring = jest.fn();
+  render(
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={onUnlinkFromRecurring}
+      />
+    </CategoryColorProvider>
+  );
+  await userEvent.click(screen.getByRole('button', { name: /2 transactions in this series/ }));
+  const [october] = screen.getAllByRole('button', { name: 'Remove from series' });   // newest first
+  await userEvent.click(october);
+  expect(onUnlinkFromRecurring).toHaveBeenCalledWith(1, 32);
+});
+
+test('a finished template with no occurrences left says so instead of a last date', () => {
+  renderTab([template({ number: 1, idx: 2, last_date: null })]);
+  expect(screen.getByText(/Subscriptions · Monthly · No occurrences$/)).toBeInTheDocument();
+});

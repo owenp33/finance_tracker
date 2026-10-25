@@ -218,6 +218,16 @@ function App() {
     await refreshAll();
   };
 
+  // Keeps the transaction; the series shrinks and renumbers
+  const handleUnlinkFromRecurring = async (recurringId, transactionId) => {
+    try {
+      await recurringAPI.unlinkFromRecurring(recurringId, transactionId);
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
   const handleDismissSuggestion = async (recurringId, transactionId) => {
     try {
       await recurringAPI.dismissSuggestion(recurringId, transactionId);
@@ -343,6 +353,7 @@ function App() {
             onDeleteRecurring={handleDeleteRecurring}
             onLinkToRecurring={handleLinkToRecurring}
             onDismissSuggestion={handleDismissSuggestion}
+            onUnlinkFromRecurring={handleUnlinkFromRecurring}
             onToggleTransfer={handleToggleTransfer}
             onToggleTransferMany={handleToggleTransferMany}
             onPairTransfer={handlePairTransfer}

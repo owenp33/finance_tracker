@@ -158,3 +158,18 @@ test('other transactions show no pill', () => {
   expect(screen.queryByText('Unrelated')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Add to/ })).not.toBeInTheDocument();
 });
+
+// ── Removing a transaction from its recurring series ─────────────────────────
+
+test('onRemoveFromSeries adds a hover action next to the usual ones', async () => {
+  const onRemoveFromSeries = jest.fn();
+  renderList({ onRemoveFromSeries });
+  await userEvent.click(screen.getByRole('button', { name: 'Remove from series' }));
+  expect(onRemoveFromSeries).toHaveBeenCalledWith(1);
+  expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+});
+
+test('without onRemoveFromSeries there is no remove action', () => {
+  renderList();
+  expect(screen.queryByRole('button', { name: 'Remove from series' })).not.toBeInTheDocument();
+});

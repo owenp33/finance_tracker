@@ -21,6 +21,7 @@ function RecurringTab({
   onDeleteRecurring,
   onLinkToRecurring,
   onDismissSuggestion,
+  onUnlinkFromRecurring,
 }) {
   const [showForm, setShowForm] = useState(false);
   const [reviewingIds, setReviewingIds] = useState(new Set());
@@ -173,10 +174,13 @@ function RecurringTab({
                       {(() => {
                         const isFinished = r.number !== -1 && r.idx > r.number;
                         const displayDate = isFinished ? r.last_date : r.next_date;
-                        const spansYears = dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear();
+                        // A finished series can have no occurrences left (its only ones were removed)
+                        const when = displayDate
+                          ? `${isFinished ? 'Last' : 'Next'}: ${formatDate(displayDate, dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear())}`
+                          : 'No occurrences';
                         return (
                           <span>
-                            {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {isFinished ? 'Last' : 'Next'}: {formatDate(displayDate, spansYears)}
+                            {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {when}
                           </span>
                         );
                       })()}
@@ -217,7 +221,7 @@ function RecurringTab({
                           className="recurring-generated-toggle"
                           onClick={() => toggleRecurringExpand(r.id)}
                         >
-                          {isExpanded ? '▲' : '▼'} {generated.length} generated transaction{generated.length !== 1 ? 's' : ''}
+                          {isExpanded ? '▲' : '▼'} {generated.length} transaction{generated.length !== 1 ? 's' : ''} in this series
                         </button>
                         {isExpanded && (
                           <div className="recurring-generated-list">
@@ -318,6 +322,7 @@ function RecurringTab({
                                     showAll={true}
                                     selectedIds={selectedRecurringTxIds}
                                     onToggle={toggleSelectRecurringTx}
+                                    onRemoveFromSeries={(txId) => onUnlinkFromRecurring(r.id, txId)}
                                   />
                                 </>
                               );
