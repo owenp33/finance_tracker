@@ -152,8 +152,9 @@ class RecurringService:
 
     def match_candidates(self, rec, occurrence_date):
         """
-        Transactions in no series that could be rec's occurrence on occurrence_date: same account,
-        vendor and amount, within ±MATCH_WINDOW_DAYS. Nearest first.
+        Transactions in no series that are rec's occurrence on occurrence_date by the strict rule
+        used for linking without asking: same account, vendor and amount, within
+        ±MATCH_WINDOW_DAYS. Nearest first. (Suggestions use a looser rule; see suggest_matches.)
         """
         return db_service.find_recurring_candidates(
             rec.account_id, rec.vendor, rec.amount_cents, occurrence_date, MATCH_WINDOW_DAYS
@@ -221,27 +222,37 @@ class RecurringService:
     def suggest_matches(self, recurring_id):
         """
         Transactions that may belong to a series, for the user to confirm; nothing is linked.
-        Walks the schedule back from the next occurrence. An occurrence with matching
-        transactions (see match_candidates) becomes a suggestion of one kind:
-          'missing'   since the series started, with no transaction of the series near it
+        Candidates share the series' account and vendor and move money the same way, with either
+        the same category (any amount) or the exact same amount (any category). Each
+        occurrence owns the days from MATCH_WINDOW_DAYS after the previous occurrence up to
+        MATCH_WINDOW_DAYS after itself, so a payment up to a full period early counts, a few days
+        late counts for the occurrence before, and every transaction falls to exactly one.
+        Walking the schedule back from the next occurrence, an occurrence with candidates becomes
+        a suggestion of one kind:
+          'missing'   since the series started, with no transaction of the series in its window
           'duplicate' already covered by the series (likely the same charge twice)
           'history'   before the series started; the walk stops after HISTORY_MISSES_TO_STOP
-                      such occurrences in a row without a match
-        Returns [{date, kind, linked, candidates}], oldest first; `linked` holds the series'
-        transactions near the occurrence.
+                      such occurrences in a row without a candidate
+        Returns [{date, kind, linked, candidates}], oldest first; candidates nearest first, and
+        `linked` holds the series' transactions in the occurrence's window.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             raise ValueError('Recurring transaction not found.')
-        window = timedelta(days=MATCH_WINDOW_DAYS)
+        late = timedelta(days=MATCH_WINDOW_DAYS)
         series = list(rec.generated_transactions)
 
         suggestions = []
         occurrence, history_misses = rec.shift(rec.next_date, -1), 0
         while history_misses < HISTORY_MISSES_TO_STOP:
-            candidates = self.match_candidates(rec, occurrence)
-            linked = [t for t in series if abs(t.date - occurrence) <= window]
-            if occurrence >= rec.start_date - window:
+            after, until = rec.shift(occurrence, -1) + late, occurrence + late
+            candidates = sorted(
+                db_service.find_unlinked_transactions(rec.account_id, rec.vendor, rec.category,
+                                                      rec.amount_cents, after, until),
+                key=lambda t: (abs((t.date - occurrence).days), t.id),
+            )
+            linked = [t for t in series if after < t.date <= until]
+            if occurrence >= rec.start_date - late:
                 kind = 'duplicate' if linked else 'missing'
             else:
                 kind = 'history'

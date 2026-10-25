@@ -451,8 +451,8 @@ class TestSeriesMembership:
 class TestSeriesSuggestions:
     """Transactions that may belong to a series, found by walking its schedule back (nothing is linked)."""
 
-    def _charge(self, account, day, vendor='ASPIRE', amount=-75.0):
-        return svc.add_transaction(account.id, day, vendor, 'Loan', amount)
+    def _charge(self, account, day, vendor='ASPIRE', amount=-75.0, category='Loan'):
+        return svc.add_transaction(account.id, day, vendor, category, amount)
 
     def _summary(self, suggestions):
         return [(s['date'], s['kind'], [t.date for t in s['candidates']]) for s in suggestions]
@@ -462,10 +462,11 @@ class TestSeriesSuggestions:
         for day in [date(2026, 4, 30), date(2026, 6, 1), date(2026, 6, 3), date(2026, 6, 30),
                     date(2026, 7, 31), date(2026, 8, 31), date(2026, 9, 30)]:
             self._charge(account, day)
-        self._charge(account, date(2026, 3, 31), amount=-45.0)   # another amount: not an exact match
+        self._charge(account, date(2026, 3, 31), amount=-45.0)   # suggestions accept other amounts
         rec = recurring_svc.add_recurring(account.id, date(2026, 10, 31), 'ASPIRE', 'Loan', -75.0,
                                           date(2026, 10, 31), 1, frequency_unit='months')
         assert self._summary(recurring_svc.suggest_matches(rec.id)) == [
+            (date(2026, 3, 31), 'history', [date(2026, 3, 31)]),
             (date(2026, 4, 30), 'history', [date(2026, 4, 30)]),
             (date(2026, 5, 31), 'history', [date(2026, 6, 1), date(2026, 6, 3)]),
             (date(2026, 6, 30), 'history', [date(2026, 6, 30)]),
@@ -477,7 +478,7 @@ class TestSeriesSuggestions:
     def test_the_history_walk_stops_after_two_occurrences_without_a_match(self, account, pin_today):
         pin_today(date(2026, 10, 25))
         for day in [date(2026, 9, 28), date(2026, 9, 14), date(2026, 8, 3)]:   # nothing Aug 31 or Aug 17
-            self._charge(account, day, vendor='Allina Health', amount=-87.38)
+            self._charge(account, day, vendor='Allina Health', amount=-87.38, category='Medical')
         rec = recurring_svc.add_recurring(account.id, date(2026, 10, 26), 'Allina Health', 'Medical', -87.38,
                                           date(2026, 10, 26), 14)
         # Oct 12 has no match either, but the Sep 28 match after it keeps the walk going
@@ -491,8 +492,8 @@ class TestSeriesSuggestions:
         rec = recurring_svc.add_recurring(account.id, date(2026, 3, 2), 'Anthropic', 'Subscriptions', -20.0,
                                           date(2026, 3, 2), 1, frequency_unit='months')
         recurring_svc.process_due_recurring(account.id)   # generates Mar 2, Apr 2, May 2
-        self._charge(account, date(2026, 4, 2), vendor='Anthropic', amount=-20.0)
-        self._charge(account, date(2026, 5, 3), vendor='Anthropic', amount=-20.0)
+        self._charge(account, date(2026, 4, 2), vendor='Anthropic', amount=-20.0, category='Subscriptions')
+        self._charge(account, date(2026, 5, 3), vendor='Anthropic', amount=-20.0, category='Subscriptions')
         suggestions = recurring_svc.suggest_matches(rec.id)
         assert self._summary(suggestions) == [
             (date(2026, 4, 2), 'duplicate', [date(2026, 4, 2)]),
@@ -508,8 +509,45 @@ class TestSeriesSuggestions:
         from models.transaction import TransactionModel
         svc.delete_transaction(TransactionModel.query.filter_by(recurring_id=rec.id, date=date(2026, 4, 2)).one().id)
         assert recurring_svc.suggest_matches(rec.id) == []   # a gap with nothing to fill it isn't suggested
-        self._charge(account, date(2026, 4, 3), vendor='Anthropic', amount=-20.0)
+        self._charge(account, date(2026, 4, 3), vendor='Anthropic', amount=-20.0, category='Subscriptions')
         assert self._summary(recurring_svc.suggest_matches(rec.id)) == [(date(2026, 4, 2), 'missing', [date(2026, 4, 3)])]
+
+    def _rent(self, account, pin_today, start=date(2026, 7, 1)):
+        """Monthly $650 rent due on the 1st, from `start` (no history linked)."""
+        pin_today(start - timedelta(days=10))
+        return recurring_svc.add_recurring(account.id, start, 'Millenium Apartments', 'Rent', -650.0,
+                                           start, 1, frequency_unit='months')
+
+    def test_an_early_payment_or_another_amount_still_suggests(self, account, pin_today):
+        rec = self._rent(account, pin_today)
+        self._charge(account, date(2026, 5, 26), vendor='Millenium Apartments', amount=-650.0, category='Rent')   # 6 days early for Jun 1
+        self._charge(account, date(2026, 5, 1), vendor='Millenium Apartments', amount=-652.49, category='Rent')  # with a fee
+        assert self._summary(recurring_svc.suggest_matches(rec.id)) == [
+            (date(2026, 5, 1), 'history', [date(2026, 5, 1)]),
+            (date(2026, 6, 1), 'history', [date(2026, 5, 26)]),
+        ]
+
+    def test_up_to_three_days_late_belongs_to_the_occurrence_before(self, account, pin_today):
+        rec = self._rent(account, pin_today, start=date(2026, 8, 1))
+        self._charge(account, date(2026, 6, 4), vendor='Millenium Apartments', amount=-650.0, category='Rent')   # 3 days after Jun 1
+        self._charge(account, date(2026, 6, 5), vendor='Millenium Apartments', amount=-650.0, category='Rent')   # 26 days before Jul 1
+        assert self._summary(recurring_svc.suggest_matches(rec.id)) == [
+            (date(2026, 6, 1), 'history', [date(2026, 6, 4)]),
+            (date(2026, 7, 1), 'history', [date(2026, 6, 5)]),
+        ]
+
+    def test_another_category_needs_the_exact_amount(self, account, pin_today):
+        rec = self._rent(account, pin_today, start=date(2026, 8, 1))
+        svc.add_transaction(account.id, date(2026, 7, 1), 'Millenium Apartments', 'Rent payment', -650.0)
+        svc.add_transaction(account.id, date(2026, 6, 1), 'Millenium Apartments', 'Deposit', -1300.0)
+        assert self._summary(recurring_svc.suggest_matches(rec.id)) == [
+            (date(2026, 7, 1), 'history', [date(2026, 7, 1)]),
+        ]
+
+    def test_money_going_the_other_way_is_never_suggested(self, account, pin_today):
+        rec = self._rent(account, pin_today)
+        self._charge(account, date(2026, 6, 1), vendor='Millenium Apartments', amount=216.0, category='Rent')   # refund
+        assert recurring_svc.suggest_matches(rec.id) == []
 
     def test_suggesting_links_nothing(self, account, pin_today):
         pin_today(date(2026, 10, 25))

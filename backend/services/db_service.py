@@ -5,7 +5,7 @@ Thin CRUD operations for interacting with the database.
 Business logic and orchestration belongs in account_service.py.
 """
 from datetime import timedelta
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from extensions import db
 from models.user import User
 from models.account import AccountModel
@@ -151,6 +151,27 @@ class DbService:
             TransactionModel.date.between(around - window, around + window),
         ).all()
         return sorted(rows, key=lambda t: (abs((t.date - around).days), t.id))
+
+    def find_unlinked_transactions(self, account_id, vendor, category, amount_cents, after, until):
+        """
+        Transactions in no recurring series on an account with this vendor, moving money the same
+        way as amount_cents, and either this category (any amount) or exactly this amount (any
+        category), dated after `after` and up to `until`. Text compares ignore case and
+        surrounding spaces.
+        """
+        same_direction = TransactionModel.amount_cents < 0 if amount_cents < 0 else TransactionModel.amount_cents > 0
+        return TransactionModel.query.filter(
+            TransactionModel.account_id == account_id,
+            TransactionModel.recurring_id.is_(None),
+            func.lower(func.trim(TransactionModel.vendor)) == vendor.strip().lower(),
+            same_direction,
+            or_(
+                func.lower(func.trim(TransactionModel.category)) == category.strip().lower(),
+                TransactionModel.amount_cents == amount_cents,
+            ),
+            TransactionModel.date > after,
+            TransactionModel.date <= until,
+        ).all()
 
     def get_account_transactions(self, account_id, start_date=None, end_date=None,
                                   category=None, over_budget=None, limit=None, offset=None):

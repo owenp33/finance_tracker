@@ -114,8 +114,10 @@ HTTP request
 transactions, recurring templates, and budgets, plus two queries used by business logic:
 `transaction_exists` (the import duplicate check), `find_transfer_peer` (an unlinked transfer
 with the opposite amount in another of the user's accounts, within ±5 days; the earliest such
-match wins), and `find_recurring_candidates` (transactions in no recurring series with a given
-account, vendor and amount, within a window of days around a date, nearest first). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
+match wins), `find_recurring_candidates` (transactions in no recurring series with a given
+account, vendor and amount, within a window of days around a date, nearest first), and
+`find_unlinked_transactions` (the looser suggestion query: vendor, direction, and category or
+exact amount, within a date range). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
@@ -327,8 +329,14 @@ always one more than their count.
   deleting a generated transaction does: later occurrences renumber, a limited `number` drops by
   one, and `next_date` stays.
 - **Suggestions** (`suggest_matches`) list transactions that may belong to a series, for the user
-  to confirm; nothing is linked. They walk the schedule back from the next occurrence, and each
-  occurrence with matching transactions becomes one suggestion: `missing` (since the series
+  to confirm; nothing is linked. Because a person confirms them, they use a looser rule than
+  automatic matching: same account and vendor, money moving the same way (a refund never matches
+  a payment), and either the same category (any amount) or the exact same amount (any category).
+  Each occurrence owns the days from `MATCH_WINDOW_DAYS` after the previous occurrence up to
+  `MATCH_WINDOW_DAYS` after itself: a payment up to a full period early counts, one a few days
+  late counts for the occurrence before, and every transaction falls to exactly one occurrence.
+  They walk the schedule back from the next occurrence, and each occurrence with candidates
+  becomes one suggestion: `missing` (since the series
   started, with no transaction of the series near it), `duplicate` (the series already covers it,
   so a second matching transaction is likely the same charge twice), or `history` (before
   `start_date`; the walk stops after `HISTORY_MISSES_TO_STOP` (2) occurrences in a row without a
