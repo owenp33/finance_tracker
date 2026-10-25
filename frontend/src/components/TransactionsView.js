@@ -58,6 +58,8 @@ function TransactionsView({
         <AllTransactionsTab
           transactions={transactions}
           accounts={accounts}
+          recurringTransactions={recurringTransactions}
+          onLinkToRecurring={onLinkToRecurring}
           onAdd={onAdd}
           onAddRecurring={onAddRecurring}
           onEdit={onEdit}

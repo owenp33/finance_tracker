@@ -42,7 +42,7 @@ function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
 
   const actionsFor = (kind) => (t) => (
     <>
-      <button className="btn btn-ghost btn-sm icon-btn suggestion-link-btn" disabled={busy}
+      <button className="btn btn-ghost btn-sm icon-btn series-link-btn" disabled={busy}
               title="Link to series" aria-label="Link to series"
               onClick={() => run(() => onLink(template.id, [t.id]))}>
         <Check size={14} />

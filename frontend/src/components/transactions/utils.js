@@ -37,6 +37,17 @@ export const frequencyLabel = (frequency, unit) => {
   return `Every ${frequency} ${noun}${frequency === 1 ? '' : 's'}`;
 };
 
+// Transaction id → [{ id, vendor }] of the recurring series it was marked unrelated to
+export const unrelatedSeriesByTransaction = (templates) => {
+  const map = {};
+  for (const r of templates) {
+    for (const txId of r.dismissed_transaction_ids ?? []) {
+      (map[txId] = map[txId] ?? []).push({ id: r.id, vendor: r.vendor });
+    }
+  }
+  return map;
+};
+
 export function getMonthRange(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const first = `${year}-${String(month).padStart(2, '0')}-01`;

@@ -162,3 +162,22 @@ test('the Recurring tab counts templates that need attention', () => {
   const tab = screen.getByRole('button', { name: /^Recurring/ });
   expect(within(tab).getByText('2')).toHaveClass('attention-badge');
 });
+
+test('the All tab marks unrelated transactions and adds them back to their series', async () => {
+  const onLinkToRecurring = jest.fn();
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;   // in the default month
+  render(
+    <CategoryColorProvider>
+      <TransactionsView
+        transactions={[{ id: 496, date, vendor: 'ASPIRE', category: 'Loan', amount: -60, account_id: 1 }]}
+        accounts={[{ id: 1, account_name: 'Checking' }]}
+        recurringTransactions={[aspire({ dismissed_transaction_ids: [496] })]}
+        onLinkToRecurring={onLinkToRecurring}
+      />
+    </CategoryColorProvider>
+  );
+  expect(screen.getByText('Unrelated')).toHaveAttribute('title', 'Marked unrelated to ASPIRE');
+  await userEvent.click(screen.getByRole('button', { name: 'Add to ASPIRE series' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [496]);
+});

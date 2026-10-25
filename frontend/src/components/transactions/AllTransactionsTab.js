@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import TransactionForm from '../TransactionForm';
 import TransactionList from '../TransactionList';
 import FilterPanel from '../FilterPanel';
-import { PAGE_SIZE, getMonthRange, getPeriodLabel, getCurrentPeriod, sortList } from './utils';
+import { PAGE_SIZE, getMonthRange, getPeriodLabel, getCurrentPeriod, sortList, unrelatedSeriesByTransaction } from './utils';
 
 function AllTransactionsTab({
   transactions,
   accounts,
+  recurringTransactions = [],
+  onLinkToRecurring,
   onAdd,
   onAddRecurring,
   onEdit,
@@ -27,6 +29,8 @@ function AllTransactionsTab({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [datePreset, setDatePreset] = useState('');
+
+  const unrelatedTo = useMemo(() => unrelatedSeriesByTransaction(recurringTransactions), [recurringTransactions]);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [selectedTxIds, setSelectedTxIds] = useState(new Set());
@@ -259,6 +263,8 @@ function AllTransactionsTab({
         onStartEdit={() => setShowForm(false)}
         selectedIds={selectedTxIds}
         onToggle={toggleSelectTx}
+        unrelatedTo={unrelatedTo}
+        onAddToSeries={(seriesId, txId) => onLinkToRecurring(seriesId, [txId])}
       />
 
       {/* Load more / count bar */}

@@ -141,3 +141,20 @@ test('renderActions replaces the default hover actions', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'pick' }));
   expect(onPick).toHaveBeenCalledWith(1);
 });
+
+// ── Transactions marked unrelated to a recurring series ──────────────────────
+
+test('a transaction marked unrelated shows a pill and can be added to its series', async () => {
+  const onAddToSeries = jest.fn();
+  renderList({ unrelatedTo: { 1: [{ id: 5, vendor: 'ASPIRE' }] }, onAddToSeries });
+  expect(screen.getByText('Unrelated')).toHaveAttribute('title', 'Marked unrelated to ASPIRE');
+  await userEvent.click(screen.getByRole('button', { name: 'Add to ASPIRE series' }));
+  expect(onAddToSeries).toHaveBeenCalledWith(5, 1);
+  expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();   // the usual actions stay
+});
+
+test('other transactions show no pill', () => {
+  renderList({ unrelatedTo: { 99: [{ id: 5, vendor: 'ASPIRE' }] }, onAddToSeries: jest.fn() });
+  expect(screen.queryByText('Unrelated')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Add to/ })).not.toBeInTheDocument();
+});

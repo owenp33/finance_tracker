@@ -505,6 +505,16 @@ body {
   white-space: nowrap;
 }
 
+.tx-unrelated-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
 .tx-recurring-chip {
   font-size: 0.72rem;
   font-weight: 600;
@@ -918,7 +928,7 @@ body {
   pointer-events: auto;
 }
 
-.suggestion-link-btn { color: #16a34a; }
+.series-link-btn { color: #16a34a; }
 
 .suggestion-unrelated-btn {
   color: #868e96;

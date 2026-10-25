@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Info } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Info, Check } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
 
 const formatDate = (dateStr, includeYear = false) => {
@@ -13,7 +13,9 @@ const formatAmount = (amount) =>
   `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
 
 // renderActions(t), when given, replaces the default hover actions (transfer, edit, delete).
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions }) {
+// unrelatedTo (transaction id → [{ id, vendor }]) marks transactions dismissed from a recurring
+// series with an "Unrelated" pill and a hover action that calls onAddToSeries(seriesId, txId).
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions, unrelatedTo, onAddToSeries }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -188,6 +190,12 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                       Reimbursement
                     </span>
                   )}
+                  {unrelatedTo?.[t.id] && (
+                    <span className="tx-unrelated-chip"
+                          title={`Marked unrelated to ${unrelatedTo[t.id].map(s => s.vendor).join(', ')}`}>
+                      Unrelated
+                    </span>
+                  )}
                   {t.recurring_id && (t.recurring_index != null || recurringOccurrences[t.id]) && (() => {
                     const occurrence = t.recurring_index ?? recurringOccurrences[t.id].occurrence;
                     const total = t.recurring_number ?? -1;
@@ -204,6 +212,17 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                 <div className="tx-hover-actions">
                   {renderActions ? renderActions(t) : (
                     <>
+                      {unrelatedTo?.[t.id]?.map(series => (
+                        <button
+                          key={series.id}
+                          className="btn btn-ghost btn-sm icon-btn series-link-btn"
+                          title={`Add to ${series.vendor} series`}
+                          aria-label={`Add to ${series.vendor} series`}
+                          onClick={() => onAddToSeries(series.id, t.id)}
+                        >
+                          <Check size={14} />
+                        </button>
+                      ))}
                       {onToggleTransfer && (
                         <button
                           className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
