@@ -350,6 +350,15 @@ class TestRecurringRoutes:
         txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
         assert [(t['date'], t['recurring_index']) for t in txns] == [('2026-09-30', 1)]
 
+    def test_renaming_a_template_renames_its_series(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        client.post(f'/api/recurring/{rec_id}/transactions/{tx_id}', headers=auth_headers)
+        resp = client.patch(f'/api/recurring/{rec_id}', json={'vendor': 'Aspire Loan', 'category': 'Student loan'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        tx = client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']
+        assert (tx['vendor'], tx['category']) == ('Aspire Loan', 'Student loan')
+
     def test_switch_a_template_to_monthly(self, client, account, auth_headers):
         rec_id = self._add(client, account, auth_headers, frequency=30, frequency_unit='days').json['recurring']['id']
         resp = client.patch(f'/api/recurring/{rec_id}', json={'frequency': 1, 'frequency_unit': 'months'},

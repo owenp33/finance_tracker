@@ -11,6 +11,7 @@ from models.account import AccountModel
 from services.account_service import AccountService
 from services.recurring_service import RecurringService
 from services.auth_service import AuthService, RegistrationConflict
+from services.budget_service import BudgetService
 from services.db_service import DbService
 
 svc = AccountService()
@@ -301,6 +302,82 @@ class TestRecurringSchedules:
         recurring_svc.process_due_recurring(account.id)
         d = rec.to_dict()
         assert (d['frequency_unit'], d['last_date'], d['next_date']) == ('months', '2025-02-28', '2025-03-31')
+
+
+class TestSeriesRenames:
+    """Changing a template's vendor and/or category carries over to every transaction in its series."""
+
+    def _series(self, account, pin_today):
+        """Monthly Anthropic series that generated Aug 2 and Sep 2, plus a linked imported Jul 3 row."""
+        pin_today(date(2026, 9, 10))
+        imported = svc.add_transaction(account.id, date(2026, 7, 3), 'ANTHROPIC ', 'Subscription', -20.0, notes='Claude')
+        rec = recurring_svc.add_recurring(account.id, date(2026, 8, 2), 'Anthropic', 'Subscriptions', -20.0,
+                                          date(2026, 8, 2), 1, frequency_unit='months')
+        recurring_svc.process_due_recurring(account.id)
+        recurring_svc.link_transaction(rec.id, imported.id)
+        return rec
+
+    def _rows(self, rec):
+        from models.transaction import TransactionModel
+        rows = TransactionModel.query.filter_by(recurring_id=rec.id).order_by(TransactionModel.date)
+        return [(t.date, t.vendor, t.category, t.amount, t.notes) for t in rows]
+
+    def test_a_new_vendor_renames_every_transaction_in_the_series(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        bystander = svc.add_transaction(account.id, date(2026, 9, 5), 'Anthropic', 'Subscriptions', -20.0)
+        recurring_svc.update_recurring(rec.id, vendor='Claude Pro')
+        assert self._rows(rec) == [
+            (date(2026, 7, 3), 'Claude Pro', 'Subscription', -20.0, 'Claude'),
+            (date(2026, 8, 2), 'Claude Pro', 'Subscriptions', -20.0, ''),
+            (date(2026, 9, 2), 'Claude Pro', 'Subscriptions', -20.0, ''),
+        ]
+        assert bystander.vendor == 'Anthropic'   # not in the series
+
+    def test_a_new_category_recategorizes_every_transaction_in_the_series(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        recurring_svc.update_recurring(rec.id, category='AI Tools')
+        assert [category for _, _, category, _, _ in self._rows(rec)] == ['AI Tools'] * 3
+
+    def test_both_at_once(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        recurring_svc.update_recurring(rec.id, vendor='Claude Pro', category='AI Tools')
+        assert {(vendor, category) for _, vendor, category, _, _ in self._rows(rec)} == {('Claude Pro', 'AI Tools')}
+
+    def test_saving_unchanged_names_leaves_the_series_alone(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        recurring_svc.update_recurring(rec.id, vendor='Anthropic', category='Subscriptions', amount=-22.0)
+        assert self._rows(rec)[0][1:3] == ('ANTHROPIC ', 'Subscription')   # the imported row keeps its own spelling
+
+    def test_budget_flags_follow_the_spending_out_of_the_old_category(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        spotify = svc.add_transaction(account.id, date(2026, 9, 5), 'Spotify', 'Subscriptions', -10.0)
+        BudgetService().create_budget(account.user_id, 'Subscriptions', '2026-09', 25.0)
+        assert spotify.over_budget is True    # Anthropic's $20 (Sep 2) + Spotify's $10 passes $25
+        recurring_svc.update_recurring(rec.id, category='AI Tools')
+        assert spotify.over_budget is False   # Anthropic no longer counts toward Subscriptions
+
+    def test_budget_flags_follow_the_spending_into_the_new_category(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        BudgetService().create_budget(account.user_id, 'Subscriptions', '2026-09', 15.0)
+        from models.transaction import TransactionModel
+        september = TransactionModel.query.filter_by(recurring_id=rec.id, date=date(2026, 9, 2)).one()
+        assert september.over_budget is True
+        recurring_svc.update_recurring(rec.id, category='AI Tools')   # no AI Tools budget
+        assert september.over_budget is False
+        BudgetService().create_budget(account.user_id, 'AI Tools', '2026-09', 10.0)
+        recurring_svc.update_recurring(rec.id, vendor='Claude')        # a vendor change keeps flags as they are
+        assert september.over_budget is True
+
+    def test_a_transfer_peer_follows(self, account, pin_today):
+        rec = self._series(account, pin_today)
+        savings = AccountModel(user_id=account.user_id, acct_id_str='sav-1', acct_name='Savings')
+        _db.session.add(savings)
+        _db.session.commit()
+        from models.transaction import TransactionModel
+        september = TransactionModel.query.filter_by(recurring_id=rec.id, date=date(2026, 9, 2)).one()
+        _, peer, _ = svc.create_transfer_pair(september.id, savings.id)
+        recurring_svc.update_recurring(rec.id, vendor='Claude Pro', category='AI Tools')
+        assert (peer.vendor, peer.category) == ('Claude Pro', 'AI Tools')
 
 
 class TestSkipPastOccurrences:

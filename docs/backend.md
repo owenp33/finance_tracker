@@ -359,6 +359,16 @@ always one more than their count.
   (transactions marked unrelated to it, which the frontend flags in the transaction list). It
   is computed, not stored, so linking or dismissing the last suggestion clears it.
 
+**Renaming a series.** When `update_recurring` changes a template's vendor and/or category (an
+actual change; the edit form sends every field on each save), every transaction in the series,
+generated or linked, gets the new value, and nothing else changes: not amounts, dates, or notes.
+A transfer's peer follows, as when a transaction is edited. A category change moves spending
+between categories, so the moved transactions' `over_budget` flags are cleared and the old and
+new categories are re-evaluated in every month touched (re-evaluation only walks a category's
+own transactions, so clearing first keeps a moved row from keeping a stale flag). Matching uses
+the template's current vendor, so after a rename, transactions spelled the old way are no longer
+suggested or adopted.
+
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated
 transaction shrinks the series: the template's `idx` drops by one (and `number` too, when the
@@ -393,7 +403,8 @@ Details worth knowing:
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
   after today instead of generating past ones); it generates any occurrences already due.
-  `PATCH /recurring/<id>` takes any of those fields. An invalid schedule is a 400.
+  `PATCH /recurring/<id>` takes any of those fields; a new `vendor` or `category` is also
+  applied to the series (see Renaming a series). An invalid schedule is a 400.
 - `GET /recurring/<id>/suggestions` returns `{suggestions: [{date, kind, linked, candidates}]}`,
   oldest first (`kind` is `missing`, `duplicate`, or `history`; `linked` and `candidates` are
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the

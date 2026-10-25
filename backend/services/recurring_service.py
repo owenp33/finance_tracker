@@ -43,6 +43,28 @@ def _renumber(rec):
     rec.idx = len(occurrences) + 1
 
 
+def _apply_to_series(rec, changes):
+    """
+    Give every transaction in the series the template's new vendor and/or category (nothing
+    else); a transfer's peer follows, as when a transaction is edited. A category change moves
+    spending between categories, so the moved transactions' over_budget flags are cleared and
+    the old and new categories are re-evaluated in every month touched.
+    """
+    touched = set()   # (category, 'YYYY-MM') pairs whose spending changed
+    for t in rec.generated_transactions:
+        if 'category' in changes and t.category != changes['category']:
+            period = t.date.strftime('%Y-%m')
+            touched |= {(t.category, period), (changes['category'], period)}
+            t.over_budget = False
+        for field, value in changes.items():
+            setattr(t, field, value)
+            if t.is_transfer and t.transfer_peer:
+                setattr(t.transfer_peer, field, value)
+    db.session.flush()
+    for category, period in touched:
+        db_service._reevaluate_category_flags(rec.account.user_id, category, period)
+
+
 def _series_and_transaction(recurring_id, transaction_id):
     """The template and the transaction; raises ValueError when either doesn't exist."""
     rec = db_service.get_recurring(recurring_id)
@@ -97,6 +119,7 @@ class RecurringService:
         The occurrence limit (number) cannot be reduced below the count of
         transactions already generated for this recurring item. A template that becomes
         monthly, or whose next date moves, falls on the day of its (new) next date from then on.
+        A changed vendor and/or category is applied to every transaction in the series too.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
@@ -116,6 +139,9 @@ class RecurringService:
                     )
 
         old_next_date, old_unit = rec.next_date, rec.frequency_unit
+        # The edit form sends every field on each save, so only real changes reach the series
+        series_changes = {field: kwargs[field] for field in ('vendor', 'category')
+                          if field in kwargs and kwargs[field] != getattr(rec, field)}
         updatable_fields = ['start_date', 'vendor', 'category', 'amount', 'notes', 'next_date',
                             'frequency', 'frequency_unit', 'number']
         for field in updatable_fields:
@@ -131,6 +157,9 @@ class RecurringService:
             rec.day_of_month = None
         elif old_unit != 'months' or rec.next_date != old_next_date:
             rec.day_of_month = rec.next_date.day
+
+        if series_changes:
+            _apply_to_series(rec, series_changes)
 
         db.session.commit()
         return rec
