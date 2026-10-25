@@ -18,6 +18,10 @@ account_service = AccountService()
 # A transaction up to this many days from an occurrence still counts as that occurrence
 MATCH_WINDOW_DAYS = 3
 
+# Looking for history before a series started stops after this many occurrences in a row
+# without a matching transaction
+HISTORY_MISSES_TO_STOP = 2
+
 
 def _check_schedule(frequency, unit):
     """Raise ValueError unless a recurring template repeats every whole number (≥ 1) of days or months."""
@@ -191,19 +195,21 @@ class RecurringService:
         db.session.commit()
         return rec
 
-    def unlink_transaction(self, transaction_id):
+    def unlink_transaction(self, recurring_id, transaction_id):
         """
         Take a transaction out of its series, keeping the transaction. Like deleting a generated
         transaction, this shrinks the series: later occurrences renumber and a limited series'
-        total drops by one. Raises ValueError when it isn't in a series.
+        total drops by one. Raises ValueError when it isn't in this series.
         """
+        rec = db_service.get_recurring(recurring_id)
+        if not rec:
+            raise ValueError('Recurring transaction not found.')
         tx = db_service.get_transaction(transaction_id)
         if not tx:
             raise ValueError('Transaction not found.')
-        if tx.recurring_id is None:
-            raise ValueError("That transaction isn't part of a recurring series.")
+        if tx.recurring_id != rec.id:
+            raise ValueError("That transaction isn't part of this recurring series.")
 
-        rec = db_service.get_recurring(tx.recurring_id)
         tx.recurring_id = None
         tx.recurring_index = None
         if rec.number > 0:
@@ -211,6 +217,40 @@ class RecurringService:
         _renumber(rec)
         db.session.commit()
         return rec
+
+    def suggest_matches(self, recurring_id):
+        """
+        Transactions that may belong to a series, for the user to confirm; nothing is linked.
+        Walks the schedule back from the next occurrence. An occurrence with matching
+        transactions (see match_candidates) becomes a suggestion of one kind:
+          'missing'   since the series started, with no transaction of the series near it
+          'duplicate' already covered by the series (likely the same charge twice)
+          'history'   before the series started; the walk stops after HISTORY_MISSES_TO_STOP
+                      such occurrences in a row without a match
+        Returns [{date, kind, linked, candidates}], oldest first; `linked` holds the series'
+        transactions near the occurrence.
+        """
+        rec = db_service.get_recurring(recurring_id)
+        if not rec:
+            raise ValueError('Recurring transaction not found.')
+        window = timedelta(days=MATCH_WINDOW_DAYS)
+        series = list(rec.generated_transactions)
+
+        suggestions = []
+        occurrence, history_misses = rec.shift(rec.next_date, -1), 0
+        while history_misses < HISTORY_MISSES_TO_STOP:
+            candidates = self.match_candidates(rec, occurrence)
+            linked = [t for t in series if abs(t.date - occurrence) <= window]
+            if occurrence >= rec.start_date - window:
+                kind = 'duplicate' if linked else 'missing'
+            else:
+                kind = 'history'
+                history_misses = 0 if candidates else history_misses + 1
+            if candidates:
+                suggestions.append({'date': occurrence, 'kind': kind, 'linked': linked, 'candidates': candidates})
+            occurrence = rec.shift(occurrence, -1)
+
+        return suggestions[::-1]
 
     # GENERATION ================================================================
 

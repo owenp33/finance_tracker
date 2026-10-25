@@ -139,7 +139,7 @@ account, vendor and amount, within a window of days around a date, nearest first
 **`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
 `update_recurring`, `delete_recurring`), generating their due occurrences
 (`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
-`unlink_transaction`); see [Recurring transactions](#recurring-transactions). Occurrences are
+`unlink_transaction`, `suggest_matches`); see [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances and budget flags have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -326,6 +326,13 @@ always one more than their count.
 - **Unlinking** (`unlink_transaction`) keeps the transaction and shrinks the series the way
   deleting a generated transaction does: later occurrences renumber, a limited `number` drops by
   one, and `next_date` stays.
+- **Suggestions** (`suggest_matches`) list transactions that may belong to a series, for the user
+  to confirm; nothing is linked. They walk the schedule back from the next occurrence, and each
+  occurrence with matching transactions becomes one suggestion: `missing` (since the series
+  started, with no transaction of the series near it), `duplicate` (the series already covers it,
+  so a second matching transaction is likely the same charge twice), or `history` (before
+  `start_date`; the walk stops after `HISTORY_MISSES_TO_STOP` (2) occurrences in a row without a
+  match). That lets a template created from its next date pick up the history imported before it.
 
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated
@@ -345,7 +352,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`) |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
@@ -362,6 +369,11 @@ Details worth knowing:
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
   after today instead of generating past ones); it generates any occurrences already due.
   `PATCH /recurring/<id>` takes any of those fields. An invalid schedule is a 400.
+- `GET /recurring/<id>/suggestions` returns `{suggestions: [{date, kind, linked, candidates}]}`,
+  oldest first (`kind` is `missing`, `duplicate`, or `history`; `linked` and `candidates` are
+  transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
+  series and `DELETE` on the same path takes it out; both return the updated template, and an
+  invalid link or unlink is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked

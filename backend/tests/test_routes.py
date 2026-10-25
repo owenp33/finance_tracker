@@ -272,6 +272,51 @@ class TestRecurringRoutes:
         txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
         assert txns == []
 
+    def _aspire_with_history(self, client, account, auth_headers, pin_today):
+        """A monthly ASPIRE template from Oct 31 and one $75 payment on Sep 30 that isn't linked."""
+        pin_today(date(2026, 10, 25))
+        tx_id = client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': '2026-09-30', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75}).json['transaction']['id']
+        rec_id = self._add(client, account, auth_headers, start_date='2026-10-31').json['recurring']['id']
+        return rec_id, tx_id
+
+    def test_suggestions_list_matching_transactions(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        resp = client.get(f'/api/recurring/{rec_id}/suggestions', headers=auth_headers)
+        assert resp.status_code == 200
+        [suggestion] = resp.json['suggestions']
+        assert (suggestion['date'], suggestion['kind'], suggestion['linked']) == ('2026-09-30', 'history', [])
+        assert [t['id'] for t in suggestion['candidates']] == [tx_id]
+
+    def test_link_and_unlink_a_transaction(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/transactions/{tx_id}'
+
+        linked = client.post(url, headers=auth_headers)
+        assert linked.status_code == 200
+        assert (linked.json['recurring']['date'], linked.json['recurring']['idx']) == ('2026-09-30', 2)
+        assert client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']['recurring_id'] == rec_id
+        assert client.get(f'/api/recurring/{rec_id}/suggestions', headers=auth_headers).json['suggestions'] == []
+
+        unlinked = client.delete(url, headers=auth_headers)
+        assert unlinked.status_code == 200
+        assert unlinked.json['recurring']['idx'] == 1
+        assert client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']['recurring_id'] is None
+
+    def test_invalid_link_or_unlink_returns_400(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/transactions/{tx_id}'
+        unlinked = client.delete(url, headers=auth_headers)
+        assert (unlinked.status_code, unlinked.json['error']) == (400, "That transaction isn't part of this recurring series.")
+        client.post(url, headers=auth_headers)
+        again = client.post(url, headers=auth_headers)
+        assert (again.status_code, again.json['error']) == (400, 'That transaction is already part of a recurring series.')
+
+    def test_missing_transaction_returns_404(self, client, account, auth_headers, pin_today):
+        rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
+        resp = client.post(f'/api/recurring/{rec_id}/transactions/999999', headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (404, 'Transaction not found')
+
     def test_switch_a_template_to_monthly(self, client, account, auth_headers):
         rec_id = self._add(client, account, auth_headers, frequency=30, frequency_unit='days').json['recurring']['id']
         resp = client.patch(f'/api/recurring/{rec_id}', json={'frequency': 1, 'frequency_unit': 'months'},
