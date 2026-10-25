@@ -207,6 +207,26 @@ function App() {
     }
   };
 
+  // One request per transaction, in order: each link renumbers the series. refreshAll reloads the
+  // accounts, which reloads the templates and their suggestion counts.
+  const handleLinkToRecurring = async (recurringId, transactionIds) => {
+    try {
+      for (const id of transactionIds) await recurringAPI.linkToRecurring(recurringId, id);
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
+  const handleDismissSuggestion = async (recurringId, transactionId) => {
+    try {
+      await recurringAPI.dismissSuggestion(recurringId, transactionId);
+      await loadAllRecurring(accounts);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleCreateAccount = async (accountId, accountName) => {
     try {
       const account = await accountsAPI.createAccount(accountId, accountName);
@@ -321,6 +341,8 @@ function App() {
             onDeleteMany={handleDeleteManyTransactions}
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
+            onLinkToRecurring={handleLinkToRecurring}
+            onDismissSuggestion={handleDismissSuggestion}
             onToggleTransfer={handleToggleTransfer}
             onToggleTransferMany={handleToggleTransferMany}
             onPairTransfer={handlePairTransfer}

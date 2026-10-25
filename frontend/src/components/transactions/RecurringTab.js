@@ -3,6 +3,7 @@ import { Pencil, Trash2, Info } from 'lucide-react';
 import TransactionForm from '../TransactionForm';
 import TransactionList from '../TransactionList';
 import FrequencySelect from './FrequencySelect';
+import RecurringSuggestions from './RecurringSuggestions';
 import { sortList, dateStrToDate, formatDate, frequencyLabel } from './utils';
 
 function RecurringTab({
@@ -18,8 +19,11 @@ function RecurringTab({
   onToggleTransferMany,
   onEditRecurring,
   onDeleteRecurring,
+  onLinkToRecurring,
+  onDismissSuggestion,
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [reviewingIds, setReviewingIds] = useState(new Set());
   const [recurringSort, setRecurringSort] = useState('date-asc');
 
   const [editingRecurringId, setEditingRecurringId] = useState(null);
@@ -30,6 +34,13 @@ function RecurringTab({
 
   const toggleRecurringExpand = (id) =>
     setExpandedRecurringIds(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const toggleReviewing = (id) =>
+    setReviewingIds(prev => {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
@@ -155,7 +166,10 @@ function RecurringTab({
                 <>
                   <div className="recurring-item-row">
                     <div className="recurring-info">
-                      <strong>{r.vendor}</strong>
+                      <strong>
+                        {r.vendor}
+                        {r.needs_attention && <span className="needs-attention-badge">Needs attention</span>}
+                      </strong>
                       {(() => {
                         const isFinished = r.number !== -1 && r.idx > r.number;
                         const displayDate = isFinished ? r.last_date : r.next_date;
@@ -176,6 +190,21 @@ function RecurringTab({
                       <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}><Trash2 size={14} /></button>
                     </div>
                   </div>
+                  {r.suggestion_count > 0 && (
+                    <div className="recurring-generated">
+                      <button className="recurring-generated-toggle" onClick={() => toggleReviewing(r.id)}>
+                        {reviewingIds.has(r.id) ? '▲' : '▼'} {r.suggestion_count} suggested transaction{r.suggestion_count !== 1 ? 's' : ''} to review
+                      </button>
+                      {reviewingIds.has(r.id) && (
+                        <RecurringSuggestions
+                          template={r}
+                          onLink={onLinkToRecurring}
+                          onDismiss={onDismissSuggestion}
+                          onDelete={onDelete}
+                        />
+                      )}
+                    </div>
+                  )}
                   {(() => {
                     const generated = transactions
                       .filter(t => t.recurring_id === r.id)

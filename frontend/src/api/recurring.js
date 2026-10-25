@@ -20,3 +20,13 @@ export const updateRecurring = (id, body) =>
 
 export const deleteRecurring = (id, deleteGenerated = false) =>
   fetchAPI(`/api/recurring/${id}?delete_generated=${deleteGenerated}`, { method: 'DELETE' });
+
+// Series membership: transactions that may belong to a template, and linking or dismissing them
+export const getSuggestions = (id) =>
+  fetchAPI(`/api/recurring/${id}/suggestions`).then(d => d.suggestions);
+
+export const linkToRecurring = (id, transactionId) =>
+  fetchAPI(`/api/recurring/${id}/transactions/${transactionId}`, { method: 'POST' }).then(d => d.recurring);
+
+export const dismissSuggestion = (id, transactionId) =>
+  fetchAPI(`/api/recurring/${id}/dismissals/${transactionId}`, { method: 'POST' }).then(d => d.recurring);

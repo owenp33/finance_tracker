@@ -21,6 +21,8 @@ function TransactionsView({
   onDeleteTransferBulk,
   onEditRecurring,
   onDeleteRecurring,
+  onLinkToRecurring,
+  onDismissSuggestion,
   onImportDone,
   onCreateAccount,
   onEditAccount,
@@ -30,12 +32,17 @@ function TransactionsView({
 
   const flaggedCount        = transactions.filter(t => t.over_budget).length;
   const needsAttentionCount = accounts.filter(a => a.needs_attention).length;
+  const recurringAttentionCount = recurringTransactions.filter(r => r.needs_attention).length;
 
   return (
     <div className="transactions-view">
       <div className="tab-bar">
         <button className={`tab-btn${tab === 'all'       ? ' active' : ''}`} onClick={() => setTab('all')}>All</button>
-        <button className={`tab-btn${tab === 'recurring' ? ' active' : ''}`} onClick={() => setTab('recurring')}>Recurring</button>
+        <button className={`tab-btn${tab === 'recurring' ? ' active' : ''}`} onClick={() => setTab('recurring')}>
+          Recurring {recurringAttentionCount > 0 && (
+            <span className="count-badge attention-badge" title="Recurring transactions that need attention">{recurringAttentionCount}</span>
+          )}
+        </button>
         <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>
           Accounts {needsAttentionCount > 0 && (
             <span className="count-badge attention-badge" title="Accounts that need attention">{needsAttentionCount}</span>
@@ -76,6 +83,8 @@ function TransactionsView({
           onToggleTransferMany={onToggleTransferMany}
           onEditRecurring={onEditRecurring}
           onDeleteRecurring={onDeleteRecurring}
+          onLinkToRecurring={onLinkToRecurring}
+          onDismissSuggestion={onDismissSuggestion}
         />
       )}
 
