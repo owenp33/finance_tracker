@@ -292,9 +292,12 @@ It is checked only against rows that existed before the import, so identical row
 
 ## Recurring transactions
 
-A template generates a transaction for each occurrence that is due: generation runs while
-`next_date <= today` and (`number == -1` or `idx <= number`), advancing `next_date` by one repeat
-and `idx` by one each time. `idx` starts at 1.
+A template fills each occurrence that is due: generation runs while `next_date <= today` and
+(`number == -1` or `idx <= number`), advancing `next_date` by one repeat and `idx` by one each
+time. `idx` starts at 1. If an occurrence already has an exact match (see Matching below: same
+vendor and amount within 3 days, not dismissed), the nearest one is linked as that occurrence
+instead of generating a second copy, which keeps a charge entered by hand or imported from the
+bank from being counted twice. Otherwise a transaction is generated.
 
 **Schedules.** A template repeats every `frequency` days (`frequency_unit = 'days'`) or every
 `frequency` calendar months (`'months'`: monthly is 1, quarterly 3, yearly 12). A monthly template
@@ -309,8 +312,8 @@ Generation runs when a template is created, on login, on every `GET /api/auth/me
 and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily at 00:05
 server local time.
 
-**Past start dates.** A template whose next date is in the past generates every missed
-occurrence when it is created. With `skip_past`, it instead starts at its first occurrence on or
+**Past start dates.** A template whose next date is in the past fills every missed occurrence
+when it is created (adopting exact matches already in the history, generating the rest). With `skip_past`, it instead starts at its first occurrence on or
 after today (that becomes its `start_date` and `next_date`, with `idx` 1), keeping its rhythm and
 its day of the month, so a bill whose history was imported isn't generated again. An occurrence
 that falls on today is still generated.
@@ -318,9 +321,10 @@ that falls on today is still generated.
 **Series membership.** A series is the set of transactions whose `recurring_id` points at the
 template, generated or linked; `recurring_index` numbers them 1, 2, ... by date, and `idx` is
 always one more than their count.
-- **Matching** (`match_candidates`): a transaction counts as an occurrence when it is in no
-  series, on the same account, with the same vendor (case and surrounding spaces ignored) and the
-  exact same amount, within ±`MATCH_WINDOW_DAYS` (3) of the occurrence date.
+- **Matching** (`match_candidates`), the strict rule used when linking without asking: a
+  transaction counts as an occurrence when it is in no series, not dismissed for this one, on the
+  same account, with the same vendor (case and surrounding spaces ignored) and the exact same
+  amount, within ±`MATCH_WINDOW_DAYS` (3) of the occurrence date.
 - **Linking** (`link_transaction`) makes an existing transaction an occurrence without changing
   its fields or the balance; a manual link doesn't have to match. The transaction must be on the
   template's account, in no other series, and dated no later than the next occurrence plus the

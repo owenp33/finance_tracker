@@ -342,6 +342,69 @@ class TestSkipPastOccurrences:
         assert (_generated_dates(rec), rec.next_date) == ([date(2026, 8, 3), date(2026, 9, 3), date(2026, 10, 3)], date(2026, 11, 3))
 
 
+class TestGenerationAdoptsMatches:
+    """A due occurrence links an existing exact match instead of generating a second copy."""
+
+    def _monthly(self, account, start=date(2026, 9, 2)):
+        return recurring_svc.add_recurring(account.id, start, 'Anthropic', 'Subscriptions', -20.0,
+                                           start, 1, frequency_unit='months')
+
+    def _charge(self, account, day, amount=-20.0):
+        return svc.add_transaction(account.id, day, 'Anthropic', 'Subscription', amount)
+
+    def _series(self, rec):
+        from models.transaction import TransactionModel
+        rows = TransactionModel.query.filter_by(recurring_id=rec.id).order_by(TransactionModel.recurring_index)
+        return [(t.recurring_index, t.date, t.id) for t in rows]
+
+    def test_an_exact_match_within_three_days_is_linked_instead_of_generated(self, account, pin_today):
+        pin_today(date(2026, 9, 10))
+        imported = self._charge(account, date(2026, 9, 3))   # posted a day late; another category is fine
+        rec = self._monthly(account)
+        balance = db_svc.get_account(account.id).balance
+        assert recurring_svc.process_due_recurring(account.id) == 0
+        assert self._series(rec) == [(1, date(2026, 9, 3), imported.id)]
+        assert (rec.next_date, rec.idx) == (date(2026, 10, 2), 2)
+        assert db_svc.get_account(account.id).balance == balance
+
+    @pytest.mark.parametrize('day, amount', [(date(2026, 9, 6), -20.0), (date(2026, 9, 2), -25.0)],
+                             ids=['4-days-away', 'another-amount'])
+    def test_anything_short_of_an_exact_match_is_left_alone(self, account, pin_today, day, amount):
+        pin_today(date(2026, 9, 10))
+        other = self._charge(account, day, amount)
+        rec = self._monthly(account)
+        assert recurring_svc.process_due_recurring(account.id) == 1
+        assert [d for _, d, tx_id in self._series(rec)] == [date(2026, 9, 2)]
+        assert other.recurring_id is None
+
+    def test_a_dismissed_transaction_is_not_adopted(self, account, pin_today):
+        pin_today(date(2026, 8, 25))
+        imported = self._charge(account, date(2026, 9, 2))
+        rec = self._monthly(account)
+        recurring_svc.dismiss_suggestion(rec.id, imported.id)
+        pin_today(date(2026, 9, 10))
+        assert recurring_svc.process_due_recurring(account.id) == 1
+        assert imported.recurring_id is None
+
+    def test_the_nearest_of_several_matches_is_adopted(self, account, pin_today):
+        pin_today(date(2026, 9, 10))
+        early, exact = self._charge(account, date(2026, 8, 31)), self._charge(account, date(2026, 9, 2))
+        rec = self._monthly(account)
+        recurring_svc.process_due_recurring(account.id)
+        assert self._series(rec) == [(1, date(2026, 9, 2), exact.id)]
+        assert early.recurring_id is None   # left for the suggestions to show as a possible duplicate
+
+    def test_adding_past_occurrences_adopts_imported_history(self, account, pin_today):
+        pin_today(date(2026, 10, 25))
+        imported = [self._charge(account, d) for d in (date(2026, 7, 2), date(2026, 8, 3), date(2026, 9, 3))]
+        rec = self._monthly(account, start=date(2026, 7, 2))
+        assert recurring_svc.process_due_recurring(account.id) == 1   # only Oct 2 had no copy
+        assert [(i, d) for i, d, _ in self._series(rec)] == [
+            (1, date(2026, 7, 2)), (2, date(2026, 8, 3)), (3, date(2026, 9, 3)), (4, date(2026, 10, 2)),
+        ]
+        assert [tx_id for _, _, tx_id in self._series(rec)][:3] == [t.id for t in imported]
+
+
 class TestSeriesMembership:
     """Matching existing transactions to a series, linking them in, and taking them out."""
 

@@ -166,11 +166,14 @@ class RecurringService:
         """
         Transactions in no series that are rec's occurrence on occurrence_date by the strict rule
         used for linking without asking: same account, vendor and amount, within
-        ±MATCH_WINDOW_DAYS. Nearest first. (Suggestions use a looser rule; see suggest_matches.)
+        ±MATCH_WINDOW_DAYS, and not dismissed for this series. Nearest first. (Suggestions use a
+        looser rule; see suggest_matches.)
         """
-        return db_service.find_recurring_candidates(
+        dismissed = db_service.get_dismissed_transaction_ids(rec.id)
+        found = db_service.find_recurring_candidates(
             rec.account_id, rec.vendor, rec.amount_cents, occurrence_date, MATCH_WINDOW_DAYS
         )
+        return [t for t in found if t.id not in dismissed]
 
     def link_transaction(self, recurring_id, transaction_id):
         """
@@ -305,8 +308,9 @@ class RecurringService:
 
     def process_due_recurring(self, account_id):
         """
-        Generate transactions for all due recurring items. Intended to be called
-        on user login. Returns the number of transactions created.
+        Fill every due occurrence of the account's templates. An occurrence that already has an
+        exact match (see match_candidates; e.g. the same charge imported from the bank) links the
+        nearest one; otherwise a transaction is generated. Returns the number generated.
         """
         recurring_list = db_service.get_account_recurring(account_id)
         transactions_created = 0
@@ -314,23 +318,28 @@ class RecurringService:
 
         for rec in recurring_list:
             while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
-                account_service.add_transaction(
-                    account_id=account_id,
-                    date_obj=rec.next_date,
-                    vendor=rec.vendor,
-                    category=rec.category,
-                    amount=rec.amount,
-                    notes=rec.notes or '',
-                    recurring_id=rec.id,
-                    recurring_index=rec.idx,
-                )
+                matches = self.match_candidates(rec, rec.next_date)
+                if matches:
+                    matches[0].recurring_id = rec.id
+                    matches[0].recurring_index = rec.idx
+                else:
+                    account_service.add_transaction(
+                        account_id=account_id,
+                        date_obj=rec.next_date,
+                        vendor=rec.vendor,
+                        category=rec.category,
+                        amount=rec.amount,
+                        notes=rec.notes or '',
+                        recurring_id=rec.id,
+                        recurring_index=rec.idx,
+                    )
+                    transactions_created += 1
 
                 rec.next_date = rec.advance_to_next
                 rec.idx += 1
-                transactions_created += 1
 
                 if rec.number != -1 and rec.idx > rec.number:
                     break
 
-        db.session.commit()   # persist rec.next_date updates
+        db.session.commit()   # persist the next dates and adopted links
         return transactions_created

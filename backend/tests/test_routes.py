@@ -333,6 +333,14 @@ class TestRecurringRoutes:
         resp = client.post(f'/api/recurring/{rec_id}/transactions/999999', headers=auth_headers)
         assert (resp.status_code, resp.json['error']) == (404, 'Transaction not found')
 
+    def test_creating_with_past_occurrences_does_not_duplicate_history(self, client, account, auth_headers, pin_today):
+        pin_today(date(2026, 10, 25))
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': '2026-09-30', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75})
+        self._add(client, account, auth_headers, start_date='2026-09-30')   # past occurrences added
+        txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
+        assert [(t['date'], t['recurring_index']) for t in txns] == [('2026-09-30', 1)]
+
     def test_switch_a_template_to_monthly(self, client, account, auth_headers):
         rec_id = self._add(client, account, auth_headers, frequency=30, frequency_unit='days').json['recurring']['id']
         resp = client.patch(f'/api/recurring/{rec_id}', json={'frequency': 1, 'frequency_unit': 'months'},
