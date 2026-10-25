@@ -130,3 +130,14 @@ test('Cancel closes edit form', async () => {
   await user.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByLabelText('Vendor')).not.toBeInTheDocument();
 });
+
+// ── Custom row actions ────────────────────────────────────────────────────────
+
+test('renderActions replaces the default hover actions', async () => {
+  const onPick = jest.fn();
+  renderList({ renderActions: (t) => <button title="Pick" onClick={() => onPick(t.id)}>pick</button> });
+  expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark as transfer' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'pick' }));
+  expect(onPick).toHaveBeenCalledWith(1);
+});

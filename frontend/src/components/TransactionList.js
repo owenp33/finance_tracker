@@ -12,7 +12,8 @@ const formatDate = (dateStr, includeYear = false) => {
 const formatAmount = (amount) =>
   `${amount >= 0 ? '+' : '-'}$${Math.abs(amount).toFixed(2)}`;
 
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle }) {
+// renderActions(t), when given, replaces the default hover actions (transfer, edit, delete).
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -201,19 +202,23 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                   </div>
                 </div>
                 <div className="tx-hover-actions">
-                  {onToggleTransfer && (
-                    <button
-                      className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
-                      title={t.is_transfer ? (t.transfer_peer_id ? 'Unlink transfer' : 'Unmark transfer') : 'Mark as transfer'}
-                      onClick={() => onToggleTransfer(t.id)}
-                    >
-                      <ArrowLeftRight size={14} />
-                    </button>
-                  )}
-                  {showAll && (
+                  {renderActions ? renderActions(t) : (
                     <>
-                      <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>
-                      <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}><Trash2 size={14} /></button>
+                      {onToggleTransfer && (
+                        <button
+                          className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
+                          title={t.is_transfer ? (t.transfer_peer_id ? 'Unlink transfer' : 'Unmark transfer') : 'Mark as transfer'}
+                          onClick={() => onToggleTransfer(t.id)}
+                        >
+                          <ArrowLeftRight size={14} />
+                        </button>
+                      )}
+                      {showAll && (
+                        <>
+                          <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>
+                          <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}><Trash2 size={14} /></button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>

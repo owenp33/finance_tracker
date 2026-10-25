@@ -1,18 +1,19 @@
 import { useState } from 'react';
+import { Check, Trash2 } from 'lucide-react';
+import TransactionList from '../TransactionList';
 import { useRecurringSuggestions } from '../../hooks/useRecurringSuggestions';
-import { formatDollars } from '../../utils/money';
 import { formatDate } from './utils';
 
 const KIND_LABELS = {
   history:   'Before this series started',
   missing:   'Nothing linked for this date',
-  duplicate: 'Possible duplicate or extra payment',
+  duplicate: 'Possible duplicate or unrelated transaction',
 };
 
-// Transactions that may belong to a recurring template, grouped by the occurrence they'd fill.
-// A 'duplicate' sits next to an occurrence the series already covers: it's either the same charge
-// twice (delete it) or an extra payment that belongs to the series too (link it), so it's left
-// out of "Link all" for the user to decide.
+// Transactions that may belong to a recurring template, grouped by the occurrence they'd fill,
+// in the same rows as the template's generated transactions (actions appear on hover). A
+// 'duplicate' sits next to an occurrence the series already covers, which is shown above it;
+// it's left out of "Link all" for the user to decide.
 function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
   const { suggestions, error } = useRecurringSuggestions(template.id, template.suggestion_count);
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,28 @@ function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
     run(() => onLink(template.id, linkable));
   };
 
+  const actionsFor = (kind) => (t) => (
+    <>
+      <button className="btn btn-ghost btn-sm icon-btn suggestion-link-btn" disabled={busy}
+              title="Link to series" aria-label="Link to series"
+              onClick={() => run(() => onLink(template.id, [t.id]))}>
+        <Check size={14} />
+      </button>
+      <button className="btn btn-ghost btn-sm icon-btn suggestion-unrelated-btn" disabled={busy}
+              title="Unrelated transaction" aria-label="Unrelated transaction"
+              onClick={() => run(() => onDismiss(template.id, t.id))}>
+        <span aria-hidden="true">∉</span>
+      </button>
+      {kind === 'duplicate' && (
+        <button className="btn btn-danger btn-sm icon-btn" disabled={busy}
+                title="Delete duplicate" aria-label="Delete duplicate"
+                onClick={() => run(() => onDelete(t.id))}>
+          <Trash2 size={14} />
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className="recurring-suggestions">
       {linkable.length > 1 && (
@@ -51,33 +74,13 @@ function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
           <div className="recurring-suggestion-head">
             {formatDate(s.date, true)} · {KIND_LABELS[s.kind]}
           </div>
-          {s.kind === 'duplicate' && s.linked.map(t => (
-            <div key={t.id} className="recurring-suggestion-linked">
-              In the series: {formatDate(t.date, true)} · {formatDollars(t.amount)}
+          {s.kind === 'duplicate' && s.linked.length > 0 && (
+            <div className="recurring-suggestion-series">
+              <small>In the series</small>
+              <TransactionList transactions={s.linked} renderActions={() => null} />
             </div>
-          ))}
-          {s.candidates.map(t => (
-            <div key={t.id} className="recurring-suggestion-row">
-              <span>{formatDate(t.date, true)}</span>
-              <span className="recurring-suggestion-vendor">{t.vendor} · {t.category}</span>
-              <span className={t.amount >= 0 ? 'green' : 'red'}>{formatDollars(t.amount)}</span>
-              <span className="recurring-suggestion-actions">
-                {s.kind === 'duplicate' ? (
-                  <>
-                    <button className="btn btn-secondary btn-sm" disabled={busy}
-                            onClick={() => run(() => onLink(template.id, [t.id]))}>Link as extra payment</button>
-                    <button className="btn btn-danger btn-sm" disabled={busy}
-                            onClick={() => run(() => onDelete(t.id))}>Delete duplicate</button>
-                  </>
-                ) : (
-                  <button className="btn btn-secondary btn-sm" disabled={busy}
-                          onClick={() => run(() => onLink(template.id, [t.id]))}>Link</button>
-                )}
-                <button className="btn btn-ghost btn-sm" disabled={busy}
-                        onClick={() => run(() => onDismiss(template.id, t.id))}>Not part of this</button>
-              </span>
-            </div>
-          ))}
+          )}
+          <TransactionList transactions={s.candidates} renderActions={actionsFor(s.kind)} />
         </div>
       ))}
     </div>

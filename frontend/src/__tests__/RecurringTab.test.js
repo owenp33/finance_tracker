@@ -20,12 +20,14 @@ const handlers = () => ({
 const renderTab = (recurring, given = {}) => {
   const props = { ...handlers(), ...given };
   render(
-    <RecurringTab
-      transactions={[]} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={recurring}
-      onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDeleteMany={jest.fn()}
-      onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onDeleteRecurring={jest.fn()}
-      {...props}
-    />
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={[]} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={recurring}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onDeleteRecurring={jest.fn()}
+        {...props}
+      />
+    </CategoryColorProvider>
   );
   return props;
 };
@@ -86,10 +88,11 @@ const aspire = (overrides) => template({
 const openSuggestions = async () => {
   getSuggestions.mockResolvedValue(SUGGESTIONS);
   await userEvent.click(screen.getByRole('button', { name: /4 suggested transactions to review/ }));
-  await screen.findByText('Aug 31, 2026');
+  await screen.findAllByText(/Before this series started/);
 };
 
-const rowFor = (dateLabel) => screen.getByText(dateLabel).closest('.recurring-suggestion-row');
+// Suggestion rows look like the generated transactions: "<category> · <date>"
+const rowFor = (detail) => screen.getByText(detail).closest('.transaction-item');
 
 test('a template that needs attention is badged and offers its suggestions', () => {
   renderTab([aspire(), template({ id: 2, vendor: 'Quiet' })]);
@@ -100,31 +103,36 @@ test('a template that needs attention is badged and offers its suggestions', () 
   expect(within(quiet).queryByRole('button', { name: /suggested/ })).not.toBeInTheDocument();
 });
 
-test('each suggestion can be linked or dismissed', async () => {
+test('each suggestion can be linked or marked unrelated', async () => {
   const { onLinkToRecurring, onDismissSuggestion } = renderTab([aspire()]);
   await openSuggestions();
   expect(getSuggestions).toHaveBeenCalledWith(5);
-  expect(screen.getAllByText(/Before this series started/)).toHaveLength(2);
+  expect(screen.getByText('Aug 31, 2026 · Before this series started')).toBeInTheDocument();
 
-  await userEvent.click(within(rowFor('Aug 31, 2026')).getByRole('button', { name: 'Link' }));
+  const august = rowFor('Loan · Aug 31');
+  expect(within(august).queryByRole('button', { name: 'Delete duplicate' })).not.toBeInTheDocument();
+  await userEvent.click(within(august).getByRole('button', { name: 'Link to series' }));
   expect(onLinkToRecurring).toHaveBeenCalledWith(5, [11]);
-  await userEvent.click(within(rowFor('Sep 30, 2026')).getByRole('button', { name: 'Not part of this' }));
+  await userEvent.click(within(rowFor('Loan · Sep 30')).getByRole('button', { name: 'Unrelated transaction' }));
   expect(onDismissSuggestion).toHaveBeenCalledWith(5, 12);
 });
 
-test('a possible duplicate can be linked as an extra payment, deleted, or kept apart', async () => {
+test('a possible duplicate shows the conflicting series row and can be linked, marked unrelated, or deleted', async () => {
   const { onLinkToRecurring, onDelete, onDismissSuggestion } = renderTab([aspire()]);
   await openSuggestions();
-  expect(screen.getByText(/Possible duplicate or extra payment/)).toBeInTheDocument();
-  expect(screen.getByText(/In the series:/)).toHaveTextContent('Oct 31, 2026');
+  expect(screen.getByText('Oct 31, 2026 · Possible duplicate or unrelated transaction')).toBeInTheDocument();
 
-  const copy = rowFor('Nov 1, 2026');
-  await userEvent.click(within(copy).getByRole('button', { name: 'Link as extra payment' }));
+  const inSeries = rowFor('Loan · Oct 31');
+  expect(inSeries.closest('.recurring-suggestion-series')).toHaveTextContent('In the series');
+  expect(within(inSeries).queryAllByRole('button')).toHaveLength(0);
+
+  const copy = rowFor('Loan · Nov 1');
+  await userEvent.click(within(copy).getByRole('button', { name: 'Link to series' }));
   expect(onLinkToRecurring).toHaveBeenCalledWith(5, [14]);
+  await userEvent.click(within(copy).getByRole('button', { name: 'Unrelated transaction' }));
+  expect(onDismissSuggestion).toHaveBeenCalledWith(5, 14);
   await userEvent.click(within(copy).getByRole('button', { name: 'Delete duplicate' }));
   expect(onDelete).toHaveBeenCalledWith(14);
-  await userEvent.click(within(copy).getByRole('button', { name: 'Not part of this' }));
-  expect(onDismissSuggestion).toHaveBeenCalledWith(5, 14);
 });
 
 test('link all links every suggestion except duplicates, after confirming', async () => {

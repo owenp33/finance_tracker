@@ -903,24 +903,27 @@ body {
   color: #495057;
 }
 
-.recurring-suggestion-linked {
-  font-size: 0.8rem;
+.recurring-suggestion-series {
+  opacity: 0.7;
+}
+
+.recurring-suggestion-series small {
+  font-size: 0.75rem;
   color: #999;
 }
 
-.recurring-suggestion-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0;
-  font-size: 0.85rem;
+/* Series rows have no actions, so hovering keeps their amount in view */
+.recurring-suggestion-series .transaction-item:hover .tx-default-info {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.recurring-suggestion-vendor { flex: 1; color: #666; }
+.suggestion-link-btn { color: #16a34a; }
 
-.recurring-suggestion-actions {
-  display: flex;
-  gap: 6px;
+.suggestion-unrelated-btn {
+  color: #868e96;
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .recurring-generated-list .transaction-item {
