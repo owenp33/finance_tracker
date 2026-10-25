@@ -18,7 +18,7 @@ recurring_service = RecurringService()
 def get_recurring(recurring_id):
     """Return a single recurring transaction template."""
     rec = db_service.get_recurring(recurring_id)
-    return jsonify({'success': True, 'recurring': rec.to_dict()}), 200
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200
 
 
 @recurring_bp.route('/<int:recurring_id>', methods=['PUT', 'PATCH'])
@@ -55,7 +55,7 @@ def update_recurring(recurring_id):
 
     return jsonify({
         'success': True,
-        'recurring': updated.to_dict(),
+        'recurring': recurring_service.template_dict(updated),
         'message': 'Recurring transaction updated'
     }), 200
 
@@ -106,7 +106,7 @@ def link_transaction(recurring_id, transaction_id):
         rec = recurring_service.link_transaction(recurring_id, transaction_id)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
-    return jsonify({'success': True, 'recurring': rec.to_dict()}), 200
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200
 
 
 @recurring_bp.route('/<int:recurring_id>/transactions/<int:transaction_id>', methods=['DELETE'])
@@ -119,4 +119,27 @@ def unlink_transaction(recurring_id, transaction_id):
         rec = recurring_service.unlink_transaction(recurring_id, transaction_id)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
-    return jsonify({'success': True, 'recurring': rec.to_dict()}), 200
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200
+
+
+@recurring_bp.route('/<int:recurring_id>/dismissals/<int:transaction_id>', methods=['POST'])
+@jwt_required()
+@owns_recurring
+@owns_transaction
+def dismiss_suggestion(recurring_id, transaction_id):
+    """Mark a suggested transaction as not part of this series, so it isn't suggested again."""
+    try:
+        rec = recurring_service.dismiss_suggestion(recurring_id, transaction_id)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200
+
+
+@recurring_bp.route('/<int:recurring_id>/dismissals/<int:transaction_id>', methods=['DELETE'])
+@jwt_required()
+@owns_recurring
+@owns_transaction
+def undo_dismissal(recurring_id, transaction_id):
+    """Let a dismissed transaction be suggested for this series again."""
+    rec = recurring_service.undo_dismissal(recurring_id, transaction_id)
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200

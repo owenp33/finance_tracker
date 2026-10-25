@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel, FREQUENCY_UNITS
+from models.recurring_dismissal import RecurringDismissalModel
 from services.account_service import AccountService
 from services.db_service import DbService
 
@@ -40,6 +41,17 @@ def _renumber(rec):
     for index, transaction in enumerate(occurrences, start=1):
         transaction.recurring_index = index
     rec.idx = len(occurrences) + 1
+
+
+def _series_and_transaction(recurring_id, transaction_id):
+    """The template and the transaction; raises ValueError when either doesn't exist."""
+    rec = db_service.get_recurring(recurring_id)
+    if not rec:
+        raise ValueError('Recurring transaction not found.')
+    tx = db_service.get_transaction(transaction_id)
+    if not tx:
+        raise ValueError('Transaction not found.')
+    return rec, tx
 
 
 class RecurringService:
@@ -169,12 +181,7 @@ class RecurringService:
         series' total grows by one so its remaining occurrences stay the same, and the start date
         moves back if needed). Occurrence numbers follow date order. Raises ValueError otherwise.
         """
-        rec = db_service.get_recurring(recurring_id)
-        if not rec:
-            raise ValueError('Recurring transaction not found.')
-        tx = db_service.get_transaction(transaction_id)
-        if not tx:
-            raise ValueError('Transaction not found.')
+        rec, tx = _series_and_transaction(recurring_id, transaction_id)
         if tx.account_id != rec.account_id:
             raise ValueError('A transaction can only join a recurring series on its own account.')
         if tx.recurring_id is not None:
@@ -202,12 +209,7 @@ class RecurringService:
         transaction, this shrinks the series: later occurrences renumber and a limited series'
         total drops by one. Raises ValueError when it isn't in this series.
         """
-        rec = db_service.get_recurring(recurring_id)
-        if not rec:
-            raise ValueError('Recurring transaction not found.')
-        tx = db_service.get_transaction(transaction_id)
-        if not tx:
-            raise ValueError('Transaction not found.')
+        rec, tx = _series_and_transaction(recurring_id, transaction_id)
         if tx.recurring_id != rec.id:
             raise ValueError("That transaction isn't part of this recurring series.")
 
@@ -233,22 +235,25 @@ class RecurringService:
           'duplicate' already covered by the series (likely the same charge twice)
           'history'   before the series started; the walk stops after HISTORY_MISSES_TO_STOP
                       such occurrences in a row without a candidate
-        Returns [{date, kind, linked, candidates}], oldest first; candidates nearest first, and
-        `linked` holds the series' transactions in the occurrence's window.
+        Transactions dismissed for the series are skipped. Returns [{date, kind, linked,
+        candidates}], oldest first; candidates nearest first, and `linked` holds the series'
+        transactions in the occurrence's window.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             raise ValueError('Recurring transaction not found.')
         late = timedelta(days=MATCH_WINDOW_DAYS)
         series = list(rec.generated_transactions)
+        dismissed = db_service.get_dismissed_transaction_ids(rec.id)
 
         suggestions = []
         occurrence, history_misses = rec.shift(rec.next_date, -1), 0
         while history_misses < HISTORY_MISSES_TO_STOP:
             after, until = rec.shift(occurrence, -1) + late, occurrence + late
+            found = db_service.find_unlinked_transactions(rec.account_id, rec.vendor, rec.category,
+                                                          rec.amount_cents, after, until)
             candidates = sorted(
-                db_service.find_unlinked_transactions(rec.account_id, rec.vendor, rec.category,
-                                                      rec.amount_cents, after, until),
+                (t for t in found if t.id not in dismissed),
                 key=lambda t: (abs((t.date - occurrence).days), t.id),
             )
             linked = [t for t in series if after < t.date <= until]
@@ -262,6 +267,39 @@ class RecurringService:
             occurrence = rec.shift(occurrence, -1)
 
         return suggestions[::-1]
+
+    def dismiss_suggestion(self, recurring_id, transaction_id):
+        """
+        Record that a transaction isn't part of a series, so its suggestions skip it (dismissing
+        again is harmless). Raises ValueError for a transaction in the series or on another account.
+        """
+        rec, tx = _series_and_transaction(recurring_id, transaction_id)
+        if tx.recurring_id == rec.id:
+            raise ValueError('That transaction is part of this recurring series.')
+        if tx.account_id != rec.account_id:
+            raise ValueError("That transaction isn't on this recurring series' account.")
+
+        if not db_service.get_dismissal(rec.id, tx.id):
+            db.session.add(RecurringDismissalModel(recurring_id=rec.id, transaction_id=tx.id))
+            db.session.commit()
+        return rec
+
+    def undo_dismissal(self, recurring_id, transaction_id):
+        """Let a dismissed transaction be suggested for the series again (harmless if it wasn't dismissed)."""
+        rec, tx = _series_and_transaction(recurring_id, transaction_id)
+        dismissal = db_service.get_dismissal(rec.id, tx.id)
+        if dismissal:
+            db.session.delete(dismissal)
+            db.session.commit()
+        return rec
+
+    def template_dict(self, rec):
+        """
+        A template as the API returns it: to_dict() plus suggestion_count (transactions suggested
+        for it) and needs_attention (true while any suggestion is left).
+        """
+        count = sum(len(s['candidates']) for s in self.suggest_matches(rec.id))
+        return {**rec.to_dict(), 'suggestion_count': count, 'needs_attention': count > 0}
 
     # GENERATION ================================================================
 

@@ -203,7 +203,7 @@ def get_recurring(account_id):
 
     return jsonify({
         'success': True,
-        'recurring': [r.to_dict() for r in recurring]
+        'recurring': [recurring_service.template_dict(r) for r in recurring]
     }), 200
 
 
@@ -241,4 +241,4 @@ def add_recurring(account_id):
     # Immediately generate any transactions that are already due
     recurring_service.process_due_recurring(account_id)
 
-    return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(recurring)}), 201

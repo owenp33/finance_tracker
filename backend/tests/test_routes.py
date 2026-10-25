@@ -312,6 +312,22 @@ class TestRecurringRoutes:
         again = client.post(url, headers=auth_headers)
         assert (again.status_code, again.json['error']) == (400, 'That transaction is already part of a recurring series.')
 
+    def test_templates_report_whether_they_need_attention(self, client, account, auth_headers, pin_today):
+        rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
+        [listed] = client.get(f'/api/accounts/{account.id}/recurring', headers=auth_headers).json['recurring']
+        single = client.get(f'/api/recurring/{rec_id}', headers=auth_headers).json['recurring']
+        for template in (listed, single):
+            assert (template['suggestion_count'], template['needs_attention']) == (1, True)
+
+    def test_dismiss_and_undo(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/dismissals/{tx_id}'
+        dismissed = client.post(url, headers=auth_headers)
+        assert dismissed.status_code == 200
+        assert (dismissed.json['recurring']['suggestion_count'], dismissed.json['recurring']['needs_attention']) == (0, False)
+        undone = client.delete(url, headers=auth_headers)
+        assert (undone.status_code, undone.json['recurring']['suggestion_count']) == (200, 1)
+
     def test_missing_transaction_returns_404(self, client, account, auth_headers, pin_today):
         rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
         resp = client.post(f'/api/recurring/{rec_id}/transactions/999999', headers=auth_headers)

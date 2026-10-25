@@ -141,7 +141,8 @@ exact amount, within a date range). It also holds `_reevaluate_category_flags` (
 **`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
 `update_recurring`, `delete_recurring`), generating their due occurrences
 (`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
-`unlink_transaction`, `suggest_matches`); see [Recurring transactions](#recurring-transactions). Occurrences are
+`unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`, and
+`template_dict` for API responses); see [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances and budget flags have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -185,6 +186,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `over_budget`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
+| `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
 the account's database id is `id`.
@@ -341,6 +343,13 @@ always one more than their count.
   so a second matching transaction is likely the same charge twice), or `history` (before
   `start_date`; the walk stops after `HISTORY_MISSES_TO_STOP` (2) occurrences in a row without a
   match). That lets a template created from its next date pick up the history imported before it.
+- **Dismissals** (`dismiss_suggestion`, `undo_dismissal`) record that a transaction isn't part of
+  a series, so its suggestions skip it; only transactions on the series' account and outside the
+  series can be dismissed, and repeating either call is harmless.
+- **Needs attention.** Every API response that returns a template uses
+  `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
+  suggested) and `needs_attention` (true while any are left). It is computed, not stored, so
+  linking or dismissing the last suggestion clears it.
 
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated
@@ -360,7 +369,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>` |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
@@ -381,7 +390,9 @@ Details worth knowing:
   oldest first (`kind` is `missing`, `duplicate`, or `history`; `linked` and `candidates` are
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
   series and `DELETE` on the same path takes it out; both return the updated template, and an
-  invalid link or unlink is a 400.
+  invalid link or unlink is a 400. `POST /recurring/<id>/dismissals/<transaction_id>` dismisses a
+  suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count` and
+  `needs_attention`.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked
@@ -492,5 +503,8 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Duplicate detection ignores counts.** If the database holds one row identical to two rows in
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.
+- **Template responses compute their suggestions.** `needs_attention` walks each template's
+  schedule (one query per occurrence) every time a template is returned, including the account
+  template lists. Fine at today's scale; cache or store it if templates or history grow large.
 - **`authenticate` answers faster for an unknown username** (no hash check), which leaks whether
   a username exists to someone timing requests.

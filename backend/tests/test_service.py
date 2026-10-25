@@ -549,6 +549,57 @@ class TestSeriesSuggestions:
         self._charge(account, date(2026, 6, 1), vendor='Millenium Apartments', amount=216.0, category='Rent')   # refund
         assert recurring_svc.suggest_matches(rec.id) == []
 
+    def _aspire(self, account, pin_today):
+        """A monthly ASPIRE template from Oct 31 with unlinked $75 payments on Aug 31 and Sep 30."""
+        pin_today(date(2026, 10, 25))
+        payments = [self._charge(account, date(2026, 8, 31)), self._charge(account, date(2026, 9, 30))]
+        rec = recurring_svc.add_recurring(account.id, date(2026, 10, 31), 'ASPIRE', 'Loan', -75.0,
+                                          date(2026, 10, 31), 1, frequency_unit='months')
+        return rec, payments
+
+    def test_a_dismissed_transaction_is_no_longer_suggested(self, account, pin_today):
+        rec, (august, september) = self._aspire(account, pin_today)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)   # dismissing twice is harmless
+        assert self._summary(recurring_svc.suggest_matches(rec.id)) == [(date(2026, 8, 31), 'history', [date(2026, 8, 31)])]
+
+    def test_a_dismissal_can_be_undone(self, account, pin_today):
+        rec, (_, september) = self._aspire(account, pin_today)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        recurring_svc.undo_dismissal(rec.id, september.id)
+        assert len(recurring_svc.suggest_matches(rec.id)) == 2
+
+    def test_only_transactions_outside_the_series_on_its_account_can_be_dismissed(self, account, pin_today):
+        rec, (august, _) = self._aspire(account, pin_today)
+        recurring_svc.link_transaction(rec.id, august.id)
+        with pytest.raises(ValueError, match='^That transaction is part of this recurring series.$'):
+            recurring_svc.dismiss_suggestion(rec.id, august.id)
+        other = AccountModel(user_id=account.user_id, acct_id_str='card-1', acct_name='Card')
+        _db.session.add(other)
+        _db.session.commit()
+        elsewhere = svc.add_transaction(other.id, date(2026, 9, 30), 'ASPIRE', 'Loan', -75.0)
+        with pytest.raises(ValueError, match="^That transaction isn't on this recurring series' account.$"):
+            recurring_svc.dismiss_suggestion(rec.id, elsewhere.id)
+
+    def test_the_template_needs_attention_while_suggestions_are_left(self, account, pin_today):
+        rec, (august, september) = self._aspire(account, pin_today)
+        assert {k: recurring_svc.template_dict(rec)[k] for k in ('suggestion_count', 'needs_attention')} == \
+            {'suggestion_count': 2, 'needs_attention': True}
+        recurring_svc.link_transaction(rec.id, august.id)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        assert {k: recurring_svc.template_dict(rec)[k] for k in ('suggestion_count', 'needs_attention')} == \
+            {'suggestion_count': 0, 'needs_attention': False}
+
+    def test_dismissals_go_when_the_template_or_the_transaction_does(self, account, pin_today):
+        from models.recurring_dismissal import RecurringDismissalModel
+        rec, (august, september) = self._aspire(account, pin_today)
+        recurring_svc.dismiss_suggestion(rec.id, august.id)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        svc.delete_transaction(august.id)
+        assert RecurringDismissalModel.query.count() == 1
+        recurring_svc.delete_recurring(rec.id)
+        assert RecurringDismissalModel.query.count() == 0
+
     def test_suggesting_links_nothing(self, account, pin_today):
         pin_today(date(2026, 10, 25))
         old = self._charge(account, date(2026, 9, 30))
