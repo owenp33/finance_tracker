@@ -343,8 +343,9 @@ always one more than their count.
   late counts for the occurrence before, and every transaction falls to exactly one occurrence.
   They walk the schedule back from the next occurrence, and each occurrence with candidates
   becomes one suggestion: `missing` (since the series
-  started, with no transaction of the series near it), `duplicate` (the series already covers it,
-  so a second matching transaction is likely the same charge twice), or `history` (before
+  started, with no transaction of the series near it), `duplicate` (the series already covers it:
+  a second matching transaction is either the same charge twice or an extra payment that belongs
+  to the series too, for the user to decide), or `history` (before
   `start_date`; the walk stops after `HISTORY_MISSES_TO_STOP` (2) occurrences in a row without a
   match). That lets a template created from its next date pick up the history imported before it.
 - **Dismissals** (`dismiss_suggestion`, `undo_dismissal`) record that a transaction isn't part of

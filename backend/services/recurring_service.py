@@ -235,7 +235,8 @@ class RecurringService:
         Walking the schedule back from the next occurrence, an occurrence with candidates becomes
         a suggestion of one kind:
           'missing'   since the series started, with no transaction of the series in its window
-          'duplicate' already covered by the series (likely the same charge twice)
+          'duplicate' already covered by the series: the same charge twice, or an extra
+                      payment that belongs to the series too (the user decides)
           'history'   before the series started; the walk stops after HISTORY_MISSES_TO_STOP
                       such occurrences in a row without a candidate
         Transactions dismissed for the series are skipped. Returns [{date, kind, linked,

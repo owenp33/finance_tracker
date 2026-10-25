@@ -112,16 +112,18 @@ test('each suggestion can be linked or dismissed', async () => {
   expect(onDismissSuggestion).toHaveBeenCalledWith(5, 12);
 });
 
-test('a possible duplicate shows the series row and can be deleted, not linked', async () => {
-  const { onDelete, onDismissSuggestion } = renderTab([aspire()]);
+test('a possible duplicate can be linked as an extra payment, deleted, or kept apart', async () => {
+  const { onLinkToRecurring, onDelete, onDismissSuggestion } = renderTab([aspire()]);
   await openSuggestions();
+  expect(screen.getByText(/Possible duplicate or extra payment/)).toBeInTheDocument();
   expect(screen.getByText(/In the series:/)).toHaveTextContent('Oct 31, 2026');
 
   const copy = rowFor('Nov 1, 2026');
-  expect(within(copy).queryByRole('button', { name: 'Link' })).not.toBeInTheDocument();
-  await userEvent.click(within(copy).getByRole('button', { name: 'Delete this copy' }));
+  await userEvent.click(within(copy).getByRole('button', { name: 'Link as extra payment' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [14]);
+  await userEvent.click(within(copy).getByRole('button', { name: 'Delete duplicate' }));
   expect(onDelete).toHaveBeenCalledWith(14);
-  await userEvent.click(within(copy).getByRole('button', { name: 'Not a duplicate' }));
+  await userEvent.click(within(copy).getByRole('button', { name: 'Not part of this' }));
   expect(onDismissSuggestion).toHaveBeenCalledWith(5, 14);
 });
 

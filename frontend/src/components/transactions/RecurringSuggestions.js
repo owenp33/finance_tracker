@@ -6,11 +6,13 @@ import { formatDate } from './utils';
 const KIND_LABELS = {
   history:   'Before this series started',
   missing:   'Nothing linked for this date',
-  duplicate: 'Possible duplicate',
+  duplicate: 'Possible duplicate or extra payment',
 };
 
 // Transactions that may belong to a recurring template, grouped by the occurrence they'd fill.
-// A duplicate can't be linked (its occurrence is already covered); it can be deleted or kept apart.
+// A 'duplicate' sits next to an occurrence the series already covers: it's either the same charge
+// twice (delete it) or an extra payment that belongs to the series too (link it), so it's left
+// out of "Link all" for the user to decide.
 function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
   const { suggestions, error } = useRecurringSuggestions(template.id, template.suggestion_count);
   const [busy, setBusy] = useState(false);
@@ -62,19 +64,17 @@ function RecurringSuggestions({ template, onLink, onDismiss, onDelete }) {
               <span className="recurring-suggestion-actions">
                 {s.kind === 'duplicate' ? (
                   <>
+                    <button className="btn btn-secondary btn-sm" disabled={busy}
+                            onClick={() => run(() => onLink(template.id, [t.id]))}>Link as extra payment</button>
                     <button className="btn btn-danger btn-sm" disabled={busy}
-                            onClick={() => run(() => onDelete(t.id))}>Delete this copy</button>
-                    <button className="btn btn-ghost btn-sm" disabled={busy}
-                            onClick={() => run(() => onDismiss(template.id, t.id))}>Not a duplicate</button>
+                            onClick={() => run(() => onDelete(t.id))}>Delete duplicate</button>
                   </>
                 ) : (
-                  <>
-                    <button className="btn btn-secondary btn-sm" disabled={busy}
-                            onClick={() => run(() => onLink(template.id, [t.id]))}>Link</button>
-                    <button className="btn btn-ghost btn-sm" disabled={busy}
-                            onClick={() => run(() => onDismiss(template.id, t.id))}>Not part of this</button>
-                  </>
+                  <button className="btn btn-secondary btn-sm" disabled={busy}
+                          onClick={() => run(() => onLink(template.id, [t.id]))}>Link</button>
                 )}
+                <button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={() => run(() => onDismiss(template.id, t.id))}>Not part of this</button>
               </span>
             </div>
           ))}
