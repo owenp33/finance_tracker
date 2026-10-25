@@ -182,7 +182,8 @@ class RecurringService:
         series, and dated no later than the next occurrence plus the match window. Near the next
         occurrence, it fills it and the next date moves on; older, it joins the history (a limited
         series' total grows by one so its remaining occurrences stay the same, and the start date
-        moves back if needed). Occurrence numbers follow date order. Raises ValueError otherwise.
+        moves back if needed). Occurrence numbers follow date order. A transaction marked
+        unrelated to the series loses that mark. Raises ValueError otherwise.
         """
         rec, tx = _series_and_transaction(recurring_id, transaction_id)
         if tx.account_id != rec.account_id:
@@ -201,6 +202,9 @@ class RecurringService:
             rec.number += 1
         rec.start_date = min(rec.start_date, tx.date)
 
+        dismissal = db_service.get_dismissal(rec.id, tx.id)
+        if dismissal:
+            db.session.delete(dismissal)
         tx.recurring_id = rec.id
         _renumber(rec)
         db.session.commit()
@@ -300,10 +304,16 @@ class RecurringService:
     def template_dict(self, rec):
         """
         A template as the API returns it: to_dict() plus suggestion_count (transactions suggested
-        for it) and needs_attention (true while any suggestion is left).
+        for it), needs_attention (true while any suggestion is left), and
+        dismissed_transaction_ids (transactions marked unrelated to it).
         """
         count = sum(len(s['candidates']) for s in self.suggest_matches(rec.id))
-        return {**rec.to_dict(), 'suggestion_count': count, 'needs_attention': count > 0}
+        return {
+            **rec.to_dict(),
+            'suggestion_count':          count,
+            'needs_attention':           count > 0,
+            'dismissed_transaction_ids': sorted(db_service.get_dismissed_transaction_ids(rec.id)),
+        }
 
     # GENERATION ================================================================
 

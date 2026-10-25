@@ -349,12 +349,15 @@ always one more than their count.
   `start_date`; the walk stops after `HISTORY_MISSES_TO_STOP` (2) occurrences in a row without a
   match). That lets a template created from its next date pick up the history imported before it.
 - **Dismissals** (`dismiss_suggestion`, `undo_dismissal`) record that a transaction isn't part of
-  a series, so its suggestions skip it; only transactions on the series' account and outside the
-  series can be dismissed, and repeating either call is harmless.
+  a series ("Unrelated transaction"), so its suggestions skip it; only transactions on the
+  series' account and outside the series can be dismissed, and repeating either call is
+  harmless. Linking a dismissed transaction to that series removes its dismissal, which is how
+  the app undoes a review mistake.
 - **Needs attention.** Every API response that returns a template uses
   `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
-  suggested) and `needs_attention` (true while any are left). It is computed, not stored, so
-  linking or dismissing the last suggestion clears it.
+  suggested), `needs_attention` (true while any are left), and `dismissed_transaction_ids`
+  (transactions marked unrelated to it, which the frontend flags in the transaction list). It
+  is computed, not stored, so linking or dismissing the last suggestion clears it.
 
 Deleting a template with `?delete_generated=true` deletes its generated transactions and reverses
 their effect on the balance; otherwise they are kept and unlinked. Deleting a single generated
@@ -396,8 +399,8 @@ Details worth knowing:
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
   series and `DELETE` on the same path takes it out; both return the updated template, and an
   invalid link or unlink is a 400. `POST /recurring/<id>/dismissals/<transaction_id>` dismisses a
-  suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count` and
-  `needs_attention`.
+  suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count`,
+  `needs_attention`, and `dismissed_transaction_ids`.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false`, `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked

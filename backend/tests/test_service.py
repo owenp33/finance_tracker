@@ -653,6 +653,22 @@ class TestSeriesSuggestions:
         assert {k: recurring_svc.template_dict(rec)[k] for k in ('suggestion_count', 'needs_attention')} == \
             {'suggestion_count': 0, 'needs_attention': False}
 
+    def test_the_template_lists_the_transactions_marked_unrelated(self, account, pin_today):
+        rec, (august, september) = self._aspire(account, pin_today)
+        assert recurring_svc.template_dict(rec)['dismissed_transaction_ids'] == []
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        recurring_svc.dismiss_suggestion(rec.id, august.id)
+        assert recurring_svc.template_dict(rec)['dismissed_transaction_ids'] == sorted([august.id, september.id])
+
+    def test_linking_a_transaction_marked_unrelated_clears_the_mark(self, account, pin_today):
+        from models.recurring_dismissal import RecurringDismissalModel
+        rec, (_, september) = self._aspire(account, pin_today)
+        recurring_svc.dismiss_suggestion(rec.id, september.id)
+        recurring_svc.link_transaction(rec.id, september.id)
+        assert september.recurring_id == rec.id
+        assert RecurringDismissalModel.query.count() == 0
+        assert recurring_svc.template_dict(rec)['dismissed_transaction_ids'] == []
+
     def test_dismissals_go_when_the_template_or_the_transaction_does(self, account, pin_today):
         from models.recurring_dismissal import RecurringDismissalModel
         rec, (august, september) = self._aspire(account, pin_today)

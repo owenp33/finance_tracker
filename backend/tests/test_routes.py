@@ -325,8 +325,17 @@ class TestRecurringRoutes:
         dismissed = client.post(url, headers=auth_headers)
         assert dismissed.status_code == 200
         assert (dismissed.json['recurring']['suggestion_count'], dismissed.json['recurring']['needs_attention']) == (0, False)
+        assert dismissed.json['recurring']['dismissed_transaction_ids'] == [tx_id]
         undone = client.delete(url, headers=auth_headers)
         assert (undone.status_code, undone.json['recurring']['suggestion_count']) == (200, 1)
+        assert undone.json['recurring']['dismissed_transaction_ids'] == []
+
+    def test_adding_an_unrelated_transaction_to_the_series(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        client.post(f'/api/recurring/{rec_id}/dismissals/{tx_id}', headers=auth_headers)
+        linked = client.post(f'/api/recurring/{rec_id}/transactions/{tx_id}', headers=auth_headers)
+        assert linked.status_code == 200
+        assert (linked.json['recurring']['idx'], linked.json['recurring']['dismissed_transaction_ids']) == (2, [])
 
     def test_missing_transaction_returns_404(self, client, account, auth_headers, pin_today):
         rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
