@@ -121,6 +121,16 @@ function RecurringTab({
                     <label>Category</label>
                     <input type="text" value={recurringEditFields.category} onChange={e => setRF('category', e.target.value)} placeholder="e.g., Subscriptions" />
                   </div>
+                  {(() => {
+                    // Saving a new vendor or category renames the whole series (the backend applies it)
+                    const seriesCount = transactions.filter(t => t.recurring_id === r.id).length;
+                    const renamed = recurringEditFields.vendor !== r.vendor || recurringEditFields.category !== r.category;
+                    return renamed && seriesCount > 0 && (
+                      <p className="recurring-series-note">
+                        Also updates the {seriesCount} transaction{seriesCount !== 1 ? 's' : ''} in this series
+                      </p>
+                    );
+                  })()}
                   <div className="form-group">
                     <label>Amount <span className="info-tip" data-tip="Negative = expense, positive = income"><Info /></span></label>
                     <input type="number" step="0.01" value={recurringEditFields.amount} onChange={e => setRF('amount', e.target.value)} />

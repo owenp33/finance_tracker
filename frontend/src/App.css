@@ -713,6 +713,16 @@ body {
 
 .recurring-past-note p { margin: 0 0 8px; }
 
+.recurring-series-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff4e6;
+  color: #8a4b00;
+  font-size: 0.85rem;
+}
+
 .recurring-extra-fields {
   grid-column: 1 / -1;
   display: grid;

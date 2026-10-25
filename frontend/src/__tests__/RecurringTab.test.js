@@ -210,3 +210,57 @@ test('a finished template with no occurrences left says so instead of a last dat
   renderTab([template({ number: 1, idx: 2, last_date: null })]);
   expect(screen.getByText(/Subscriptions · Monthly · No occurrences$/)).toBeInTheDocument();
 });
+
+// ── Renaming a template carries over to its series ───────────────────────────
+
+const renderWithSeries = (count) => {
+  const series = Array.from({ length: count }, (_, i) => ({
+    id: 40 + i, date: `2026-0${7 + i}-02`, vendor: 'Anthropic', category: 'Subscriptions', amount: -20,
+    recurring_id: 1, recurring_index: i + 1,
+  }));
+  render(
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={jest.fn()}
+      />
+    </CategoryColorProvider>
+  );
+};
+
+const editField = async (placeholder, value) => {
+  const input = screen.getByPlaceholderText(placeholder);
+  await userEvent.clear(input);
+  if (value) await userEvent.type(input, value);
+};
+
+test('changing the vendor or category warns that the series changes too', async () => {
+  renderWithSeries(3);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.getByText('Also updates the 3 transactions in this series')).toBeInTheDocument();
+
+  await editField('e.g., Netflix', 'Anthropic');
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+
+  await editField('e.g., Subscriptions', 'AI Tools');
+  expect(screen.getByText('Also updates the 3 transactions in this series')).toBeInTheDocument();
+});
+
+test('one transaction reads in the singular', async () => {
+  renderWithSeries(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.getByText('Also updates the 1 transaction in this series')).toBeInTheDocument();
+});
+
+test('a template with no transactions shows no note', async () => {
+  renderWithSeries(0);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+});
