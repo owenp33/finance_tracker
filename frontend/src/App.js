@@ -4,6 +4,7 @@ import * as authAPI from './api/auth';
 import * as accountsAPI from './api/accounts';
 import * as transactionsAPI from './api/transactions';
 import * as recurringAPI from './api/recurring';
+import { forEachInOrder } from './utils/sequence';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
@@ -151,32 +152,34 @@ function App() {
     }
   };
 
+  // Bulk actions send one request at a time (see forEachInOrder) and refresh even after a
+  // failure, since the steps before it were applied
   const handleDeleteTransferBulk = async (ids) => {
     try {
-      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
-      await refreshAll();
+      await forEachInOrder(ids, id => transactionsAPI.deleteTransaction(id));
     } catch (err) {
       setError(err.message);
     }
+    await refreshAll();
   };
 
   const handleToggleTransferMany = async (ids) => {
     try {
-      await Promise.all(ids.map(id => transactionsAPI.toggleTransfer(id)));
-      await refreshAll();
+      await forEachInOrder(ids, id => transactionsAPI.toggleTransfer(id));
     } catch (err) {
       setError(err.message);
     }
+    await refreshAll();
   };
 
   const handleDeleteManyTransactions = async (ids) => {
     if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
     try {
-      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
-      await refreshAll();
+      await forEachInOrder(ids, id => transactionsAPI.deleteTransaction(id));
     } catch (err) {
       setError(err.message);
     }
+    await refreshAll();
   };
 
   const handleAddRecurring = async (formData) => {
@@ -211,7 +214,7 @@ function App() {
   // accounts, which reloads the templates and their suggestion counts.
   const handleLinkToRecurring = async (recurringId, transactionIds) => {
     try {
-      for (const id of transactionIds) await recurringAPI.linkToRecurring(recurringId, id);
+      await forEachInOrder(transactionIds, id => recurringAPI.linkToRecurring(recurringId, id));
     } catch (err) {
       setError(err.message);
     }
