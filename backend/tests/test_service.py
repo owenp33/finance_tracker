@@ -6,6 +6,7 @@ import re
 import pytest
 from datetime import date, timedelta
 from flask_jwt_extended import decode_token
+from sqlalchemy import text
 from extensions import db as _db
 from models.account import AccountModel
 from services.account_service import AccountService
@@ -151,6 +152,83 @@ class TestDeleteTransaction:
         tx = svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
         svc.delete_transaction(tx.id)
         assert db_svc.get_account(account.id).balance == pytest.approx(0.00)
+
+
+class TestBalancesUnderConcurrentRequests:
+    """
+    Two requests changing one account at the same moment must not overwrite each other's balance
+    change. Each test loads the account, then applies "another request's" change straight in SQL
+    (the loaded account doesn't see it), then runs the operation: a read, add and write in Python
+    would lose the other change; an atomic SQL increment keeps both.
+    """
+
+    def _another_request_adds(self, account, cents):
+        db_svc.get_account(account.id).balance_cents   # loaded now, and about to be out of date
+        _db.session.execute(text('UPDATE accounts SET balance_cents = balance_cents + :c WHERE id = :id'),
+                            {'c': cents, 'id': account.id})
+
+    def _stored(self, account):
+        return _db.session.execute(text('SELECT balance_cents FROM accounts WHERE id = :id'), {'id': account.id}).scalar()
+
+    def test_adding_a_transaction(self, account):
+        self._another_request_adds(account, 500)
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        assert self._stored(account) == 500 - 2000
+        assert db_svc.get_account(account.id).balance_cents == 500 - 2000   # the loaded account re-reads it
+
+    def test_deleting_a_transaction(self, account):
+        tx = svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        self._another_request_adds(account, 500)
+        svc.delete_transaction(tx.id)
+        assert self._stored(account) == 500
+
+    def test_changing_an_amount(self, account):
+        tx = svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        self._another_request_adds(account, 500)
+        svc.update_transaction(tx.id, {'amount': -25.00})
+        assert self._stored(account) == -2000 + 500 - 500
+
+    def test_moving_a_transaction_to_another_account(self, account):
+        other = AccountModel(user_id=account.user_id, acct_id_str='sav-1', acct_name='Savings')
+        _db.session.add(other)
+        _db.session.commit()
+        tx = svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        self._another_request_adds(account, 500)
+        self._another_request_adds(other, 700)
+        svc.update_transaction(tx.id, {'account_id': other.id})
+        assert (self._stored(account), self._stored(other)) == (500, 700 - 2000)
+
+    def test_changing_the_starting_balance(self, account):
+        self._another_request_adds(account, 500)
+        svc.update_account(account.id, {'opening_balance': 100})
+        assert self._stored(account) == 500 + 10_000
+
+    def test_pairing_a_transfer(self, account):
+        other = AccountModel(user_id=account.user_id, acct_id_str='sav-1', acct_name='Savings')
+        _db.session.add(other)
+        _db.session.commit()
+        tx = svc.add_transaction(account.id, date(2026, 1, 15), 'To savings', 'Transfer', -100.00, is_transfer=True)
+        self._another_request_adds(other, 700)
+        svc.create_transfer_pair(tx.id, other.id)
+        assert self._stored(other) == 700 + 10_000
+
+    def test_deleting_a_template_with_its_transactions(self, account, pin_today):
+        pin_today(date(2026, 1, 20))
+        rec = recurring_svc.add_recurring(account.id, date(2026, 1, 15), 'Gym', 'Fitness', -30.0, date(2026, 1, 15), 1,
+                                          frequency_unit='months')
+        recurring_svc.process_due_recurring(account.id)
+        self._another_request_adds(account, 500)
+        recurring_svc.delete_recurring(rec.id, delete_generated=True)
+        assert self._stored(account) == 500
+
+    def test_recalculating_counts_every_transaction_in_the_database(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        db_svc.get_account(account.id).transactions   # loaded now, and about to be out of date
+        _db.session.execute(text(
+            "INSERT INTO transactions (account_id, date, vendor, category, amount_cents, over_budget, is_transfer, is_reimbursement) "
+            "VALUES (:id, '2026-01-16', 'Other request', 'Misc', -500, 0, 0, 0)"), {'id': account.id})
+        assert svc.recalculate_account_balance(account.id) == pytest.approx(-25.00)
+        assert self._stored(account) == -2500
 
 
 class TestUpdateTransaction:

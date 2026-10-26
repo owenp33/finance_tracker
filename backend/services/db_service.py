@@ -5,7 +5,7 @@ Thin CRUD operations for interacting with the database.
 Business logic and orchestration belongs in account_service.py.
 """
 from datetime import timedelta
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select, update
 from extensions import db
 from models.user import User
 from models.account import AccountModel
@@ -57,6 +57,35 @@ class DbService:
 
     def get_account(self, account_id):
         return AccountModel.query.get(account_id)
+
+    # Stored balances change only through these two, each a single SQL statement: reading the
+    # balance into Python, adding, and writing it back lets two simultaneous requests overwrite
+    # each other's change.
+
+    def adjust_balance(self, account_id, delta_cents):
+        """Add delta_cents to an account's stored balance atomically."""
+        if delta_cents:
+            self._update_balance(account_id, AccountModel.balance_cents + delta_cents)
+
+    def recompute_balance(self, account_id):
+        """Set an account's stored balance to its starting balance plus its transactions, atomically."""
+        total = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+                 .where(TransactionModel.account_id == account_id)
+                 .scalar_subquery())
+        self._update_balance(account_id, AccountModel.opening_balance_cents + total)
+
+    def _update_balance(self, account_id, new_value):
+        db.session.flush()   # write pending changes first (a starting balance, a new transaction)
+        db.session.execute(
+            update(AccountModel)
+            .where(AccountModel.id == account_id)
+            .values(balance_cents=new_value)
+            .execution_options(synchronize_session=False)
+        )
+        # A loaded account still holds the old value; make it read the new one when next used
+        account = db.session.get(AccountModel, account_id)
+        if account:
+            db.session.expire(account, ['balance_cents'])
 
     # TRANSACTION OPERATIONS ====================================================
 

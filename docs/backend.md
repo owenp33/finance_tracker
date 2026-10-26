@@ -118,7 +118,8 @@ match wins), `find_recurring_candidates` (transactions in no recurring series wi
 account, vendor and amount, within a window of days around a date, nearest first), and
 `find_unlinked_transactions` (the looser suggestion query: vendor, direction, and category or
 exact amount, within a date range), and `get_transaction_totals_before` (one grouped query: each
-account's transaction total before a date, for ledger opening balances). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
+account's transaction total before a date, for ledger opening balances). It also owns the only
+two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
@@ -221,6 +222,11 @@ Every change must keep these true.
   Changing the starting balance moves the balance by the difference. Import confirm resyncs each
   affected account with `recalculate_account_balance`. A new mutation path must keep the balance
   correct.
+- **Balance changes are atomic.** The stored balance changes only through
+  `DbService.adjust_balance(account_id, delta)` (`balance_cents = balance_cents + delta`) and
+  `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), each a
+  single SQL statement, so simultaneous requests can't overwrite each other's change. Never read
+  `balance_cents`, add in Python, and write it back.
 - **`over_budget` is a stored per-row flag.** Any change to a category's spending in a period must
   call `_reevaluate_category_flags(user_id, category, 'YYYY-MM')` before committing. It walks the
   period's expenses in date order, treats reimbursements as a credit up front, and flags each
@@ -534,11 +540,10 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Duplicate detection ignores counts.** If the database holds one row identical to two rows in
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.
-- **Concurrent edits can drift the stored balance.** Balance bookkeeping reads `balance_cents`,
-  adds in Python, and writes it back, so two requests on the same account at the same moment can
-  lose one update. The frontend's bulk delete and bulk transfer toggle send their requests all at
-  once, which makes this likely (found 2026-10-25: one account's stored balance was $100 off its
-  transactions). Ledgers aren't affected, since they're computed from the transactions.
+- **Other bookkeeping is still read, change, write.** Balances are atomic now, but a series'
+  `idx` / `number` and the over-budget walk aren't, so two simultaneous edits of the same series
+  or category could still race. The frontend sends bulk actions one request at a time, which
+  keeps this from happening in practice.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.

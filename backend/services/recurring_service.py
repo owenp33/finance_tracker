@@ -178,9 +178,7 @@ class RecurringService:
         if delete_generated:
             transactions = TransactionModel.query.filter_by(recurring_id=recurring_id).all()
             for trans in transactions:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents -= trans.amount_cents
+                db_service.adjust_balance(trans.account_id, -trans.amount_cents)
                 db.session.delete(trans)
         else:
             TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})

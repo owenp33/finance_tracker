@@ -77,7 +77,7 @@ class AccountService:
         # The balance includes the starting balance, so it moves by the same difference
         old_opening_cents = account.opening_balance_cents
         account.opening_balance = opening
-        account.balance_cents += account.opening_balance_cents - old_opening_cents
+        db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
         if {'needs_attention', 'account_name', 'account_id', 'opening_balance'} & data.keys():
             account.needs_attention = False
 
@@ -126,11 +126,10 @@ class AccountService:
         transaction.amount = amount
 
         account = db_service.get_account(account_id)
-        if account:
-            account.balance_cents += transaction.amount_cents
-
         db.session.add(transaction)
         db.session.flush()
+        if account:
+            db_service.adjust_balance(account_id, transaction.amount_cents)
 
         needs_flag_eval = transaction.amount_cents < 0 or (is_reimbursement and transaction.amount_cents > 0)
         if needs_flag_eval:
@@ -193,17 +192,13 @@ class AccountService:
             # Handle account change: reverse from old account, apply to new account
             new_account_id = int(data['account_id']) if 'account_id' in data else old_account_id
             if new_account_id != old_account_id:
-                old_account = db_service.get_account(old_account_id)
-                new_account = db_service.get_account(new_account_id)
-                if old_account:
-                    old_account.balance_cents -= old_amount_cents
-                if new_account:
-                    new_account.balance_cents += trans.amount_cents
+                if db_service.get_account(old_account_id):
+                    db_service.adjust_balance(old_account_id, -old_amount_cents)
+                if db_service.get_account(new_account_id):
+                    db_service.adjust_balance(new_account_id, trans.amount_cents)
                 trans.account_id = new_account_id
             elif 'amount' in update_fields:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents += (trans.amount_cents - old_amount_cents)
+                db_service.adjust_balance(trans.account_id, trans.amount_cents - old_amount_cents)
 
             if 'is_reimbursement' in data:
                 trans.is_reimbursement = bool(data['is_reimbursement'])
@@ -224,9 +219,7 @@ class AccountService:
                     if 'notes' in update_fields: peer.notes = trans.notes
                     if 'amount' in update_fields:
                         peer.amount = -update_fields['amount']
-                        peer_account = db_service.get_account(peer.account_id)
-                        if peer_account:
-                            peer_account.balance_cents += (peer.amount_cents - old_peer_amount_cents)
+                        db_service.adjust_balance(peer.account_id, peer.amount_cents - old_peer_amount_cents)
 
             db.session.commit()
             return trans, None
@@ -261,10 +254,7 @@ class AccountService:
         recurring_id  = trans.recurring_id
         deleted_index = trans.recurring_index
 
-        account = db_service.get_account(trans.account_id)
-        if account:
-            account.balance_cents -= trans.amount_cents
-
+        db_service.adjust_balance(trans.account_id, -trans.amount_cents)
         db.session.delete(trans)
         db.session.flush()   # remove the row from session before re-evaluation queries it
 
@@ -375,9 +365,7 @@ class AccountService:
                 old_peer.transfer_peer_id = None
                 tx.transfer_peer_id = None
                 db.session.flush()
-                old_account = db_service.get_account(old_peer.account_id)
-                if old_account:
-                    old_account.balance_cents -= old_peer.amount_cents
+                db_service.adjust_balance(old_peer.account_id, -old_peer.amount_cents)
                 db.session.delete(old_peer)
             else:
                 tx.transfer_peer_id = None
@@ -393,12 +381,9 @@ class AccountService:
         )
         peer.amount = -tx.amount
 
-        new_account = db_service.get_account(to_account_id)
-        if new_account:
-            new_account.balance_cents += peer.amount_cents
-
         db.session.add(peer)
         db.session.flush()  # assigns peer.id
+        db_service.adjust_balance(to_account_id, peer.amount_cents)
 
         tx.is_transfer        = True
         tx.transfer_peer_id   = peer.id
@@ -413,9 +398,7 @@ class AccountService:
         """Reset the balance to the starting balance plus the account's transactions; returns it in dollars."""
         account = db_service.get_account(account_id)
         if account:
-            account.balance_cents = account.opening_balance_cents + sum(
-                trans.amount_cents for trans in account.transactions
-            )
+            db_service.recompute_balance(account_id)
             db.session.commit()
             return account.balance
         return 0
