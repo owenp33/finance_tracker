@@ -35,7 +35,7 @@ class DbService:
         return User.query.filter_by(email=email).first()
 
     def get_user_by_id(self, user_id):
-        return User.query.get(user_id)
+        return db.session.get(User, user_id)
 
     # ACCOUNT OPERATIONS ========================================================
 
@@ -56,7 +56,7 @@ class DbService:
         return AccountModel.query.filter_by(user_id=user_id).all()
 
     def get_account(self, account_id):
-        return AccountModel.query.get(account_id)
+        return db.session.get(AccountModel, account_id)
 
     # Stored balances change only through these two, each a single SQL statement: reading the
     # balance into Python, adding, and writing it back lets two simultaneous requests overwrite
@@ -90,7 +90,7 @@ class DbService:
     # TRANSACTION OPERATIONS ====================================================
 
     def get_transaction(self, transaction_id):
-        return TransactionModel.query.get(transaction_id)
+        return db.session.get(TransactionModel, transaction_id)
 
     def transaction_exists(self, account_id, date_obj, vendor, amount_cents):
         from sqlalchemy import func as sa_func
@@ -250,7 +250,7 @@ class DbService:
     # RECURRING OPERATIONS ======================================================
 
     def get_recurring(self, recurring_id):
-        return RecurringModel.query.get(recurring_id)
+        return db.session.get(RecurringModel, recurring_id)
 
     def get_dismissal(self, recurring_id, transaction_id):
         return db.session.get(RecurringDismissalModel, (recurring_id, transaction_id))
@@ -276,5 +276,5 @@ class DbService:
 
     def get_budget(self, budget_id):
         from models.budget import BudgetModel
-        return BudgetModel.query.get(budget_id)
+        return db.session.get(BudgetModel, budget_id)
 

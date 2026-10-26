@@ -10,7 +10,7 @@ from models.recurring import RecurringModel
 TEST_CONFIG = {
     'TESTING': True,
     'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
-    'JWT_SECRET_KEY': 'test-secret',
+    'JWT_SECRET_KEY': 'test-secret-long-enough-for-hs256-keys',   # PyJWT warns below 32 bytes
     'JWT_ACCESS_TOKEN_EXPIRES': False,
 }
 
