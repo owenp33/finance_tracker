@@ -117,7 +117,8 @@ with the opposite amount in another of the user's accounts, within ±5 days; the
 match wins), `find_recurring_candidates` (transactions in no recurring series with a given
 account, vendor and amount, within a window of days around a date, nearest first), and
 `find_unlinked_transactions` (the looser suggestion query: vendor, direction, and category or
-exact amount, within a date range). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
+exact amount, within a date range), and `get_transaction_totals_before` (one grouped query: each
+account's transaction total before a date, for ledger opening balances). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
@@ -146,6 +147,17 @@ exact amount, within a date range). It also holds `_reevaluate_category_flags` (
 created through `AccountService.add_transaction`, so balances and budget flags have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
+
+**`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports.
+`ledgers(user_id, account_ids=None, start_date=None, end_date=None)` returns one `AccountLedger`
+per account (id order; accounts without activity included): `opening_cents` (starting balance
+plus every transaction before the period), `rows` (each transaction in the period, date then id
+order, as a `LedgerRow` with the balance right after it), and `closing_cents`. Transfers and
+reimbursements count. Both dates are inclusive and optional; an account that isn't the user's,
+or a start after the end, raises `ValueError`. The arithmetic is the pure function
+`running_balances(opening_cents, transactions)`. Ledgers are computed from the transactions
+themselves, so with no dates `closing_cents` equals the stored `balance_cents` whenever that
+cache is correct.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
@@ -522,6 +534,11 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Duplicate detection ignores counts.** If the database holds one row identical to two rows in
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.
+- **Concurrent edits can drift the stored balance.** Balance bookkeeping reads `balance_cents`,
+  adds in Python, and writes it back, so two requests on the same account at the same moment can
+  lose one update. The frontend's bulk delete and bulk transfer toggle send their requests all at
+  once, which makes this likely (found 2026-10-25: one account's stored balance was $100 off its
+  transactions). Ledgers aren't affected, since they're computed from the transactions.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.

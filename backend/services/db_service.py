@@ -227,6 +227,16 @@ class DbService:
 
         return query.order_by(TransactionModel.date.asc()).all()
 
+    def get_transaction_totals_before(self, account_ids, before_date):
+        """The sum of amount_cents per account for transactions dated before before_date: {account_id: cents}."""
+        rows = (
+            db.session.query(TransactionModel.account_id, func.sum(TransactionModel.amount_cents))
+            .filter(TransactionModel.account_id.in_(account_ids), TransactionModel.date < before_date)
+            .group_by(TransactionModel.account_id)
+            .all()
+        )
+        return {account_id: int(total) for account_id, total in rows}
+
     def find_transfer_peer(self, user_id, amount_cents, date_obj, exclude_account_id, exclude_id=None):
         """
         Find an unlinked transfer transaction that is the counterpart to a given one.
