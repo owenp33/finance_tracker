@@ -108,7 +108,9 @@ def create_app(test_config=None):
     app.register_blueprint(export_bp, url_prefix='/api/export')
 
     from middleware.error_handlers import register_error_handlers
+    from middleware.auth_errors import register_auth_error_handlers
     register_error_handlers(app)
+    register_auth_error_handlers(jwt)
 
     with app.app_context():
         db.create_all()

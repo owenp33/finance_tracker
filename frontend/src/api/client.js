@@ -1,5 +1,19 @@
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
+// Fired on window when a protected request answers 401 (login missing, expired, or invalid);
+// detail is the server's message. App listens and returns to the login screen.
+export const SESSION_EXPIRED_EVENT = 'session-expired';
+
+// The Error to throw for a failed response, announcing an ended session when that's the cause
+const failure = async (response, fallback, isLoginRequest = false) => {
+  const errorData = await response.json().catch(() => ({}));
+  const message = errorData.error || fallback;
+  if (response.status === 401 && !isLoginRequest) {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: message }));
+  }
+  return new Error(message);
+};
+
 export const fetchAPI = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');
 
@@ -18,10 +32,7 @@ export const fetchAPI = async (endpoint, options = {}) => {
     headers,
   });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Request failed');
-  }
+  if (!response.ok) throw await failure(response, 'Request failed', skipAuth);
 
   return response.json();
 };
@@ -38,10 +49,7 @@ export const uploadFile = async (endpoint, file, extraFields = {}) => {
     body: formData,
   });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || 'Upload failed');
-  }
+  if (!response.ok) throw await failure(response, 'Upload failed');
 
   return response.json();
 };

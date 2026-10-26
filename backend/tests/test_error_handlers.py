@@ -17,7 +17,7 @@ class TestHttpErrors:
         assert resp.json == {'success': False, 'error': 'Method Not Allowed'}
 
     def test_non_json_body_is_415_not_500(self, client, auth_headers):
-        resp = client.post('/api/accounts', data='not json', content_type='text/plain',
+        resp = client.post('/api/budgets', data='not json', content_type='text/plain',
                            headers=auth_headers)
         assert resp.status_code == 415
         assert 'application/json' in resp.json['error']
@@ -35,3 +35,25 @@ class TestUnexpectedErrors:
         assert resp.json == {'success': False, 'error': 'Internal server error'}
         assert 'secret internal detail' not in resp.get_data(as_text=True)
         assert 'secret internal detail' in caplog.text
+
+
+class TestAuthErrors:
+    """Login problems answer 401 in the app's error shape, so the frontend can send the user to log in."""
+
+    def test_no_token(self, client):
+        resp = client.get('/api/accounts')
+        assert (resp.status_code, resp.json) == (401, {'success': False, 'error': 'Please log in to continue.'})
+
+    def test_expired_token(self, app, client, user):
+        from datetime import timedelta
+        from flask_jwt_extended import create_access_token
+        with app.app_context():
+            token = create_access_token(identity=str(user.id), expires_delta=timedelta(seconds=-1))
+        resp = client.get('/api/accounts', headers={'Authorization': f'Bearer {token}'})
+        assert (resp.status_code, resp.json) == (
+            401, {'success': False, 'error': 'Your session has expired. Please log in again.'})
+
+    def test_invalid_token(self, client):
+        resp = client.get('/api/accounts', headers={'Authorization': 'Bearer not-a-real-token'})
+        assert (resp.status_code, resp.json) == (
+            401, {'success': False, 'error': 'Your session is no longer valid. Please log in again.'})

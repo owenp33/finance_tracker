@@ -5,6 +5,7 @@ import * as accountsAPI from './api/accounts';
 import * as transactionsAPI from './api/transactions';
 import * as recurringAPI from './api/recurring';
 import { forEachInOrder } from './utils/sequence';
+import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
@@ -295,6 +296,17 @@ function App() {
     };
     checkAuth();
   }, [token, handleLogout]);
+
+  // A protected request found the login missing, expired, or invalid: back to the login screen,
+  // showing the server's message there
+  useEffect(() => {
+    const onSessionExpired = (e) => {
+      handleLogout();
+      setError(e.detail);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [handleLogout]);
 
   useEffect(() => {
     if (isAuthenticated) {
