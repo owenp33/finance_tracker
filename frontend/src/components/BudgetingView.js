@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import BudgetRow from './BudgetRow';
 import AddBudgetForm from './AddBudgetForm';
+import { sortList } from './transactions/utils';
 import {
   useBudgetData,
   getPrevPeriod,
@@ -56,9 +57,8 @@ function BudgetingView({ transactions, onBudgetChange }) {
       if (!map[t.category]) map[t.category] = [];
       map[t.category].push(t);
     });
-    Object.values(map).forEach(list =>
-      list.sort((a, b) => b.date.localeCompare(a.date))
-    );
+    // Newest first, reimbursements included, as in the transaction lists
+    Object.keys(map).forEach(category => { map[category] = sortList(map[category], 'date-desc'); });
     return map;
   }, [transactions, period]);
 

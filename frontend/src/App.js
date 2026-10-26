@@ -263,6 +263,12 @@ function App() {
     }
   };
 
+  // Budgets decide which transactions the server marks over budget, so reload both. Stable
+  // (useCallback), since useBudgetData depends on it.
+  const handleBudgetChange = useCallback(async () => {
+    await Promise.all([loadBudgetProgress(), loadTransactions()]);
+  }, [loadBudgetProgress, loadTransactions]);
+
   const handleDeleteAccount = async (id) => {
     try {
       await accountsAPI.deleteAccount(id);
@@ -371,7 +377,7 @@ function App() {
         {view === 'budgeting' && (
           <BudgetingView
             transactions={transactions}
-            onBudgetChange={loadBudgetProgress}
+            onBudgetChange={handleBudgetChange}
           />
         )}
         {view === 'insights' && (

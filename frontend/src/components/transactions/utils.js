@@ -1,4 +1,4 @@
-// Shared helpers used by AllTransactionsTab, RecurringTab, and FlaggedTab.
+// Shared helpers for the transaction views (All, Recurring) and the components they use.
 
 export const PAGE_SIZE = 10;
 
@@ -78,11 +78,12 @@ export function getCurrentPeriod() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Date sorts break same-day ties by id, so newest-first lists show the most recently entered first
 export const sortList = (list, sort, dateKey = 'date') => {
   const s = [...list];
   switch (sort) {
-    case 'date-desc':   return s.sort((a, b) => b[dateKey].localeCompare(a[dateKey]));
-    case 'date-asc':    return s.sort((a, b) => a[dateKey].localeCompare(b[dateKey]));
+    case 'date-desc':   return s.sort((a, b) => b[dateKey].localeCompare(a[dateKey]) || b.id - a.id);
+    case 'date-asc':    return s.sort((a, b) => a[dateKey].localeCompare(b[dateKey]) || a.id - b.id);
     case 'amount-desc': return s.sort((a, b) => b.amount - a.amount);
     case 'amount-asc':  return s.sort((a, b) => a.amount - b.amount);
     case 'vendor-asc':  return s.sort((a, b) => a.vendor.localeCompare(b.vendor));
