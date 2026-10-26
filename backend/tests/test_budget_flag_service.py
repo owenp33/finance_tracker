@@ -125,10 +125,13 @@ class TestTransactionDicts:
         budgets.create_budget(user.id, 'Groceries', '2026-01', 50.0)
         a = _expense(account, date(2026, 1, 3), -45)
         b = _expense(account, date(2026, 1, 10), -10)
-        b.over_budget = False   # a stale stored value is ignored
-        _db.session.commit()
         assert [(d['id'], d['over_budget']) for d in flags.transaction_dicts(user.id, [a, b])] == [
             (a.id, False), (b.id, True)]
 
     def test_no_transactions(self, user):
         assert flags.transaction_dicts(user.id, []) == []
+
+    def test_flags_are_not_stored(self):
+        from models.transaction import TransactionModel
+        assert 'over_budget' not in TransactionModel.__table__.columns
+        assert 'over_budget' not in TransactionModel.to_dict.__code__.co_names

@@ -46,23 +46,14 @@ def _renumber(rec):
 def _apply_to_series(rec, changes):
     """
     Give every transaction in the series the template's new vendor and/or category (nothing
-    else); a transfer's peer follows, as when a transaction is edited. A category change moves
-    spending between categories, so the moved transactions' over_budget flags are cleared and
-    the old and new categories are re-evaluated in every month touched.
+    else); a transfer's peer follows, as when a transaction is edited. (Over-budget flags are
+    computed when transactions are read, so they follow a category change on their own.)
     """
-    touched = set()   # (category, 'YYYY-MM') pairs whose spending changed
     for t in rec.generated_transactions:
-        if 'category' in changes and t.category != changes['category']:
-            period = t.date.strftime('%Y-%m')
-            touched |= {(t.category, period), (changes['category'], period)}
-            t.over_budget = False
         for field, value in changes.items():
             setattr(t, field, value)
             if t.is_transfer and t.transfer_peer:
                 setattr(t.transfer_peer, field, value)
-    db.session.flush()
-    for category, period in touched:
-        db_service._reevaluate_category_flags(rec.account.user_id, category, period)
 
 
 def _series_and_transaction(recurring_id, transaction_id):

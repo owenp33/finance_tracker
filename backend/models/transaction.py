@@ -14,7 +14,6 @@ class TransactionModel(db.Model):
     category = db.Column(db.String(50), nullable=False)
     amount_cents = db.Column(db.Integer, nullable=False)
     notes = db.Column(db.Text)
-    over_budget = db.Column(db.Boolean, default=False, nullable=False)
     is_transfer = db.Column(db.Boolean, default=False, nullable=False)
     is_reimbursement = db.Column(db.Boolean, default=False, nullable=False)
     transfer_peer_id = db.Column(
@@ -47,7 +46,6 @@ class TransactionModel(db.Model):
             'notes': self.notes,
             'recurring_id': self.recurring_id,
             'recurring_index': self.recurring_index,
-            'over_budget': self.over_budget,
             'is_transfer': self.is_transfer,
             'is_reimbursement': self.is_reimbursement,
             'transfer_peer_id': self.transfer_peer_id,

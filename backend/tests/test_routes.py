@@ -163,6 +163,19 @@ class TestBudgetFlagsInResponses:
         single = client.get(f"/api/transactions/{second['id']}", headers=auth_headers).json['transaction']
         assert single['over_budget'] is False
 
+    def test_the_over_budget_filter_uses_the_computed_flags(self, client, account, auth_headers):
+        client.post('/api/budgets', headers=auth_headers, json={'category': 'Groceries', 'period': '2026-01', 'amount': 50})
+        first = self._add(client, account, auth_headers, '2026-01-03', -45)
+        second = self._add(client, account, auth_headers, '2026-01-10', -10)
+        url = f'/api/accounts/{account.id}/transactions'
+        flagged = lambda: [t['id'] for t in client.get(url + '?over_budget=true', headers=auth_headers).json['transactions']]
+        assert flagged() == [second['id']]
+        client.patch(f"/api/transactions/{first['id']}", headers=auth_headers,
+                     json={'category': 'Gifts', 'is_reimbursement': False})
+        assert flagged() == []
+        unflagged = client.get(url + '?over_budget=false&limit=1', headers=auth_headers).json['transactions']
+        assert len(unflagged) == 1
+
 
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 

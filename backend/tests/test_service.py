@@ -13,6 +13,7 @@ from services.account_service import AccountService
 from services.recurring_service import RecurringService
 from services.auth_service import AuthService, RegistrationConflict
 from services.budget_service import BudgetService
+from services.budget_flag_service import BudgetFlagService
 from services.db_service import DbService
 
 svc = AccountService()
@@ -225,8 +226,8 @@ class TestBalancesUnderConcurrentRequests:
         svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
         db_svc.get_account(account.id).transactions   # loaded now, and about to be out of date
         _db.session.execute(text(
-            "INSERT INTO transactions (account_id, date, vendor, category, amount_cents, over_budget, is_transfer, is_reimbursement) "
-            "VALUES (:id, '2026-01-16', 'Other request', 'Misc', -500, 0, 0, 0)"), {'id': account.id})
+            "INSERT INTO transactions (account_id, date, vendor, category, amount_cents, is_transfer, is_reimbursement) "
+            "VALUES (:id, '2026-01-16', 'Other request', 'Misc', -500, 0, 0)"), {'id': account.id})
         assert svc.recalculate_account_balance(account.id) == pytest.approx(-25.00)
         assert self._stored(account) == -2500
 
@@ -426,25 +427,27 @@ class TestSeriesRenames:
         recurring_svc.update_recurring(rec.id, vendor='Anthropic', category='Subscriptions', amount=-22.0)
         assert self._rows(rec)[0][1:3] == ('ANTHROPIC ', 'Subscription')   # the imported row keeps its own spelling
 
+    def _over(self, account, transaction):
+        return transaction.id in BudgetFlagService().over_budget_ids(account.user_id, [transaction])
+
     def test_budget_flags_follow_the_spending_out_of_the_old_category(self, account, pin_today):
         rec = self._series(account, pin_today)
         spotify = svc.add_transaction(account.id, date(2026, 9, 5), 'Spotify', 'Subscriptions', -10.0)
         BudgetService().create_budget(account.user_id, 'Subscriptions', '2026-09', 25.0)
-        assert spotify.over_budget is True    # Anthropic's $20 (Sep 2) + Spotify's $10 passes $25
+        assert self._over(account, spotify)        # Anthropic's $20 (Sep 2) + Spotify's $10 passes $25
         recurring_svc.update_recurring(rec.id, category='AI Tools')
-        assert spotify.over_budget is False   # Anthropic no longer counts toward Subscriptions
+        assert not self._over(account, spotify)    # Anthropic no longer counts toward Subscriptions
 
     def test_budget_flags_follow_the_spending_into_the_new_category(self, account, pin_today):
         rec = self._series(account, pin_today)
         BudgetService().create_budget(account.user_id, 'Subscriptions', '2026-09', 15.0)
         from models.transaction import TransactionModel
         september = TransactionModel.query.filter_by(recurring_id=rec.id, date=date(2026, 9, 2)).one()
-        assert september.over_budget is True
+        assert self._over(account, september)
         recurring_svc.update_recurring(rec.id, category='AI Tools')   # no AI Tools budget
-        assert september.over_budget is False
+        assert not self._over(account, september)
         BudgetService().create_budget(account.user_id, 'AI Tools', '2026-09', 10.0)
-        recurring_svc.update_recurring(rec.id, vendor='Claude')        # a vendor change keeps flags as they are
-        assert september.over_budget is True
+        assert self._over(account, september)
 
     def test_a_transfer_peer_follows(self, account, pin_today):
         rec = self._series(account, pin_today)

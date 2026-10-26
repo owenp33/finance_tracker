@@ -121,20 +121,23 @@ def get_transactions(account_id):
     if args.get('over_budget') is not None:
         over_budget = args['over_budget'].lower() == 'true'
 
+    limit, offset = args.get('limit', type=int), args.get('offset', type=int)
+    # Over-budget flags are computed, so that filter applies before limit / offset in Python
+    in_sql = over_budget is None
     transactions = db_service.get_account_transactions(
         account_id,
-        start_date  = start_date,
-        end_date    = end_date,
-        category    = args.get('category'),
-        over_budget = over_budget,
-        limit       = args.get('limit',  type=int),
-        offset      = args.get('offset', type=int),
+        start_date = start_date,
+        end_date   = end_date,
+        category   = args.get('category'),
+        limit      = limit if in_sql else None,
+        offset     = offset if in_sql else None,
     )
+    rows = budget_flags.transaction_dicts(get_jwt_identity(), transactions)
+    if not in_sql:
+        rows = [r for r in rows if r['over_budget'] == over_budget][offset or 0:]
+        rows = rows if limit is None else rows[:limit]
 
-    return jsonify({
-        'success': True,
-        'transactions': budget_flags.transaction_dicts(get_jwt_identity(), transactions)
-    }), 200
+    return jsonify({'success': True, 'transactions': rows}), 200
 
 
 @accounts_bp.route('/<int:account_id>/transactions', methods=['POST'])

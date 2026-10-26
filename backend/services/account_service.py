@@ -109,8 +109,7 @@ class AccountService:
 
     def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, recurring_index=None, is_transfer=False, is_reimbursement=False):
         """
-        Create a transaction, update the account balance, and re-evaluate
-        over_budget flags for the category/period. Single commit for all writes.
+        Create a transaction and update the account balance. Single commit for all writes.
         """
         transaction = TransactionModel(
             account_id=account_id,
@@ -130,14 +129,6 @@ class AccountService:
         db.session.flush()
         if account:
             db_service.adjust_balance(account_id, transaction.amount_cents)
-
-        needs_flag_eval = transaction.amount_cents < 0 or (is_reimbursement and transaction.amount_cents > 0)
-        if needs_flag_eval:
-            db_service._reevaluate_category_flags(
-                user_id=account.user_id,
-                category=category,
-                period=date_obj.strftime('%Y-%m'),
-            )
 
         db.session.commit()
         return transaction
@@ -202,11 +193,6 @@ class AccountService:
 
             if 'is_reimbursement' in data:
                 trans.is_reimbursement = bool(data['is_reimbursement'])
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    db_service._reevaluate_category_flags(
-                        account.user_id, trans.category, trans.date.strftime('%Y-%m')
-                    )
 
             # Sync shared fields to the linked transfer peer (amount is negated on the peer)
             if trans.is_transfer and trans.transfer_peer_id:
@@ -229,10 +215,8 @@ class AccountService:
 
     def delete_transaction(self, transaction_id):
         """
-        Delete a transaction, reverse its effect on the account balance, and
-        re-evaluate over_budget flags for its category/period so that removing
-        an expense that pushed the budget over clears the flag on remaining rows.
-        Returns (success, error_message).
+        Delete a transaction and reverse its effect on the account balance; a generated
+        recurring transaction also shrinks its series. Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
@@ -246,20 +230,13 @@ class AccountService:
             if not trans:
                 return False, 'Transaction not found'
 
-        # Capture context before deletion — needed for re-evaluation after the row is gone
-        was_expense   = trans.amount_cents < 0
-        user_id       = trans.account.user_id
-        category      = trans.category
-        period        = trans.date.strftime('%Y-%m')
+        # Capture the series position before the row is gone
         recurring_id  = trans.recurring_id
         deleted_index = trans.recurring_index
 
         db_service.adjust_balance(trans.account_id, -trans.amount_cents)
         db.session.delete(trans)
-        db.session.flush()   # remove the row from session before re-evaluation queries it
-
-        if was_expense:
-            db_service._reevaluate_category_flags(user_id, category, period)
+        db.session.flush()   # remove the row from the session before the series is renumbered
 
         # When a generated recurring transaction is deleted, shift sibling indices
         # so the "X/Y" card numbers on the remaining transactions stay contiguous.

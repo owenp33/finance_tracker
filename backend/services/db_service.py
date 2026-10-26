@@ -89,72 +89,6 @@ class DbService:
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def _reevaluate_category_flags(self, user_id, category, period):
-        """
-        Recompute over_budget for every expense transaction in a category/period.
-
-        Walks transactions chronologically (oldest first), accumulating spending.
-        Flags every transaction from the point cumulative spending first exceeds
-        the allocation. Clears all flags when spending is within budget.
-
-        Does NOT commit — callers are responsible for committing the session.
-        No-op when no budget allocation exists for the category.
-        """
-        from models.budget import BudgetModel
-        from datetime import date
-
-        budget = BudgetModel.query.filter_by(
-            user_id=user_id,
-            category=category,
-            period=period,
-        ).first()
-
-        if not budget:
-            return
-
-        year, month = int(period[:4]), int(period[5:7])
-        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
-        period_start = date(year, month, 1)
-        period_end   = date(next_year, next_month, 1)
-
-        transactions = (
-            TransactionModel.query
-            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
-            .filter(
-                AccountModel.user_id == user_id,
-                TransactionModel.category == category,
-                TransactionModel.date >= period_start,
-                TransactionModel.date <  period_end,
-                TransactionModel.amount_cents < 0,
-                TransactionModel.is_transfer == False,  # exclude inter-account transfers
-            )
-            .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
-            .all()
-        )
-
-        # Sum positive reimbursements for the category — they offset spending
-        from sqlalchemy import func as sa_func
-        reimbursement_cents = (
-            db.session.query(sa_func.sum(TransactionModel.amount_cents))
-            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
-            .filter(
-                AccountModel.user_id == user_id,
-                TransactionModel.category == category,
-                TransactionModel.date >= period_start,
-                TransactionModel.date <  period_end,
-                TransactionModel.is_reimbursement == True,
-                TransactionModel.amount_cents > 0,
-            )
-            .scalar() or 0
-        )
-
-        allocated_cents = budget.amount_cents + budget.carried_over_cents
-        # Start negative so reimbursements act as a pre-credit against spending
-        cumulative = -reimbursement_cents
-        for t in transactions:
-            cumulative += abs(t.amount_cents)
-            t.over_budget = cumulative > allocated_cents
-
     def get_transaction(self, transaction_id):
         return TransactionModel.query.get(transaction_id)
 
@@ -204,13 +138,12 @@ class DbService:
         ).all()
 
     def get_account_transactions(self, account_id, start_date=None, end_date=None,
-                                  category=None, over_budget=None, limit=None, offset=None):
+                                  category=None, limit=None, offset=None):
         """
         Fetch transactions for an account with optional filters.
 
         start_date / end_date : datetime.date  — inclusive on both ends
         category              : str            — exact match
-        over_budget           : bool           — filter to flagged rows only
         limit / offset        : int            — pagination
         """
         query = TransactionModel.query.filter_by(account_id=account_id)
@@ -221,8 +154,6 @@ class DbService:
             query = query.filter(TransactionModel.date <= end_date)
         if category is not None:
             query = query.filter(TransactionModel.category == category)
-        if over_budget is not None:
-            query = query.filter(TransactionModel.over_budget == over_budget)
 
         query = query.order_by(TransactionModel.date.desc())
 

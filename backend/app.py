@@ -27,6 +27,8 @@ def _run_migrations(db):
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
+            # Over-budget flags are computed when read (BudgetFlagService); the stored copy is gone
+            'ALTER TABLE transactions DROP COLUMN IF EXISTS over_budget',
         ]
         for sql in migrations:
             conn.execute(text(sql))

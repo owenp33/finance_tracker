@@ -121,7 +121,7 @@ exact amount, within a date range), `get_budget_activity` (a user's non-transfer
 reimbursements in some categories between two dates, for budget flags), and
 `get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
-two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
+two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
@@ -134,8 +134,8 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
   balance"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
 - `delete_account` unlinks the account's transfers, then deletes it; its transactions and
   recurring templates cascade.
-- `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance and the
-  over-budget flags in step with every change.
+- `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance in step
+  with every change (over-budget flags are computed on read; see `BudgetFlagService`).
 - Transfers: `link_transfer`, `unlink_transfer` (clears the flag and the link on both sides),
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
@@ -147,7 +147,7 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 (`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
 `unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`, and
 `template_dict` for API responses); see [Recurring transactions](#recurring-transactions). Occurrences are
-created through `AccountService.add_transaction`, so balances and budget flags have one code path.
+created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
 
@@ -206,7 +206,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
 | `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention` |
-| `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `over_budget`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
+| `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
@@ -241,9 +241,8 @@ Every change must keep these true.
   category-month with a budget, it walks the month's non-transfer expenses in date order,
   credits the month's reimbursements up front, and flags each expense from the point cumulative
   spending passes the allocation (amount + carried over). API responses always carry the
-  computed value, so no change can leave a flag stale. The older stored column and
-  `DbService._reevaluate_category_flags` still exist and are still written; they're being
-  retired, so don't build on them.
+  computed value, so no change can leave a flag stale; nothing about flags is stored (the old
+  `transactions.over_budget` column was dropped).
 - **Transfers** are excluded from analytics, budget progress, and over-budget flags. A pair is
   linked both ways through `transfer_peer_id`; editing one side syncs the date, vendor, category,
   notes, and negated amount to the other. Unlink a pair before deleting either side (the foreign
@@ -393,10 +392,8 @@ always one more than their count.
 **Renaming a series.** When `update_recurring` changes a template's vendor and/or category (an
 actual change; the edit form sends every field on each save), every transaction in the series,
 generated or linked, gets the new value, and nothing else changes: not amounts, dates, or notes.
-A transfer's peer follows, as when a transaction is edited. A category change moves spending
-between categories, so the moved transactions' `over_budget` flags are cleared and the old and
-new categories are re-evaluated in every month touched (re-evaluation only walks a category's
-own transactions, so clearing first keeps a moved row from keeping a stale flag). Matching uses
+A transfer's peer follows, as when a transaction is edited. Over-budget flags follow a category
+change on their own, since they're computed when read. Matching uses
 the template's current vendor, so after a rename, transactions spelled the old way are no longer
 suggested or adopted.
 
@@ -444,7 +441,8 @@ Details worth knowing:
   suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count`,
   `needs_attention`, and `dismissed_transaction_ids`.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
-  `category`, `over_budget=true|false`, `limit`, and `offset`.
+  `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
+  the matching rows), `limit`, and `offset`.
 - `PATCH /transactions/<id>/transfer` toggles the transfer flag. Turning it on links an unlinked
   counterpart automatically when `find_transfer_peer` finds one; turning it off unlinks both sides.
 - `POST /transactions/<id>/transfer/pair` with `{to_account_id}` creates the counterpart in that
@@ -535,10 +533,8 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
   100 characters reaches Postgres there and fails with a 500.
 - **Auth failures use a different error shape.** Flask-JWT-Extended answers a missing, invalid, or
   expired token with `{'msg': ...}` rather than `{'success': False, 'error': ...}`.
-- **The stored over-budget column is obsolete.** Flags are computed on read now; the column and
-  the code that still writes it (which had gaps, so its values can be stale) are next to go.
-- **A budget rule lives in the data layer.** `_reevaluate_category_flags` is in `DbService`, and the
-  `YYYY-MM` period math is repeated in `db_service.py` and `budget_service.py`.
+- **Period math is repeated.** Turning a `YYYY-MM` period into dates is done separately in
+  `budget_service.py` and `budget_flag_service.py`.
 - **Recurring generation can run twice at once.** Each gunicorn worker starts its own scheduler,
   and `/me` also generates on every page load, so concurrent runs can duplicate transactions.
   Login and `/me` each loop over accounts with different error handling.
@@ -553,8 +549,7 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.
 - **Other bookkeeping is still read, change, write.** Balances are atomic now, but a series'
-  `idx` / `number` and the over-budget walk aren't, so two simultaneous edits of the same series
-  or category could still race. The frontend sends bulk actions one request at a time, which
+  `idx` / `number` isn't, so two simultaneous edits of the same series could still race. The frontend sends bulk actions one request at a time, which
   keeps this from happening in practice.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
