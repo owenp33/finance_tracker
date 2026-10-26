@@ -103,3 +103,13 @@ test('the Accounts tab counts accounts that need attention', () => {
   const tab = screen.getByRole('button', { name: /^Accounts/ });
   expect(within(tab).getByText('2')).toHaveClass('attention-badge');
 });
+
+test('the transactions page has no Flagged tab (over budget shows as a chip instead)', () => {
+  render(
+    <CategoryColorProvider>
+      <TransactionsView transactions={[]} recurringTransactions={[]} accounts={[]} />
+    </CategoryColorProvider>
+  );
+  expect(screen.queryByRole('button', { name: /^Flagged/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Accounts/ })).toBeInTheDocument();
+});

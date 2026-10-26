@@ -1786,12 +1786,6 @@ body {
   opacity: 1;
 }
 
-/* === Flagged badge ========================================= */
-.flagged-badge {
-  background: #ffe3e3;
-  color: #e03131;
-}
-
 /* Accounts created by an import that haven't been reviewed yet */
 .attention-badge,
 .needs-attention-badge {

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import AllTransactionsTab from './transactions/AllTransactionsTab';
 import RecurringTab from './transactions/RecurringTab';
-import FlaggedTab from './transactions/FlaggedTab';
 import ImportView from './ImportView';
 import AccountsView from './AccountsView';
 
@@ -31,7 +30,6 @@ function TransactionsView({
 }) {
   const [tab, setTab] = useState('all');
 
-  const flaggedCount        = transactions.filter(t => t.over_budget).length;
   const needsAttentionCount = accounts.filter(a => a.needs_attention).length;
   const recurringAttentionCount = recurringTransactions.filter(r => r.needs_attention).length;
 
@@ -50,9 +48,6 @@ function TransactionsView({
           )}
         </button>
         <button className={`tab-btn${tab === 'import'    ? ' active' : ''}`} onClick={() => setTab('import')}>Import</button>
-        <button className={`tab-btn${tab === 'flagged'   ? ' active' : ''}`} onClick={() => setTab('flagged')}>
-          Flagged {flaggedCount > 0 && <span className="count-badge flagged-badge">{flaggedCount}</span>}
-        </button>
       </div>
 
       {tab === 'all' && (
@@ -111,15 +106,6 @@ function TransactionsView({
           onCreateAccount={onCreateAccount}
           onEditAccount={onEditAccount}
           onDeleteAccount={onDeleteAccount}
-        />
-      )}
-
-      {tab === 'flagged' && (
-        <FlaggedTab
-          transactions={transactions}
-          accounts={accounts}
-          onEdit={onEdit}
-          onDelete={onDelete}
         />
       )}
     </div>
