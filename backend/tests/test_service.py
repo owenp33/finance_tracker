@@ -80,6 +80,28 @@ class TestAccountEditValidation:
         assert account.needs_attention is True
 
 
+class TestAccountCreation:
+    def test_labels_are_trimmed(self, user):
+        created = svc.create_account(user.id, {'account_id': ' amex-1001 ', 'account_name': ' Amex Gold '})
+        assert (created.acct_id_str, created.acct_name, created.user_id) == ('amex-1001', 'Amex Gold', user.id)
+
+    @pytest.mark.parametrize('name', [None, '', '   '], ids=['missing', 'empty', 'blank'])
+    def test_the_name_defaults_to_the_id(self, user, name):
+        data = {'account_id': 'checking-9'} if name is None else {'account_id': 'checking-9', 'account_name': name}
+        assert svc.create_account(user.id, data).acct_name == 'checking-9'
+
+    @pytest.mark.parametrize('data, error', [
+        ({}, "Account ID can't be empty."),
+        ({'account_id': '  '}, "Account ID can't be empty."),
+        ({'account_id': 'x' * 101}, 'Account ID must be at most 100 characters.'),
+        ({'account_id': 1234}, 'Account ID must be text.'),
+        ({'account_id': 'ok', 'account_name': 'n' * 101}, 'Display name must be at most 100 characters.'),
+    ], ids=['missing-id', 'blank-id', 'long-id', 'number-id', 'long-name'])
+    def test_rejects_invalid_labels(self, user, data, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.create_account(user.id, data)
+
+
 class TestStartingBalance:
     def test_new_accounts_start_at_zero(self, account):
         assert account.to_dict()['opening_balance'] == 0

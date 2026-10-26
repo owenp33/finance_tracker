@@ -32,18 +32,11 @@ def get_accounts():
 @accounts_bp.route('', methods=['POST'])
 @jwt_required()
 def create_account():
-    """Create new account for current user"""
-    user_id = get_jwt_identity()
-    data = request.get_json()
-
-    if not data.get('account_id'):
-        return jsonify({'success': False, 'error': 'account_id is required'}), 400
-
-    account = db_service.create_account(
-        user_id=user_id,
-        acct_id_str=data['account_id'],
-        account_name=data.get('account_name', data['account_id'])
-    )
+    """Create an account for the current user from account_id and (optionally) account_name."""
+    try:
+        account = account_service.create_account(get_jwt_identity(), json_body())
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     return jsonify({'success': True, 'account': account.to_dict()}), 201
 
 

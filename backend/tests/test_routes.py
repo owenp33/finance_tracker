@@ -115,6 +115,24 @@ class TestAccountRoutes:
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': 'needs_attention can only be set to false'}
 
+    def test_create_returns_the_trimmed_account(self, client, auth_headers):
+        resp = client.post('/api/accounts', json={'account_id': ' amex-1001 ', 'account_name': ' Amex Gold '},
+                           headers=auth_headers)
+        assert resp.status_code == 201
+        assert (resp.json['account']['account_id'], resp.json['account']['account_name']) == ('amex-1001', 'Amex Gold')
+
+    @pytest.mark.parametrize('body, error', [
+        ({'account_id': 'x' * 101}, 'Account ID must be at most 100 characters.'),
+        ({'account_name': 'No id'}, "Account ID can't be empty."),
+    ], ids=['long-id', 'missing-id'])
+    def test_create_with_invalid_labels_returns_400(self, client, auth_headers, body, error):
+        resp = client.post('/api/accounts', json=body, headers=auth_headers)
+        assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_create_without_a_json_body_returns_400(self, client, auth_headers):
+        resp = client.post('/api/accounts', data='not json', content_type='text/plain', headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (400, "Account ID can't be empty.")
+
     def test_rename_returns_the_trimmed_name(self, client, auth_headers, account):
         resp = client.patch(f'/api/accounts/{account.id}', json={'account_name': ' Joint Checking '},
                             headers=auth_headers)

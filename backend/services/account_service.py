@@ -47,6 +47,19 @@ class AccountService:
 
     # ACCOUNT OPERATIONS ========================================================
 
+    def create_account(self, user_id, data: dict):
+        """
+        Create an account from account_id (the bank's label, required) and account_name (defaults
+        to the id string). Both are trimmed and must be text within the column length; raises
+        ValueError otherwise.
+        """
+        id_str = _account_label(data.get('account_id', ''), AccountModel.acct_id_str, 'Account ID')
+        name = data.get('account_name')
+        if isinstance(name, str) and not name.strip():
+            name = None
+        name = id_str if name is None else _account_label(name, AccountModel.acct_name, 'Display name')
+        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name)
+
     def update_account(self, account_id, data: dict):
         """
         Apply field updates to an account. Editing the name, id string, or starting balance
