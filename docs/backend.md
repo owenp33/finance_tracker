@@ -75,6 +75,10 @@ HTTP request
   in both cases).
 - `middleware/request_body.py`: `json_body()` returns the JSON body as a dict, or `{}` when it is
   missing, malformed, or not an object.
+- `middleware/auth_errors.py`: a missing, expired, or invalid access token gets a 401 in the usual
+  error shape with a message for the user ("Your session has expired. Please log in again."),
+  instead of Flask-JWT-Extended's default `{'msg': ...}` (or 422). The frontend treats any 401 on a
+  protected request as "back to the login screen".
 - `middleware/error_handlers.py`: a Werkzeug `HTTPException` (404, 405, 415, ...) keeps its status
   code. Its message is the specific description when one was given, else the short name such as
   "Not Found". Any other exception is a bug: it is logged with its traceback, and the client gets a
@@ -124,6 +128,8 @@ account's transaction total before a date, for ledger opening balances). It also
 two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
+- `create_account(user_id, data)` takes `account_id` (required) and `account_name` (defaults to
+  the id string), validated the same way as editing (trimmed, non-empty text, at most 100).
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
   `opening_balance` (the starting balance, in dollars), and `needs_attention`, which may only be
   set to `false`. Names and id strings are trimmed and must be non-empty text within the column
@@ -422,6 +428,8 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
 
 Details worth knowing:
+- `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
+  over-100-character value is a 400.
 - `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` (dollars),
   and `needs_attention: false` ("Looks good"). Any of them clears `needs_attention`. A blank,
   non-text, or over-100-character name or id string is a 400, and so is a starting balance that
@@ -488,6 +496,9 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
   session: SQLite reuses ids after a delete, and a stale cached object with a reused id breaks the
   next insert.
 - Every test file must pass on its own, and the suite must pass in reverse file order.
+- `backend/pytest.ini` turns SQLAlchemy's `LegacyAPIWarning` into an error, so 1.x-style calls
+  (`Model.query.get()` and the like) fail the tests; use `db.session.get()` and the 2.0 APIs. The
+  only warnings left in a run are third-party (pyparsing, via matplotlib).
 - **SQLite can't prove everything.** It ignores `String` lengths and some Postgres errors, so
   column limits get a guard test (see `test_hash_fits_the_column`,
   `test_columns_fit_long_bank_labels`), and migrations and length-sensitive behavior are checked
@@ -529,10 +540,6 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Input validation is incomplete.** Older routes still read bodies with `request.get_json()` and
   index fields directly, so a missing field or malformed date there is a generic 500 instead of a
   400. `AccountService.update_transaction` returns raw exception text as its 400 message.
-  `POST /api/accounts` doesn't validate its fields yet (editing does), so a name or id string over
-  100 characters reaches Postgres there and fails with a 500.
-- **Auth failures use a different error shape.** Flask-JWT-Extended answers a missing, invalid, or
-  expired token with `{'msg': ...}` rather than `{'success': False, 'error': ...}`.
 - **Period math is repeated.** Turning a `YYYY-MM` period into dates is done separately in
   `budget_service.py` and `budget_flag_service.py`.
 - **Recurring generation can run twice at once.** Each gunicorn worker starts its own scheduler,
@@ -540,8 +547,6 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
   Login and `/me` each loop over accounts with different error handling.
 - **CORS is configured twice.** `CORS(app, supports_credentials=True)` allows every origin, so the
   manual allowlist in `create_app()` has no effect.
-- **Legacy SQLAlchemy API.** `Model.query.get()` is deprecated in SQLAlchemy 2.0 (use
-  `db.session.get()`), which fills the test output with warnings.
 - **Hand-written migrations.** `_run_migrations` stands in for Alembic.
 - **Export logic lives in the route.** `routes/export.py` builds the CSV and renders the PDF pages
   itself, and malformed query parameters there produce a 500.
