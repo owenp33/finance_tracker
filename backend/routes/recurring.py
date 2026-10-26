@@ -2,14 +2,15 @@
 recurring.py - Recurring transaction routes
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
-from services import DbService, RecurringService
+from services import DbService, RecurringService, BudgetFlagService
 from middleware.ownership import owns_recurring, owns_transaction
 
 recurring_bp = Blueprint('recurring', __name__)
 db_service        = DbService()
 recurring_service = RecurringService()
+budget_flags      = BudgetFlagService()
 
 
 @recurring_bp.route('/<int:recurring_id>', methods=['GET'])
@@ -78,12 +79,12 @@ def delete_recurring(recurring_id):
 
 # SERIES MEMBERSHIP =============================================================
 
-def _suggestion_dict(suggestion):
+def _suggestion_dict(suggestion, transaction_dicts):
     return {
         'date':       suggestion['date'].isoformat(),
         'kind':       suggestion['kind'],
-        'linked':     [t.to_dict() for t in suggestion['linked']],
-        'candidates': [t.to_dict() for t in suggestion['candidates']],
+        'linked':     [transaction_dicts[t.id] for t in suggestion['linked']],
+        'candidates': [transaction_dicts[t.id] for t in suggestion['candidates']],
     }
 
 
@@ -93,7 +94,10 @@ def _suggestion_dict(suggestion):
 def get_suggestions(recurring_id):
     """Transactions that may belong to this series (missing, duplicate, or history), for the user to confirm."""
     suggestions = recurring_service.suggest_matches(recurring_id)
-    return jsonify({'success': True, 'suggestions': [_suggestion_dict(s) for s in suggestions]}), 200
+    # Budget flags for every row at once, rather than per suggestion
+    rows = [t for s in suggestions for t in s['linked'] + s['candidates']]
+    transaction_dicts = {d['id']: d for d in budget_flags.transaction_dicts(get_jwt_identity(), rows)}
+    return jsonify({'success': True, 'suggestions': [_suggestion_dict(s, transaction_dicts) for s in suggestions]}), 200
 
 
 @recurring_bp.route('/<int:recurring_id>/transactions/<int:transaction_id>', methods=['POST'])

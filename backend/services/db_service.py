@@ -256,6 +256,26 @@ class DbService:
 
         return query.order_by(TransactionModel.date.asc()).all()
 
+    def get_budget_activity(self, user_id, categories, start_date, end_date):
+        """
+        The user's transactions that count toward budgets in these categories between the dates
+        (inclusive): expenses that aren't transfers, and reimbursements.
+        """
+        return (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.category.in_(categories),
+                TransactionModel.date.between(start_date, end_date),
+                or_(
+                    (TransactionModel.amount_cents < 0) & TransactionModel.is_transfer.is_(False),
+                    (TransactionModel.amount_cents > 0) & TransactionModel.is_reimbursement.is_(True),
+                ),
+            )
+            .all()
+        )
+
     def get_transaction_totals_before(self, account_ids, before_date):
         """The sum of amount_cents per account for transactions dated before before_date: {account_id: cents}."""
         rows = (

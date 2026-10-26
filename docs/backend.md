@@ -117,7 +117,9 @@ with the opposite amount in another of the user's accounts, within ±5 days; the
 match wins), `find_recurring_candidates` (transactions in no recurring series with a given
 account, vendor and amount, within a window of days around a date, nearest first), and
 `find_unlinked_transactions` (the looser suggestion query: vendor, direction, and category or
-exact amount, within a date range), and `get_transaction_totals_before` (one grouped query: each
+exact amount, within a date range), `get_budget_activity` (a user's non-transfer expenses and
+reimbursements in some categories between two dates, for budget flags), and
+`get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
 two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants). It also holds `_reevaluate_category_flags` (see [Known limitations](#known-limitations)).
 
@@ -159,6 +161,14 @@ or a start after the end, raises `ValueError`. The arithmetic is the pure functi
 `running_balances(opening_cents, transactions)`. Ledgers are computed from the transactions
 themselves, so with no dates `closing_cents` equals the stored `balance_cents` whenever that
 cache is correct.
+
+**`BudgetFlagService`** (`budget_flag_service.py`): which expenses are over budget, computed
+when transactions are read. `over_budget_ids(user_id, transactions)` returns the ids among the
+given transactions that are over budget (counting all of the user's spending in each
+category-month involved: one query for budgets, one for the expenses and reimbursements);
+`transaction_dicts(user_id, transactions)` serializes transactions with `over_budget` filled in,
+and every route that returns transactions uses it. The walk itself is the pure function
+`over_budget_in_month(expenses, reimbursed_cents, allocated_cents)`.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
@@ -227,10 +237,13 @@ Every change must keep these true.
   `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), each a
   single SQL statement, so simultaneous requests can't overwrite each other's change. Never read
   `balance_cents`, add in Python, and write it back.
-- **`over_budget` is a stored per-row flag.** Any change to a category's spending in a period must
-  call `_reevaluate_category_flags(user_id, category, 'YYYY-MM')` before committing. It walks the
-  period's expenses in date order, treats reimbursements as a credit up front, and flags each
-  expense from the point cumulative spending passes the allocation.
+- **`over_budget` is computed when transactions are read** (`BudgetFlagService`). For each
+  category-month with a budget, it walks the month's non-transfer expenses in date order,
+  credits the month's reimbursements up front, and flags each expense from the point cumulative
+  spending passes the allocation (amount + carried over). API responses always carry the
+  computed value, so no change can leave a flag stale. The older stored column and
+  `DbService._reevaluate_category_flags` still exist and are still written; they're being
+  retired, so don't build on them.
 - **Transfers** are excluded from analytics, budget progress, and over-budget flags. A pair is
   linked both ways through `transfer_peer_id`; editing one side syncs the date, vendor, category,
   notes, and negated amount to the other. Unlink a pair before deleting either side (the foreign
@@ -522,9 +535,8 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
   100 characters reaches Postgres there and fails with a 500.
 - **Auth failures use a different error shape.** Flask-JWT-Extended answers a missing, invalid, or
   expired token with `{'msg': ...}` rather than `{'success': False, 'error': ...}`.
-- **Over-budget flags can go stale.** `update_transaction` re-evaluates only when
-  `is_reimbursement` is sent, and only for the new category and period; `delete_transaction`
-  re-evaluates only for expenses.
+- **The stored over-budget column is obsolete.** Flags are computed on read now; the column and
+  the code that still writes it (which had gaps, so its values can be stale) are next to go.
 - **A budget rule lives in the data layer.** `_reevaluate_category_flags` is in `DbService`, and the
   `YYYY-MM` period math is repeated in `db_service.py` and `budget_service.py`.
 - **Recurring generation can run twice at once.** Each gunicorn worker starts its own scheduler,

@@ -6,12 +6,18 @@ No ORM queries, data coercion, or business logic should live here.
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
-from services import DbService, AccountService
+from services import DbService, AccountService, BudgetFlagService
 from middleware.ownership import owns_transaction
 
 transactions_bp = Blueprint('transactions', __name__)
 db_service = DbService()
 account_service = AccountService()
+budget_flags = BudgetFlagService()
+
+
+def _transaction_dict(trans):
+    """One transaction as the API returns it, with its budget flag computed."""
+    return budget_flags.transaction_dicts(get_jwt_identity(), [trans])[0]
 
 
 @transactions_bp.route('/<int:transaction_id>', methods=['GET'])
@@ -20,7 +26,7 @@ account_service = AccountService()
 def get_transaction(transaction_id):
     """Fetch a single transaction by ID."""
     trans = db_service.get_transaction(transaction_id)
-    return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
+    return jsonify({'success': True, 'transaction': _transaction_dict(trans)}), 200
 
 
 @transactions_bp.route('/<int:transaction_id>', methods=['PUT', 'PATCH'])
@@ -36,7 +42,7 @@ def update_transaction(transaction_id):
 
     return jsonify({
         'success': True,
-        'transaction': updated.to_dict(),
+        'transaction': _transaction_dict(updated),
         'new_balance': updated.account.balance
     }), 200
 
@@ -73,7 +79,7 @@ def toggle_transfer(transaction_id):
         return jsonify({'success': False, 'error': error}), 400
 
     trans = db_service.get_transaction(transaction_id)
-    return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
+    return jsonify({'success': True, 'transaction': _transaction_dict(trans)}), 200
 
 
 @transactions_bp.route('/<int:transaction_id>/transfer/pair', methods=['DELETE'])
@@ -90,7 +96,7 @@ def break_transfer_pair(transaction_id):
         return jsonify({'success': False, 'error': error}), 404
 
     trans = db_service.get_transaction(transaction_id)
-    return jsonify({'success': True, 'transaction': trans.to_dict()}), 200
+    return jsonify({'success': True, 'transaction': _transaction_dict(trans)}), 200
 
 
 @transactions_bp.route('/<int:transaction_id>/transfer/pair', methods=['POST'])
@@ -123,8 +129,8 @@ def pair_transfer(transaction_id):
 
     return jsonify({
         'success': True,
-        'transaction': original.to_dict(),
-        'peer': peer.to_dict(),
+        'transaction': _transaction_dict(original),
+        'peer': _transaction_dict(peer),
     }), 201
 
 

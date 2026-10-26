@@ -3,7 +3,7 @@ accounts.py - Account management routes
 """
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from services import DbService, AccountService, RecurringService
+from services import DbService, AccountService, RecurringService, BudgetFlagService
 from middleware.ownership import owns_account
 from middleware.request_body import json_body
 from datetime import datetime, date, timedelta
@@ -13,6 +13,7 @@ accounts_bp = Blueprint('accounts', __name__)
 db_service = DbService()
 account_service = AccountService()
 recurring_service = RecurringService()
+budget_flags = BudgetFlagService()
 
 
 @accounts_bp.route('', methods=['GET'])
@@ -54,7 +55,7 @@ def get_all_transactions():
     transactions = db_service.get_all_user_transactions(user_id)
     return jsonify({
         'success': True,
-        'transactions': [t.to_dict() for t in transactions]
+        'transactions': budget_flags.transaction_dicts(user_id, transactions)
     }), 200
 
 
@@ -132,7 +133,7 @@ def get_transactions(account_id):
 
     return jsonify({
         'success': True,
-        'transactions': [t.to_dict() for t in transactions]
+        'transactions': budget_flags.transaction_dicts(get_jwt_identity(), transactions)
     }), 200
 
 
@@ -162,7 +163,7 @@ def add_transaction(account_id):
 
     return jsonify({
         'success': True,
-        'transaction': transaction.to_dict(),
+        'transaction': budget_flags.transaction_dicts(get_jwt_identity(), [transaction])[0],
         'new_balance': acc.balance
     }), 201
 

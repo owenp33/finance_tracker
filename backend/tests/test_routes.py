@@ -143,6 +143,27 @@ class TestAccountRoutes:
         assert resp.json == {'success': False, 'error': 'Starting balance must be a number.'}
 
 
+# ── Budget flags in responses ─────────────────────────────────────────────────
+
+class TestBudgetFlagsInResponses:
+    def _add(self, client, account, auth_headers, day, amount, category='Groceries'):
+        return client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': day, 'vendor': 'Shop', 'category': category, 'amount': amount}).json['transaction']
+
+    def test_transactions_report_flags_that_follow_every_change(self, client, account, auth_headers):
+        client.post('/api/budgets', headers=auth_headers, json={'category': 'Groceries', 'period': '2026-01', 'amount': 50})
+        first = self._add(client, account, auth_headers, '2026-01-03', -45)
+        second = self._add(client, account, auth_headers, '2026-01-10', -10)
+        assert second['over_budget'] is True
+
+        client.patch(f"/api/transactions/{first['id']}", headers=auth_headers,
+                     json={'category': 'Gifts', 'is_reimbursement': False})
+        listed = client.get('/api/accounts/all-transactions', headers=auth_headers).json['transactions']
+        assert {t['id']: t['over_budget'] for t in listed} == {first['id']: False, second['id']: False}
+        single = client.get(f"/api/transactions/{second['id']}", headers=auth_headers).json['transaction']
+        assert single['over_budget'] is False
+
+
 # ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
 
 class TestTransactionRoutes:
