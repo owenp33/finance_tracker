@@ -77,7 +77,7 @@ def render_monthly_trends_page(pdf, analytics):
         ax.plot(months, [m['income'] for m in monthly], marker='o', label='Income', color='#00C49F')
         ax.plot(months, [m['expenses'] for m in monthly], marker='o', label='Expenses', color='#FF8042')
         ax.plot(months, [m['net'] for m in monthly], marker='o', label='Net', color='#0088FE')
-        ax.set_xticklabels(months, rotation=45, ha='right')
+        ax.set_xticks(range(len(months)), labels=months, rotation=45, ha='right')
         ax.legend()
         ax.set_ylabel('Amount ($)')
     else:

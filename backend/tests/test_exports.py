@@ -4,6 +4,7 @@ Export tests: what an export covers, the CSV download, and the PDF report.
 import csv
 import io
 import re
+import warnings
 from datetime import date
 from types import SimpleNamespace
 
@@ -214,6 +215,31 @@ class TestPdfReport:
 
 
 NOTHING = (400, {'success': False, 'error': 'No transactions in this period.'})
+
+
+class _PageRecorder:
+    """Stands in for PdfPages: draws each page and keeps its x tick labels (text, rotation, alignment)."""
+
+    def __init__(self):
+        self.x_labels = []
+
+    def savefig(self, fig):
+        fig.canvas.draw()
+        self.x_labels.append([(t.get_text(), t.get_rotation(), t.get_ha()) for t in fig.axes[0].get_xticklabels()])
+
+
+class TestSummaryPages:
+    def test_monthly_trends_label_each_month_without_warnings(self):
+        analytics = {'monthly_summary': [   # newest first, as AnalyticsService returns it
+            {'month': '2026-02', 'income': 10.0, 'expenses': 5.0, 'net': 5.0},
+            {'month': '2026-01', 'income': 3.0, 'expenses': 8.0, 'net': -5.0},
+        ]}
+        pages = _PageRecorder()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            pdf_pages.render_monthly_trends_page(pages, analytics)
+        assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == []
+        assert pages.x_labels == [[('2026-01', 45.0, 'right'), ('2026-02', 45.0, 'right')]]
 
 
 class TestAccountPageLayout:

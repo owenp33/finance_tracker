@@ -540,8 +540,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
   next insert.
 - Every test file must pass on its own, and the suite must pass in reverse file order.
 - `backend/pytest.ini` turns SQLAlchemy's `LegacyAPIWarning` into an error, so 1.x-style calls
-  (`Model.query.get()` and the like) fail the tests; use `db.session.get()` and the 2.0 APIs. The
-  only warnings left in a run are third-party (pyparsing, via matplotlib).
+  (`Model.query.get()` and the like) fail the tests; use `db.session.get()` and the 2.0 APIs. A
+  run prints no warnings; treat a new one as something to fix.
 - **SQLite can't prove everything.** It ignores `String` lengths and some Postgres errors, so
   column limits get a guard test (see `test_hash_fits_the_column`,
   `test_columns_fit_long_bank_labels`), and migrations and length-sensitive behavior are checked
@@ -557,6 +557,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_service.py` | Service logic: account review, transactions and balances, recurring generation and deletion, auth |
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
+| `test_balance_service.py` | Account ledgers: opening, running and closing balances |
+| `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
