@@ -5,6 +5,7 @@ import csv
 import io
 import re
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,9 @@ from models.account import AccountModel
 from models.user import User
 from services.account_service import AccountService
 from services.analytics_service import AnalyticsService
+from services.balance_service import LedgerRow
+from services.budget_service import BudgetService
+from services.reports import pdf_pages
 
 account_svc = AccountService()
 
@@ -59,6 +63,22 @@ def _preview_import(client, headers, content):
 
 def _pdf_pages(resp):
     return len(re.findall(rb'/Type\s*/Page[^s]', resp.data))
+
+
+@pytest.fixture
+def account_sections(monkeypatch):
+    """Per account section of each PDF: (account name, its vendors, the vendors marked over budget)."""
+    seen = []
+    real = pdf_pages.render_account_pages
+
+    def spy(pdf, ledger, over_budget_ids, *args):
+        vendors = [r.transaction.vendor for r in ledger.rows]
+        flagged = [r.transaction.vendor for r in ledger.rows if r.transaction.id in over_budget_ids]
+        seen.append((ledger.account.acct_name, vendors, flagged))
+        return real(pdf, ledger, over_budget_ids, *args)
+
+    monkeypatch.setattr(pdf_pages, 'render_account_pages', spy)
+    return seen
 
 
 @pytest.fixture
@@ -136,13 +156,34 @@ class TestPdfReport:
     def test_requires_login(self, client):
         assert client.get(PDF_URL).status_code == 401
 
-    def test_a_six_page_pdf(self, client, auth_headers, ledger):
+    def test_six_summary_pages_then_a_page_per_account(self, client, auth_headers, ledger):
         resp = client.get(PDF_URL, headers=auth_headers)
         assert resp.status_code == 200
         assert resp.mimetype == 'application/pdf'
         assert resp.headers['Content-Disposition'] == 'attachment; filename=report.pdf'
         assert resp.data.startswith(b'%PDF')
-        assert _pdf_pages(resp) == 6
+        assert _pdf_pages(resp) == 6 + 2
+
+    def test_a_long_account_continues_on_more_pages(self, client, auth_headers, account):
+        for day in range(1, pdf_pages.FIRST_PAGE_ROWS + 2):
+            account_svc.add_transaction(account.id, date(2026, 1, day), f'Shop {day}', 'Misc', -1.0)
+        assert _pdf_pages(client.get(PDF_URL, headers=auth_headers)) == 6 + 2
+
+    def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
+        client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)
+        assert account_sections == [
+            ('Test Checking', ['To savings', 'Refund'], []),
+            ('Savings', ['Interest'], []),
+        ]
+
+    def test_accounts_without_activity_get_no_section(self, client, auth_headers, ledger, account_sections):
+        client.get(f'{PDF_URL}?start_date=2026-02-01', headers=auth_headers)
+        assert [name for name, _, _ in account_sections] == ['Test Checking']
+
+    def test_over_budget_transactions_are_marked(self, client, auth_headers, ledger, user, account_sections):
+        BudgetService().create_budget(user.id, 'Groceries', '2026-01', 40.0)
+        client.get(PDF_URL, headers=auth_headers)
+        assert account_sections[0] == ('Test Checking', ['Grocer', 'To savings', 'Refund'], ['Grocer'])
 
     def test_accounts_and_dates_choose_what_it_covers(self, client, auth_headers, ledger, account, reported):
         client.get(f'{PDF_URL}?account_ids={account.id}&start_date=2026-01-06', headers=auth_headers)
@@ -150,6 +191,33 @@ class TestPdfReport:
 
 
 NOTHING = (400, {'success': False, 'error': 'No transactions in this period.'})
+
+
+class TestAccountPageLayout:
+    """The pure pieces of an account's pages: how rows split into pages, and the table's cells."""
+
+    F, C = pdf_pages.FIRST_PAGE_ROWS, pdf_pages.CONTINUED_ROWS
+
+    @pytest.mark.parametrize('count, sizes', [
+        (1, [1]), (F, [F]), (F + 1, [F, 1]), (F + C, [F, C]), (F + C + 1, [F, C, 1]),
+    ])
+    def test_rows_split_into_pages(self, count, sizes):
+        assert [len(chunk) for chunk in pdf_pages.account_page_chunks(list(range(count)))] == sizes
+
+    def test_table_rows(self):
+        grocer = SimpleNamespace(id=1, date=date(2026, 1, 5), vendor='Grocer', category='Groceries', amount_cents=-4210)
+        pay = SimpleNamespace(id=2, date=date(2026, 1, 15), vendor='Paycheck', category='Income', amount_cents=123456)
+        rows = [LedgerRow(grocer, -4210), LedgerRow(pay, 119246)]
+        assert pdf_pages.account_table_rows(rows, {1}) == [
+            (['2026-01-05', 'Grocer', 'Groceries', '-$42.10', '-$42.10', 'Over'], True),
+            (['2026-01-15', 'Paycheck', 'Income', '$1,234.56', '$1,192.46', ''], False),
+        ]
+
+    def test_long_text_is_shortened(self):
+        t = SimpleNamespace(id=1, date=date(2026, 1, 5), vendor='V' * 80, category='C' * 50, amount_cents=-1)
+        (cells, _), = pdf_pages.account_table_rows([LedgerRow(t, -1)], set())
+        assert (len(cells[1]), cells[1][-1]) == (pdf_pages.VENDOR_CHARS, '…')
+        assert (len(cells[2]), cells[2][-1]) == (pdf_pages.CATEGORY_CHARS, '…')
 
 
 class TestSelection:

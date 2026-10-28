@@ -8,11 +8,13 @@ import io
 from datetime import datetime
 from services.analytics_service import AnalyticsService
 from services.balance_service import BalanceService
+from services.budget_flag_service import BudgetFlagService
 from services.reports import pdf_pages
 from services.reports.csv_export import ledger_csv
 from matplotlib.backends.backend_pdf import PdfPages   # after pdf_pages, which picks the backend
 
 balance_service = BalanceService()
+budget_flag_service = BudgetFlagService()
 
 NOTHING_TO_EXPORT = 'No transactions in this period.'
 
@@ -36,19 +38,29 @@ class ReportService:
         return ledger_csv(_by_date(self._ledgers(user_id, filters)))
 
     def pdf(self, user_id, filters, generated_at=None):
-        """The PDF report (summary, trends, pies, top vendors, breakdown) as bytes."""
-        transactions = [row.transaction for row in _by_date(self._ledgers(user_id, filters))]
+        """
+        The PDF report as bytes: six summary pages (summary, trends, pies, top vendors,
+        breakdown), then each account's pages (balance chart, transaction table with running
+        balances, over-budget transactions marked).
+        """
+        ledgers = self._ledgers(user_id, filters)
+        transactions = [row.transaction for row in _by_date(ledgers)]
         analytics = AnalyticsService.generate_report(transactions)
+        over_budget_ids = budget_flag_service.over_budget_ids(user_id, transactions)
+        period_label = _period_label(filters)
         generated_label = (generated_at or datetime.now()).strftime('%Y-%m-%d %H:%M')
 
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
-            pdf_pages.render_summary_page(pdf, analytics, _period_label(filters), generated_label)
+            pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label)
             pdf_pages.render_monthly_trends_page(pdf, analytics)
             pdf_pages.render_category_pie_page(pdf, analytics['spending_by_category'], 'Spending by Category')
             pdf_pages.render_category_pie_page(pdf, analytics['income_by_category'], 'Income by Category')
             pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
             pdf_pages.render_breakdown_table_page(pdf, analytics['spending_by_category'])
+            for ledger in ledgers:
+                pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label,
+                                               filters.start_date, filters.end_date)
         return buf.getvalue()
 
     def _ledgers(self, user_id, filters):

@@ -209,14 +209,24 @@ builds the summary (totals, monthly trends, category and vendor breakdowns) behi
   the importer reads "Bank Account" as the account and ignores "Running balance", so
   re-importing an export finds every row a duplicate (tested). Transfer and reimbursement marks
   aren't in the file; an import flags only `Transfer` / `Payment` categories as transfers.
-- `pdf_pages.py`: one matplotlib page per function (summary, monthly trends, category pies, top
-  vendors, spending breakdown), drawn from `AnalyticsService.generate_report` data.
+- `pdf_pages.py`: the matplotlib pages. Six summary pages (summary, monthly trends, category
+  pies, top vendors, spending breakdown), one function each, drawn from
+  `AnalyticsService.generate_report` data; they leave transfers out. Then
+  `render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date, end_date)` per
+  account: a first page with the opening and closing balance, the balance over the period as a
+  step line, and the first `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor,
+  Category, Amount, Balance, Budget), then `CONTINUED_ROWS` rows a page. Account pages include
+  transfers (the page says so); over-budget rows get a light red band and "Over" in the Budget
+  column. The pure pieces `account_page_chunks` and `account_table_rows` are tested directly.
+  Text that can hold a `$` is drawn with `parse_math=False` (matplotlib would read `$…$` as
+  math).
 - `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` build
   the files from the `BalanceService` ledgers of the chosen accounts, leaving out accounts with
   no transactions in the period. Transactions are listed by date, then account id, then id. When
   no account has any, or an account isn't the user's, they raise `ValueError`
-  ("No transactions in this period." / "Unknown account: …"). `routes/export.py` only parses
-  the filters, calls the service (400 on a `ValueError`) and sends the file.
+  ("No transactions in this period." / "Unknown account: …"). The PDF's over-budget marks come
+  from `BudgetFlagService.over_budget_ids` over every exported transaction. `routes/export.py`
+  only parses the filters, calls the service (400 on a `ValueError`) and sends the file.
 
 **`ImportService`** (`import_service.py`) and **`import_parser`** (`import_parser.py`): file
 import; see [Importing files](#importing-files).
@@ -570,7 +580,6 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **CORS is configured twice.** `CORS(app, supports_credentials=True)` allows every origin, so the
   manual allowlist in `create_app()` has no effect.
 - **Hand-written migrations.** `_run_migrations` stands in for Alembic.
-- **The PDF has no per-account pages yet** (roadmap Phase 3).
 - **The CSV doesn't carry transfer or reimbursement marks.** Importing an export into empty
   accounts restores every transaction, but only rows in the `Transfer` / `Payment` categories
   come back as transfers, and no reimbursement marks come back.
