@@ -178,9 +178,9 @@ and every route that returns transactions uses it. The walk itself is the pure f
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
-against the allocation (`amount + carried_over`). `create_budget` and `update_budget` re-evaluate
-the category's flags; `delete_budget` also deletes the budget's future rollover copies and clears
-their flags.
+against the allocation (`amount + carried_over`). `delete_budget` also deletes the budget's
+future rollover copies. Budget changes don't touch transactions: over-budget flags are computed
+when transactions are read (`BudgetFlagService`), so they follow every budget change on their own.
 
 **`AuthService`** (`auth_service.py`)
 - `register(username, email, password)` trims the username and email, lowercases the email, and
