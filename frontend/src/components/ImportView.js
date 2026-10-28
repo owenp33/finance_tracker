@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import { previewImport, confirmImport } from '../api/imports';
+import { formatDollars } from '../utils/money';
 
 // A row can be imported with an account (existing, or created on import) and a readable,
 // non-zero date and amount
@@ -8,8 +9,21 @@ const canSelect = (row) =>
   (row.account_id !== null || row.new_account)
   && !row.zero_amount && !row.invalid_date && !row.invalid_amount;
 
-// Pre-selected: importable rows that aren't already in the database
-const selectedByDefault = (row) => canSelect(row) && !row.duplicate;
+// Why a row's recurring match may not be the same charge: a similar (not exact) vendor name, or
+// a different amount ("$21.60 vs $20.00")
+const matchReasons = (row) => {
+  const match = row.recurring_match;
+  if (!match) return [];
+  return [
+    match.similar_vendor && 'similar name',
+    match.different_amount
+      && `${formatDollars(Math.abs(row.amount))} vs ${formatDollars(Math.abs(match.amount))}`,
+  ].filter(Boolean);
+};
+
+// Pre-selected: importable rows that aren't already in the database, unless their recurring
+// match needs checking first
+const selectedByDefault = (row) => canSelect(row) && !row.duplicate && matchReasons(row).length === 0;
 
 // Why a row can't be imported, or isn't pre-selected; shown when hovering its checkbox
 const rowIssue = (row) => {
@@ -18,8 +32,13 @@ const rowIssue = (row) => {
   if (row.zero_amount)    return 'Zero amount';
   if (row.account_id === null && !row.new_account) return 'No matching account';
   if (row.duplicate)      return 'Already in your transactions';
+  if (matchReasons(row).length > 0) return `Check before replacing: ${matchReasons(row).join(' · ')}`;
   return undefined;
 };
+
+// What confirm receives for a row: a recurring match becomes the transaction it replaces
+const confirmRow = ({ recurring_match, ...row }) =>
+  recurring_match ? { ...row, replaces_transaction_id: recurring_match.transaction_id } : row;
 
 // The "When an account isn't found" dropdown value: 'create', 'skip', or 'account:<id>'
 const parseUnmatchedChoice = (choice) =>
@@ -75,8 +94,16 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
   const toggleRowTransfer = (i) =>
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, is_transfer: !r.is_transfer } : r));
 
+  // The row becomes a normal one, imported as its own transaction
+  const addSeparately = (i) => {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, recurring_match: null } : r));
+    setSelected(prev => new Set(prev).add(i));
+  };
+
+  const matchCount = rows.filter(r => r.recurring_match).length;
+
   const handleConfirm = async () => {
-    const toImport = rows.filter((_, i) => selected.has(i));
+    const toImport = rows.filter((_, i) => selected.has(i)).map(confirmRow);
     if (toImport.length === 0) return;
     setLoading(true);
     try {
@@ -180,6 +207,9 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                   {summary.new_accounts.length} new account{summary.new_accounts.length !== 1 ? 's' : ''}
                 </span>
               )}
+              {matchCount > 0 && (
+                <span className="purple">{matchCount} recurring match{matchCount !== 1 ? 'es' : ''}</span>
+              )}
               <span className="count-badge">{selected.size} selected</span>
             </div>
           )}
@@ -188,6 +218,14 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
             <p className="csv-format-note">
               New accounts will be created: {summary.new_accounts.join(', ')}. They're marked
               “Needs attention” in Accounts so you can rename them.
+            </p>
+          )}
+
+          {matchCount > 0 && (
+            <p className="csv-format-note">
+              A row that replaces a recurring transaction updates it with the file's date and amount
+              instead of adding a second copy. Rows with a similar name or a different amount start
+              unticked, so check them first.
             </p>
           )}
 
@@ -205,6 +243,7 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                   <th></th>
                   <th>Date</th><th>Vendor</th><th>Category</th>
                   <th>Amount</th><th>Account</th><th>Notes</th><th>Transfer</th>
+                  {matchCount > 0 && <th>Recurring</th>}
                 </tr>
               </thead>
               <tbody>
@@ -262,6 +301,23 @@ function ImportView({ accounts, onImportDone, onNavigateAway }) {
                           <ArrowLeftRight size={13} />
                         </button>
                       </td>
+                      {matchCount > 0 && (
+                        <td className="import-match-cell">
+                          {row.recurring_match && (
+                            <div className="import-match">
+                              <span className="tx-recurring-chip">
+                                {`Replaces ${row.recurring_match.vendor} · ${row.recurring_match.date}`}
+                              </span>
+                              {matchReasons(row).length > 0 && (
+                                <small className="import-match-reasons">{matchReasons(row).join(' · ')}</small>
+                              )}
+                              <button className="import-separate-btn" onClick={() => addSeparately(i)}>
+                                Add as a separate transaction instead
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

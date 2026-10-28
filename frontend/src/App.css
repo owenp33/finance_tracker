@@ -1157,6 +1157,10 @@ body {
   color: #ff6b6b;
 }
 
+.purple {
+  color: #7c3aed;
+}
+
 /* === Unified Button System ====================================== */
 .btn {
   display: inline-flex;
@@ -1696,7 +1700,8 @@ body {
 .import-row.invalid-date td:first-child,
 .import-row.invalid-amount td:first-child { font-style: normal; }
 
-.import-row.deselected td:not(:first-child) { opacity: 0.4; }
+/* The recurring match stays readable on an unticked row: that's where its button matters */
+.import-row.deselected td:not(:first-child):not(.import-match-cell) { opacity: 0.4; }
 
 .import-row.unmatched { background: #fffbf0; }
 
@@ -1709,6 +1714,31 @@ body {
   font-size: 0.72rem;
   font-weight: 600;
 }
+
+.import-match {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.import-match-reasons {
+  color: #e67700;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.import-separate-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #3b5bdb;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.import-separate-btn:hover { text-decoration: underline; }
 
 .import-success {
   display: flex;

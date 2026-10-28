@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ImportView from '../components/ImportView';
-import { previewImport } from '../api/imports';
+import { previewImport, confirmImport } from '../api/imports';
 
 jest.mock('../api/imports');
 
@@ -10,12 +10,22 @@ const ACCOUNTS = [{ id: 1, account_name: 'Checking' }];
 const previewRow = (overrides) => ({
   date: '2025-01-15', vendor: 'Grocer', category: 'Groceries', amount: -5, notes: '',
   account_id: 1, account_name: 'Checking', new_account: false, duplicate: false, zero_amount: false,
-  invalid_date: false, invalid_amount: false, is_transfer: false, ...overrides,
+  invalid_date: false, invalid_amount: false, is_transfer: false, recurring_match: null, ...overrides,
+});
+
+// A row the preview matched to the series transaction 12 (Anthropic, -$20 on 2026-10-02)
+const matchRow = (matchOverrides, overrides) => previewRow({
+  date: '2026-10-03', vendor: 'Anthropic', category: 'Software', amount: -20,
+  recurring_match: {
+    transaction_id: 12, recurring_id: 7, vendor: 'Anthropic', date: '2026-10-02', amount: -20,
+    similar_vendor: false, different_amount: false, ...matchOverrides,
+  },
+  ...overrides,
 });
 
 const summary = (overrides) => ({
   total: 0, importable: 0, duplicates: 0, unmatched: 0, zero_amount: 0,
-  invalid_date: 0, invalid_amount: 0, new_accounts: [], ...overrides,
+  invalid_date: 0, invalid_amount: 0, recurring_matches: 0, new_accounts: [], ...overrides,
 });
 
 const chooseFile = async (accounts = ACCOUNTS) => {
@@ -145,4 +155,77 @@ test('a blank date is shown as missing', async () => {
 
   const row = (await screen.findByText('No date')).closest('tr');
   expect(within(row).getByText('missing')).toHaveClass('csv-warning');
+});
+
+const separateButton = { name: 'Add as a separate transaction instead' };
+
+test('without recurring matches there is no Recurring column', async () => {
+  await showPreview([previewRow()], summary({ total: 1, importable: 1 }));
+  expect(screen.queryByRole('columnheader', { name: 'Recurring' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/recurring match/)).not.toBeInTheDocument();
+});
+
+test('an exact recurring match is pre-selected and says what it replaces', async () => {
+  await showPreview([matchRow()], summary({ total: 1, importable: 1, recurring_matches: 1 }));
+
+  expect(await screen.findByText('1 recurring match')).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Recurring' })).toBeInTheDocument();
+  const row = screen.getByText('Replaces Anthropic · 2026-10-02').closest('tr');
+  expect(within(row).getByRole('checkbox')).toBeChecked();
+  expect(within(row).getByRole('button', separateButton)).toBeInTheDocument();
+});
+
+test('a similar name or a different amount starts unselected and says why', async () => {
+  await showPreview(
+    [
+      matchRow({ similar_vendor: true }, { vendor: 'ANTHROPIC.COM CA' }),
+      matchRow({ transaction_id: 13, different_amount: true }, { amount: -21.6 }),
+    ],
+    summary({ total: 2, importable: 2, recurring_matches: 2 }),
+  );
+
+  expect(await screen.findByText('2 recurring matches')).toBeInTheDocument();
+  const similar = screen.getByText('ANTHROPIC.COM CA').closest('tr');
+  expect(within(similar).getByRole('checkbox')).not.toBeChecked();
+  expect(within(similar).getByText('similar name')).toBeInTheDocument();
+  expect(similar.querySelector('td')).toHaveAttribute('title', 'Check before replacing: similar name');
+
+  const pricier = screen.getByText('Anthropic').closest('tr');
+  expect(within(pricier).getByRole('checkbox')).not.toBeChecked();
+  expect(within(pricier).getByText('$21.60 vs $20.00')).toBeInTheDocument();
+});
+
+test('confirming a match sends the transaction it replaces', async () => {
+  const matched = matchRow();
+  const plain = previewRow({ vendor: 'Coffee' });
+  confirmImport.mockResolvedValue({
+    message: 'Imported 1 transactions, replaced 1 recurring transaction, skipped 0 duplicates/invalid',
+  });
+  await showPreview([matched, plain], summary({ total: 2, importable: 2, recurring_matches: 1 }));
+
+  await userEvent.click(screen.getAllByRole('button', { name: 'Import 2 rows' })[0]);
+
+  const { recurring_match: matchedMatch, ...matchedFields } = matched;
+  const { recurring_match: plainMatch, ...plainFields } = plain;
+  expect(confirmImport).toHaveBeenCalledWith([{ ...matchedFields, replaces_transaction_id: 12 }, plainFields]);
+  expect(await screen.findByText(/replaced 1 recurring transaction/)).toBeInTheDocument();
+});
+
+test('adding a match as a separate transaction drops the match and selects the row', async () => {
+  const matched = matchRow({ different_amount: true }, { amount: -15 });
+  confirmImport.mockResolvedValue({ message: 'Imported 1 transactions, skipped 0 duplicates/invalid' });
+  await showPreview([matched], summary({ total: 1, importable: 1, recurring_matches: 1 }));
+
+  const row = screen.getByText('Anthropic').closest('tr');
+  expect(within(row).getByRole('checkbox')).not.toBeChecked();
+  await userEvent.click(within(row).getByRole('button', separateButton));
+
+  expect(screen.queryByText(/^Replaces /)).not.toBeInTheDocument();
+  expect(screen.queryByText(/recurring match/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Recurring' })).not.toBeInTheDocument();
+  expect(within(screen.getByText('Anthropic').closest('tr')).getByRole('checkbox')).toBeChecked();
+
+  await userEvent.click(screen.getAllByRole('button', { name: 'Import 1 row' })[0]);
+  const { recurring_match: dropped, ...fields } = matched;
+  expect(confirmImport).toHaveBeenCalledWith([fields]);
 });
