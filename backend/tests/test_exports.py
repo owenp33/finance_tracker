@@ -5,7 +5,7 @@ import csv
 import io
 import re
 import warnings
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -189,9 +189,16 @@ class TestPdfReport:
         assert _pdf_pages(resp) == 6 + 2
 
     def test_a_long_account_continues_on_more_pages(self, client, auth_headers, account):
-        for day in range(1, pdf_pages.FIRST_PAGE_ROWS + 2):
-            account_svc.add_transaction(account.id, date(2026, 1, day), f'Shop {day}', 'Misc', -1.0)
+        for i in range(pdf_pages.FIRST_PAGE_ROWS + 1):   # every third day, so January to March
+            account_svc.add_transaction(account.id, date(2026, 1, 1) + timedelta(days=3 * i), f'Shop {i}', 'Misc', -1.0)
         assert _pdf_pages(client.get(PDF_URL, headers=auth_headers)) == 6 + 2
+
+    @pytest.mark.parametrize('query, pages', [
+        ('start_date=2026-01-01&end_date=2026-01-31', 5 + 2),
+        ('start_date=2026-01-15&end_date=2026-02-25', 6 + 2),
+    ], ids=['one-month', 'two-part-months'])
+    def test_monthly_trends_only_with_two_months_of_data(self, client, auth_headers, ledger, query, pages):
+        assert _pdf_pages(client.get(f'{PDF_URL}?{query}', headers=auth_headers)) == pages
 
     def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
         client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)

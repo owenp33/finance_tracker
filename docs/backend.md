@@ -218,9 +218,11 @@ with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as pl
 `unguard(text)` removes exactly that apostrophe, and `import_parser` applies it to the vendor,
 category, notes and account columns, so an export imports back exactly. Text without the
 pattern (e.g. `'Til Midnight`) is left alone both ways.
-- `pdf_pages.py`: the matplotlib pages. Six summary pages (summary, monthly trends, category
-  pies, top vendors, spending breakdown), one function each, drawn from
-  `AnalyticsService.generate_report` data; they leave transfers out. Then
+- `pdf_pages.py`: the matplotlib pages. Up to six summary pages (summary, monthly trends,
+  category pies, top vendors, spending breakdown), one function each, drawn from
+  `AnalyticsService.generate_report` data; they leave transfers out. `ReportService` adds the
+  monthly trends page only when there are at least `MIN_TREND_MONTHS` (2) months of data: one
+  month would be three lone points repeating the summary page's totals. Then
   `render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date, end_date)` per
   account: a first page with the opening and closing balance, the balance over the period as a
   step line, and the first `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor,

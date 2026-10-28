@@ -69,20 +69,17 @@ def render_summary_page(pdf, analytics, period_label, generated_label):
 
 
 def render_monthly_trends_page(pdf, analytics):
+    """Income, expenses and net per month, oldest first (the report only adds it for two or more months)."""
     monthly = list(reversed(analytics['monthly_summary']))
+    months = [m['month'] for m in monthly]
 
     fig, ax = plt.subplots(figsize=(11, 8.5))
-    if monthly:
-        months = [m['month'] for m in monthly]
-        ax.plot(months, [m['income'] for m in monthly], marker='o', label='Income', color='#00C49F')
-        ax.plot(months, [m['expenses'] for m in monthly], marker='o', label='Expenses', color='#FF8042')
-        ax.plot(months, [m['net'] for m in monthly], marker='o', label='Net', color='#0088FE')
-        ax.set_xticks(range(len(months)), labels=months, rotation=45, ha='right')
-        ax.legend()
-        ax.set_ylabel('Amount ($)')
-    else:
-        ax.text(0.5, 0.5, 'No monthly data available', ha='center', va='center', transform=ax.transAxes)
-        ax.axis('off')
+    ax.plot(months, [m['income'] for m in monthly], marker='o', label='Income', color='#00C49F')
+    ax.plot(months, [m['expenses'] for m in monthly], marker='o', label='Expenses', color='#FF8042')
+    ax.plot(months, [m['net'] for m in monthly], marker='o', label='Net', color='#0088FE')
+    ax.set_xticks(range(len(months)), labels=months, rotation=45, ha='right')
+    ax.legend()
+    ax.set_ylabel('Amount ($)')
     ax.set_title('Monthly Trends')
     fig.tight_layout()
     pdf.savefig(fig)

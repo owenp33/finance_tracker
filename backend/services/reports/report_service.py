@@ -18,6 +18,7 @@ balance_service = BalanceService()
 budget_flag_service = BudgetFlagService()
 
 NOTHING_TO_EXPORT = 'No transactions in this period.'
+MIN_TREND_MONTHS = 2   # one month's totals are already on the summary page; a trend needs two points
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,10 @@ class ReportService:
 
     def pdf(self, user_id, filters, generated_at=None):
         """
-        The PDF report: six summary pages (summary, trends, pies, top vendors, breakdown), then
-        each account's pages (balance chart over the period, transaction table with running
-        balances, over-budget transactions marked).
+        The PDF report: the summary pages (summary, monthly trends when there are at least
+        MIN_TREND_MONTHS months of data, pies, top vendors, breakdown), then each account's pages
+        (balance chart over the period, transaction table with running balances, over-budget
+        transactions marked).
         """
         ledgers = self._ledgers(user_id, filters)
         start, end = _period(filters, ledgers)
@@ -66,7 +68,8 @@ class ReportService:
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
             pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label)
-            pdf_pages.render_monthly_trends_page(pdf, analytics)
+            if len(analytics['monthly_summary']) >= MIN_TREND_MONTHS:
+                pdf_pages.render_monthly_trends_page(pdf, analytics)
             pdf_pages.render_category_pie_page(pdf, analytics['spending_by_category'], 'Spending by Category')
             pdf_pages.render_category_pie_page(pdf, analytics['income_by_category'], 'Income by Category')
             pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
