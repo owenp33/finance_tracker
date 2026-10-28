@@ -64,3 +64,12 @@ class TestNormalizeDataframe:
         df = import_parser.normalize_dataframe(raw)
         assert _amounts(df['amount']) == [-51.71, 3987.63, 15.0, None, None]
         assert list(df['amount_raw']) == ['51.71', '3,987.63', '10 / 25', '', 'abc']
+
+    def test_a_bank_account_column_is_the_account(self):
+        """The app's own CSV export names the account column "Bank Account"."""
+        raw = pd.DataFrame({'Bank Account': [' Checking '], 'Date': ['2025-01-15'], 'Vendor': ['A'],
+                            'Category': ['X'], 'Notes': [None], 'Income': [None], 'Expense': ['5.00'],
+                            'Running balance': ['95.00']})
+        df = import_parser.normalize_dataframe(raw)
+        assert list(df['account']) == ['Checking']
+        assert _amounts(df['amount']) == [-5.0]

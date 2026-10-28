@@ -142,7 +142,8 @@ def normalize_dataframe(df) -> pd.DataFrame:
     - Resolves amount from: amount | expense+income | withdrawal+deposit (None/NaN where
       unreadable) and keeps the original text as amount_raw
     - Resolves vendor from: vendor | store
-    - Trims the account column, if present ('' for blank cells)
+    - Resolves account from: account | bank account (the app's own CSV export), if present,
+      trimmed ('' for blank cells)
     - Resolves notes from: notes | description
     - Validates required columns are present
     """
@@ -181,6 +182,8 @@ def normalize_dataframe(df) -> pd.DataFrame:
     if 'category' in df.columns:
         df['category'] = df['category'].fillna('Uncategorized')
 
+    if 'account' not in df.columns and 'bank account' in df.columns:
+        df['account'] = df['bank account']
     if 'account' in df.columns:
         df['account'] = df['account'].apply(_raw_text)   # trimmed; '' for a blank cell
 

@@ -202,7 +202,13 @@ builds the summary (totals, monthly trends, category and vendor breakdowns) behi
   string and raises `ValueError` with a message for the user (a bad id list, a malformed date, a
   start after the end). There is no category filter: an export covers every transaction of the
   chosen accounts in the period.
-- `csv_export.py`: `transactions_csv(transactions)`, the CSV text.
+- `csv_export.py`: `ledger_csv(rows)`, the CSV text from `LedgerRow`s. Columns: Bank Account,
+  Date (ISO), Vendor, Category, Notes, Income, Expense, Running balance. Income and expense are
+  positive amounts in their own column, the other left blank (a zero amount is income); the
+  running balance is the row's own account's balance right after it. The file imports again:
+  the importer reads "Bank Account" as the account and ignores "Running balance", so
+  re-importing an export finds every row a duplicate (tested). Transfer and reimbursement marks
+  aren't in the file; an import flags only `Transfer` / `Payment` categories as transfers.
 - `pdf_pages.py`: one matplotlib page per function (summary, monthly trends, category pies, top
   vendors, spending breakdown), drawn from `AnalyticsService.generate_report` data.
 - `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` build
@@ -301,7 +307,7 @@ rows the user approved, re-checking everything server-side.
   | `vendor` (required) | `vendor` or `store` |
   | `category` (required) | `category` |
   | `notes` | `notes` or `description` |
-  | `account` | `account` (trimmed) |
+  | `account` | `account`, or `bank account` (the app's own CSV export) (trimmed) |
 
 - `parse_date` reads Excel dates and serial numbers, `MM/DD/YYYY`, `YYYY-MM-DD`, `MM-DD-YYYY`, and
   `YYYY-MM-DD HH:MM:SS`. `clean_currency` handles `$`, `€`, `£`, thousands separators, and
@@ -564,8 +570,10 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **CORS is configured twice.** `CORS(app, supports_credentials=True)` allows every origin, so the
   manual allowlist in `create_app()` has no effect.
 - **Hand-written migrations.** `_run_migrations` stands in for Alembic.
-- **Exports are a first pass.** The CSV has no running balance yet and the PDF has no
-  per-account pages (roadmap Phase 3).
+- **The PDF has no per-account pages yet** (roadmap Phase 3).
+- **The CSV doesn't carry transfer or reimbursement marks.** Importing an export into empty
+  accounts restores every transaction, but only rows in the `Transfer` / `Payment` categories
+  come back as transfers, and no reimbursement marks come back.
 - **Duplicate detection ignores counts.** If the database holds one row identical to two rows in
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.

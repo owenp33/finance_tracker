@@ -17,6 +17,7 @@ from services.analytics_service import AnalyticsService
 account_svc = AccountService()
 
 CSV_URL = '/api/export/transactions.csv'
+CSV_HEADER = ['Bank Account', 'Date', 'Vendor', 'Category', 'Notes', 'Income', 'Expense', 'Running balance']
 PDF_URL = '/api/export/report.pdf'
 BOTH = pytest.mark.parametrize('url', [CSV_URL, PDF_URL], ids=['csv', 'pdf'])
 
@@ -45,6 +46,17 @@ def _csv_rows(resp):
     return list(csv.reader(io.StringIO(resp.get_data(as_text=True))))
 
 
+def _column(resp, name):
+    """One CSV column's values, header left out."""
+    header, *rows = _csv_rows(resp)
+    return [row[header.index(name)] for row in rows]
+
+
+def _preview_import(client, headers, content):
+    data = {'file': (io.BytesIO(content), 'transactions.csv', 'text/csv')}
+    return client.post('/api/import/preview', data=data, headers=headers, content_type='multipart/form-data')
+
+
 def _pdf_pages(resp):
     return len(re.findall(rb'/Type\s*/Page[^s]', resp.data))
 
@@ -63,26 +75,61 @@ class TestCsvExport:
     def test_requires_login(self, client):
         assert client.get(CSV_URL).status_code == 401
 
-    def test_every_transaction_oldest_first(self, client, auth_headers, ledger):
+    def test_every_transaction_by_date_with_its_accounts_running_balance(self, client, auth_headers, ledger):
         resp = client.get(CSV_URL, headers=auth_headers)
         assert resp.status_code == 200
         assert resp.mimetype == 'text/csv'
         assert resp.headers['Content-Disposition'] == 'attachment; filename=transactions.csv'
         assert _csv_rows(resp) == [
-            ['date', 'vendor', 'category', 'amount', 'account', 'notes', 'is_transfer', 'is_reimbursement'],
-            ['2026-01-05', 'Grocer', 'Groceries', '-42.1', 'Test Checking', 'weekly', 'False', 'False'],
-            ['2026-01-15', 'Interest', 'Income', '3.25', 'Savings', '', 'False', 'False'],
-            ['2026-02-01', 'To savings', 'Transfer', '-100.0', 'Test Checking', '', 'True', 'False'],
-            ['2026-02-20', 'Refund', 'Groceries', '10.0', 'Test Checking', '', 'False', 'True'],
+            CSV_HEADER,
+            ['Test Checking', '2026-01-05', 'Grocer', 'Groceries', 'weekly', '', '42.10', '-42.10'],
+            ['Savings', '2026-01-15', 'Interest', 'Income', '', '3.25', '', '3.25'],
+            ['Test Checking', '2026-02-01', 'To savings', 'Transfer', '', '', '100.00', '-142.10'],
+            ['Test Checking', '2026-02-20', 'Refund', 'Groceries', '', '10.00', '', '-132.10'],
         ]
+
+    def test_running_balances_include_the_starting_balance_and_earlier_transactions(
+            self, client, auth_headers, ledger, account):
+        account_svc.update_account(account.id, {'opening_balance': 500})
+        resp = client.get(f'{CSV_URL}?account_ids={account.id}&start_date=2026-02-01', headers=auth_headers)
+        assert _column(resp, 'Running balance') == ['357.90', '367.90']
+
+    def test_a_zero_amount_is_income(self, client, auth_headers, account):
+        account_svc.add_transaction(account.id, date(2026, 3, 1), 'Fee waived', 'Fees', 0.0)
+        resp = client.get(CSV_URL, headers=auth_headers)
+        assert (_column(resp, 'Income'), _column(resp, 'Expense')) == (['0.00'], [''])
 
     def test_accounts_and_dates_narrow_it(self, client, auth_headers, ledger, account):
         resp = client.get(f'{CSV_URL}?account_ids={account.id}&start_date=2026-01-06&end_date=2026-02-01',
                           headers=auth_headers)
-        assert [row[1] for row in _csv_rows(resp)[1:]] == ['To savings']
+        assert _column(resp, 'Vendor') == ['To savings']
 
     def test_an_empty_account_list_means_every_account(self, client, auth_headers, ledger):
         assert len(_csv_rows(client.get(f'{CSV_URL}?account_ids=,', headers=auth_headers))) == 5
+
+
+class TestCsvRoundTrip:
+    """The CSV can be imported again: every row is recognized as a transaction already there."""
+
+    def test_importing_it_again_finds_only_duplicates(self, client, auth_headers, ledger, account):
+        account_svc.add_transaction(account.id, date(2026, 2, 21), 'Joe\'s "Diner", LLC', 'Food', -12.5,
+                                    notes='split, two lines\nsecond line')
+        resp = _preview_import(client, auth_headers, client.get(CSV_URL, headers=auth_headers).data)
+        assert resp.status_code == 200
+        assert [(r['account_name'], r['date'], r['vendor'], r['category'], r['amount'], r['notes'], r['duplicate'])
+                for r in resp.json['rows']] == [
+            ('Test Checking', '2026-01-05', 'Grocer', 'Groceries', -42.1, 'weekly', True),
+            ('Savings', '2026-01-15', 'Interest', 'Income', 3.25, '', True),
+            ('Test Checking', '2026-02-01', 'To savings', 'Transfer', -100.0, '', True),
+            ('Test Checking', '2026-02-20', 'Refund', 'Groceries', 10.0, '', True),
+            ('Test Checking', '2026-02-21', 'Joe\'s "Diner", LLC', 'Food', -12.5, 'split, two lines\nsecond line', True),
+        ]
+        assert resp.json['summary']['importable'] == 0
+
+    def test_a_zero_amount_comes_back_as_a_zero_amount(self, client, auth_headers, account):
+        account_svc.add_transaction(account.id, date(2026, 3, 1), 'Fee waived', 'Fees', 0.0)
+        resp = _preview_import(client, auth_headers, client.get(CSV_URL, headers=auth_headers).data)
+        assert [(r['amount'], r['zero_amount'], r['invalid_amount']) for r in resp.json['rows']] == [(0.0, True, False)]
 
 
 class TestPdfReport:
@@ -127,7 +174,7 @@ class TestSelection:
         resp = client.get(f'{CSV_URL}?account_ids={account.id},{savings.id}&start_date=2026-02-01',
                           headers=auth_headers)
         assert resp.status_code == 200
-        assert [row[4] for row in _csv_rows(resp)[1:]] == ['Test Checking', 'Test Checking']
+        assert _column(resp, 'Bank Account') == ['Test Checking', 'Test Checking']
 
     def test_same_day_by_account_then_entry_order(self, client, auth_headers, account, savings):
         assert account.id < savings.id
@@ -137,7 +184,7 @@ class TestSelection:
         add(account.id, date(2026, 2, 28), 'Earlier', 'Misc', -1.0)
         add(account.id, date(2026, 3, 1), 'A2', 'Misc', -1.0)
         resp = client.get(CSV_URL, headers=auth_headers)
-        assert [row[1] for row in _csv_rows(resp)[1:]] == ['Earlier', 'A1', 'A2', 'B']
+        assert _column(resp, 'Vendor') == ['Earlier', 'A1', 'A2', 'B']
 
     def test_categories_are_ignored(self, client, auth_headers, ledger, reported):
         assert len(_csv_rows(client.get(f'{CSV_URL}?categories=Income', headers=auth_headers))) == 5
