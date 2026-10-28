@@ -1,20 +1,20 @@
 # Finance Tracker
 
-A self-hosted personal finance dashboard for tracking spending across multiple bank accounts, managing monthly budgets, and importing transactions from CSV/Excel exports.
+A self-hosted personal finance dashboard for tracking spending across multiple bank accounts, managing monthly budgets, importing transactions from CSV/Excel exports, and exporting reports.
 
-For how the backend is organized (layers, conventions, invariants, the API, and how to add a feature), see [docs/backend.md](docs/backend.md).
+This README covers what the app does and how to run it. For how the backend is built (layers, conventions, data model, invariants, every API endpoint, and how to add a feature), see [docs/backend.md](docs/backend.md).
 
 ---
 
 ## Features
 
-- **Multi-account support** — manage any number of bank accounts with independent balance tracking
-- **Transaction management** — add, edit, delete, and bulk-operate on transactions; filter by date, category, or over-budget status
-- **Transfers** — link paired transactions across accounts (auto-detected or manually paired); balance adjustments reflect on both accounts
+- **Multi-account support** — any number of bank accounts, each with its own starting balance and current balance
+- **Transaction management** — add, edit, delete, and bulk-operate on transactions; filter by date, account, or category; over-budget transactions carry an "Over budget" chip
+- **Transfers** — link paired transactions across accounts (auto-detected or manually paired); both balances reflect the move
 - **Reimbursements** — flag positive transactions as reimbursements to offset category spending in budgets while still crediting the account balance normally
-- **Recurring transactions** — configure templates (weekly, monthly, custom frequency) that auto-generate on login and daily at midnight UTC
+- **Recurring transactions** — templates repeat weekly, biweekly, monthly, quarterly, or annually; due occurrences appear automatically, an existing matching charge is linked instead of duplicated, and the Recurring tab suggests past transactions that belong to a series
 - **Budget planning** — set monthly allocations per category with optional rollover; visual progress bars show spent vs. allocated; transactions within each category are expandable inline
-- **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats
+- **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats; accounts the file names that you don't have yet can be created, mapped to an existing account, or skipped
 - **Insights** — spending reports and charts aggregated across all accounts
 - **Exports** — for any period and set of accounts, download a re-importable CSV with running balances, or a PDF report with summary charts plus each account's balance chart and transactions (over-budget rows highlighted)
 
@@ -24,14 +24,14 @@ For how the backend is organized (layers, conventions, invariants, the API, and 
 
 | Layer | Technology |
 |---|---|
-| Backend | Flask 3.1 + Flask-SQLAlchemy |
-| Database | PostgreSQL 15 (SQLite for tests) |
+| Backend | Flask 3.1 + Flask-SQLAlchemy (SQLAlchemy 2.0) |
+| Database | PostgreSQL 18 (SQLite for tests) |
 | Auth | Flask-JWT-Extended (JWT, 24h expiry) |
 | Background jobs | APScheduler |
 | File parsing | pandas, openpyxl, xlrd |
 | PDF reports | matplotlib |
 | WSGI server | gunicorn |
-| Frontend | React 18 |
+| Frontend | React 18 (Create React App) |
 | Charts | Recharts |
 | Icons | Lucide React |
 | Reverse proxy | nginx |
@@ -43,41 +43,20 @@ For how the backend is organized (layers, conventions, invariants, the API, and 
 ## Project Structure
 
 ```
-money/
-├── backend/
-│   ├── app.py                  # Flask app factory, migrations, startup
-│   ├── extensions.py           # db, jwt, cors singletons
-│   ├── wsgi.py                 # gunicorn entrypoint
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── account.py
-│   │   ├── transaction.py
-│   │   ├── recurring.py
-│   │   └── budget.py
-│   ├── routes/                 # Thin HTTP handlers (one file per domain)
-│   ├── services/
-│   │   ├── db_service.py       # Data access layer
-│   │   ├── account_service.py  # Transaction + recurring business logic
-│   │   ├── budget_service.py   # Budget progress and allocation
-│   │   ├── analytics_service.py# CSV/Excel parsing + import logic
-│   │   └── scheduler.py        # Daily recurring generation job
-│   ├── middleware/
-│   │   ├── ownership.py        # Decorators: verify JWT user owns resource
-│   │   └── error_handlers.py
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── requirements.prod.txt   # Runtime dependencies (Docker image)
-│   └── requirements.dev.txt    # Runtime + test tooling (local dev, CI)
+finance_tracker/
+├── backend/                    # Flask API: models, routes, services, middleware, tests
+│                               # (folder by folder: docs/backend.md § Layout)
 ├── frontend/
 │   ├── src/
-│   │   ├── App.js
-│   │   ├── App.css
-│   │   ├── api/                # Per-domain fetch wrappers
-│   │   ├── components/         # Views and UI components
-│   │   └── hooks/              # Custom hooks (data fetching + business logic)
+│   │   ├── App.js              # Views, authentication, and every mutation handler
+│   │   ├── api/                # Per-domain wrappers; every request goes through api/client.js
+│   │   ├── hooks/              # Data fetching (accounts, transactions, budgets, ...)
+│   │   ├── components/         # Views and UI components (feature folders insights/, transactions/)
+│   │   └── utils/              # Shared pure helpers (money, dates, sequencing)
 │   ├── nginx.conf
-│   ├── Dockerfile
-│   └── .dockerignore
+│   └── Dockerfile
+├── docs/
+│   └── backend.md              # Backend architecture reference
 ├── .github/workflows/
 │   ├── ci.yml                  # Run pytest + Jest on push/PR
 │   └── deploy.yml              # Build images → push ghcr.io → SSH deploy
@@ -87,65 +66,34 @@ money/
 └── dev.ps1                     # One-command local dev (Windows PowerShell)
 ```
 
----
-
-## Database Schema
-
-All monetary amounts are stored as **integer cents** to avoid floating-point errors.
-
-```
-users
-  id, username, email, password_hash, created_at
-
-accounts
-  id, user_id → users, acct_id_str, acct_name, balance_cents
-
-transactions
-  id, account_id → accounts, recurring_id → recurring
-  date, vendor, category, amount_cents, notes
-  over_budget (bool)          — re-evaluated on every write
-  is_transfer (bool)          — paired cross-account movement
-  transfer_peer_id → self     — bidirectional link to paired transaction
-  is_reimbursement (bool)     — offsets category spending; still updates account balance normally
-
-recurring
-  id, account_id → accounts
-  vendor, category, amount_cents, notes
-  start_date, next_date, frequency (days), number (-1 = infinite), idx
-
-budgets
-  id, user_id → users
-  category, period (YYYY-MM), amount_cents
-  rollover (bool), carried_over_cents
-  UNIQUE (user_id, category, period)
-```
-
-Negative `amount_cents` = expense. Positive = income or reimbursement.
+`legacy-flask/` and the leftovers in `backend/` listed in [docs/backend.md § Layout](docs/backend.md#layout) are unused code from earlier versions.
 
 ---
 
-## Key Design Choices
+## How It Works
 
-### Currency as integer cents
-Floating-point arithmetic is unsuitable for money. Every amount is stored and computed as an integer number of cents (`amount_cents`). Display conversion to dollars happens at the API boundary and in the frontend.
+A short tour; [docs/backend.md](docs/backend.md) has the details behind each part.
 
-### Service layer
-Routes handle only HTTP parsing and response formatting. All business logic lives in services (`AccountService`, `BudgetService`, `AnalyticsService`). This makes the logic testable without HTTP context.
+### Money and balances
+Every amount is stored as an integer number of cents (negative = expense, positive = income); dollars appear only at the API boundary and in the frontend. Each account stores its current balance, which always equals its starting balance plus the sum of its transactions, and every change is applied as a single SQL update so simultaneous requests can't lose one. See [Data model](docs/backend.md#data-model) and [Invariants](docs/backend.md#invariants).
 
-### Over-budget flagging
-Rather than computing over-budget status at query time, a `_reevaluate_category_flags` pass runs after every transaction mutation. It walks a category's transactions chronologically, accumulates spending (with reimbursements pre-credited), and sets `over_budget = True` on each row once the cumulative total exceeds the allocation. This keeps the flag accurate at the row level, not just as an aggregate.
+### Layers
+Routes only parse requests and shape responses; business rules live in services, and `DbService` is the data-access layer, which keeps the logic testable without HTTP. See [Services](docs/backend.md#services) and [Conventions](docs/backend.md#conventions).
 
-### Transfer linking
-A transfer is a pair of transactions in different accounts with opposite-sign amounts, linked by `transfer_peer_id` (a self-referencing FK on the transactions table). When a transfer is toggled, the backend auto-detects a likely peer within ±5 days; if none exists, it creates a counterpart in the selected account with the negated amount.
+### Budgets and over-budget flags
+A budget allows its amount plus any rolled-over money for one category and month. Whether a transaction is over budget is computed whenever transactions are read: walking the month's expenses in date order (reimbursements credited up front, transfers left out), every expense from the point the allocation is passed is flagged. Nothing is stored, so no edit can leave a flag out of date.
+
+### Transfers
+A transfer is a pair of transactions in different accounts with opposite amounts, linked to each other. Marking a transaction as a transfer links a matching counterpart within ±5 days when one exists; pairing creates the counterpart in the account you pick.
 
 ### Reimbursements
-A reimbursement is a positive transaction that should reduce a category's spending rather than inflate income. Setting `is_reimbursement = True` tells the budget service to subtract that amount from the category's spending total (clamped at 0) and pre-credit it in the over-budget flagging walk. Account balance is updated normally — the money still hits your account.
+A reimbursement is a positive transaction that reduces its category's spending instead of counting as income: budgets subtract it from the month's spending (never below 0) and credit it up front in the over-budget walk. The account balance changes normally, since the money still reaches the account.
 
-### Recurring generation
-Recurring templates store a `next_date` and `frequency` (in days). Generation runs on login and daily at 00:05 UTC via APScheduler. Each call advances `next_date` by `frequency` days and increments `idx` until `idx > number` (or indefinitely if `number == -1`). This lazy approach means catch-up generation works correctly after downtime.
+### Recurring series
+Templates repeat every N days or N calendar months; monthly ones keep their day of the month and fall back to the month's last day (a template on the 31st lands on Feb 28). Generation is lazy: on login, on every page load, and daily at 00:05 (server time), each occurrence that has come due is created, so catch-up after downtime just works. A due occurrence first looks for the real charge (same account and vendor, exact amount, within ±3 days) and links it instead of creating a copy. The Recurring tab suggests unlinked past transactions that look like part of a series, points out possible duplicates, and remembers the ones you mark unrelated. See [Recurring transactions](docs/backend.md#recurring-transactions).
 
 ### CSV / Excel import
-Import is two-step (preview → confirm) so the user can review and deselect rows before writing. The parser normalizes varied column names from different banks (`expense`, `withdrawal` → `amount`; `store` → `vendor`; etc.) and detects duplicates before insertion. Encoding is detected in order: UTF-8-sig, UTF-8, Latin-1.
+Import is two-step (preview → confirm) so the user can review and deselect rows before writing. The parser normalizes varied column names from different banks (`expense`, `withdrawal` → `amount`; `store` → `vendor`; etc.) and detects duplicates before insertion. Rows are matched to your accounts by the file's account column (by name or account ID); for names it doesn't know, you choose to create the account (flagged for review), put the rows into an existing account, or skip them. Encoding is detected in order: UTF-8-sig, UTF-8, Latin-1. See [Importing files](docs/backend.md#importing-files).
 
 ### Exports
 Insights → Reports downloads a CSV or a PDF for a period (all time, a month, quarter or year, or custom dates) and any set of accounts. There is no category filter: an export covers every transaction of the chosen accounts in the period. Accounts with no transactions in the period are left out, and if none has any, the download says "No transactions in this period." instead of producing an empty file. Files are named after the period, e.g. `transactions_2026-01-01_to_2026-06-30.csv`; when a side is left open (all time), the first or last exported transaction's date fills it.
@@ -156,7 +104,7 @@ Insights → Reports downloads a CSV or a PDF for a period (all time, a month, q
 - **PDF** (drawn with matplotlib): six summary pages (totals, monthly trends, spending and income by category, top vendors, a spending breakdown) that leave transfers out, then a section per account: its opening and closing balance, a balance-over-time chart, and its transactions with running balances, over-budget rows highlighted. Account pages include transfers, since that money really moved.
 
 ### Frontend data flow
-Each view has a corresponding custom hook that owns all data fetching and mutation logic (e.g., `useBudgetData`, `useTransactions`). Components are pure renderers that receive data and callbacks as props. This separation keeps components testable and the business logic reusable.
+There's no router: `App.js` switches between the Dashboard, Transactions, Budgeting, and Insights views, owns authentication and every mutation handler, and passes data down as props. Data fetching lives in custom hooks (`useAccounts`, `useTransactions`, `useBudgetData`, ...), and every request goes through `src/api/client.js`.
 
 ### SOLID in the budget UI
 The budget UI follows SOLID principles explicitly:
@@ -198,7 +146,7 @@ cd backend  && venv/bin/python -m pytest tests/
 cd frontend && npm test -- --watchAll=false
 ```
 
-To erase the dev database and start fresh: `docker compose -f docker-compose.dev.yml down -v`
+To erase the dev database and start fresh (this deletes everything in it): `docker compose -f docker-compose.dev.yml down -v`
 
 **ngrok (optional):** install ngrok and run `ngrok config add-authtoken <token>` once. Only the React dev server is tunneled; it proxies `/api` requests to Flask, so a single tunnel covers the whole app.
 
@@ -278,24 +226,10 @@ mkdir ~/money-tracker
 
 ## Authentication
 
-Passwords are stored as salted hashes (Werkzeug's `generate_password_hash`, scrypt by default), never in plain text. Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
-
-Recurring generation runs on login and on every page load (via `/api/auth/me`), ensuring newly due transactions appear immediately without a separate trigger.
+Passwords are stored as salted hashes (Werkzeug's `generate_password_hash`, scrypt by default), never in plain text. Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests; when it expires or is rejected, the app returns to the login screen with the reason. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
 
 ---
 
-## API Overview
+## API
 
-All routes are prefixed with `/api`.
-
-| Prefix | Purpose |
-|---|---|
-| `/auth` | register, login, current user |
-| `/accounts` | account CRUD; account transactions with filters |
-| `/transactions` | transaction CRUD; transfer link/unlink; bulk delete |
-| `/recurring` | recurring template CRUD; manual generation |
-| `/budgets` | budget CRUD; progress report |
-| `/analytics` | spending report (per-account or aggregated) |
-| `/import` | two-step import: preview (upload file) + confirm (write selected rows) |
-| `/export` | downloads: transactions CSV and PDF report, filtered by accounts and dates |
-| `/health` | liveness check |
+Routes live under `/api/<domain>`: `auth`, `accounts`, `transactions`, `recurring`, `budgets`, `analytics`, `import`, and `export`. `GET /health` (outside `/api`) is the liveness check. Errors come back as `{"success": false, "error": "..."}`, with a 4xx status for bad input. Every endpoint is listed in [docs/backend.md § API reference](docs/backend.md#api-reference).
