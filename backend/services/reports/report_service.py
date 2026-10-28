@@ -1,10 +1,11 @@
 """
 report_service.py - Builds the export files: the transactions CSV and the PDF report
 
-Selects what an export covers from the account ledgers (BalanceService) and turns it into a file;
-routes only parse the filters and send the result.
+Selects what an export covers from the account ledgers (BalanceService) and turns it into a file
+named after its period; routes only parse the filters and send the result.
 """
 import io
+from dataclasses import dataclass
 from datetime import datetime
 from services.analytics_service import AnalyticsService
 from services.balance_service import BalanceService
@@ -19,10 +20,19 @@ budget_flag_service = BudgetFlagService()
 NOTHING_TO_EXPORT = 'No transactions in this period.'
 
 
-def _period_label(filters):
-    start = filters.start_date.isoformat() if filters.start_date else 'earliest'
-    end = filters.end_date.isoformat() if filters.end_date else 'latest'
-    return f'{start} to {end}'
+@dataclass(frozen=True)
+class ExportFile:
+    """A finished export: what to send, and the name to save it under."""
+    content: str | bytes
+    mimetype: str
+    filename: str
+
+
+def _period(filters, ledgers):
+    """The export's date range: the chosen dates, an open side filled from its first or last transaction."""
+    start = filters.start_date or min(ledger.rows[0].transaction.date for ledger in ledgers)
+    end = filters.end_date or max(ledger.rows[-1].transaction.date for ledger in ledgers)
+    return start, end
 
 
 def _by_date(ledgers):
@@ -34,20 +44,23 @@ def _by_date(ledgers):
 class ReportService:
 
     def csv(self, user_id, filters):
-        """Every transaction the export covers, by date, with its account's running balance, as CSV text."""
-        return ledger_csv(_by_date(self._ledgers(user_id, filters)))
+        """Every transaction the export covers, by date, with its account's running balance."""
+        ledgers = self._ledgers(user_id, filters)
+        start, end = _period(filters, ledgers)
+        return ExportFile(ledger_csv(_by_date(ledgers)), 'text/csv', f'transactions_{start}_to_{end}.csv')
 
     def pdf(self, user_id, filters, generated_at=None):
         """
-        The PDF report as bytes: six summary pages (summary, trends, pies, top vendors,
-        breakdown), then each account's pages (balance chart, transaction table with running
+        The PDF report: six summary pages (summary, trends, pies, top vendors, breakdown), then
+        each account's pages (balance chart over the period, transaction table with running
         balances, over-budget transactions marked).
         """
         ledgers = self._ledgers(user_id, filters)
+        start, end = _period(filters, ledgers)
         transactions = [row.transaction for row in _by_date(ledgers)]
         analytics = AnalyticsService.generate_report(transactions)
         over_budget_ids = budget_flag_service.over_budget_ids(user_id, transactions)
-        period_label = _period_label(filters)
+        period_label = f'{start} to {end}'
         generated_label = (generated_at or datetime.now()).strftime('%Y-%m-%d %H:%M')
 
         buf = io.BytesIO()
@@ -59,9 +72,8 @@ class ReportService:
             pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
             pdf_pages.render_breakdown_table_page(pdf, analytics['spending_by_category'])
             for ledger in ledgers:
-                pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label,
-                                               filters.start_date, filters.end_date)
-        return buf.getvalue()
+                pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label, start, end)
+        return ExportFile(buf.getvalue(), 'application/pdf', f'report_{start}_to_{end}.pdf')
 
     def _ledgers(self, user_id, filters):
         """

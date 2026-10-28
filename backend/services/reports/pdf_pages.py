@@ -188,11 +188,11 @@ def account_table_rows(rows, over_budget_ids):
     return table
 
 
-def render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date=None, end_date=None):
+def render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date, end_date):
     """
-    One account's pages: its balance over the period (start_date / end_date, else its first and
-    last transaction) with the first rows of its transaction table, then as many pages as the
-    rest of the table needs. The ledger must have rows.
+    One account's pages: its balance from start_date to end_date (the export's period) with the
+    first rows of its transaction table, then as many pages as the rest of the table needs. The
+    ledger must have rows.
     """
     for number, chunk in enumerate(account_page_chunks(ledger.rows)):
         fig = plt.figure(figsize=(8.5, 11))
@@ -222,10 +222,9 @@ def _account_header(fig, ledger, period_label):
              fontsize=10, color=INK_SECONDARY, parse_math=False)
 
 
-def _balance_chart(fig, ledger, start_date, end_date):
+def _balance_chart(fig, ledger, start, end):
     """The running balance as a step line: flat between transactions, from the opening balance."""
-    start = start_date or ledger.rows[0].transaction.date
-    end = max(end_date or ledger.rows[-1].transaction.date, start + timedelta(days=1))
+    end = max(end, start + timedelta(days=1))   # a one-day period still needs a width
     dates = [start] + [r.transaction.date for r in ledger.rows] + [end]
     cents = [ledger.opening_cents] + [r.balance_cents for r in ledger.rows] + [ledger.closing_cents]
     balances = [c / 100 for c in cents]

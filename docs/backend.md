@@ -234,8 +234,12 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   no transactions in the period. Transactions are listed by date, then account id, then id. When
   no account has any, or an account isn't the user's, they raise `ValueError`
   ("No transactions in this period." / "Unknown account: …"). The PDF's over-budget marks come
-  from `BudgetFlagService.over_budget_ids` over every exported transaction. `routes/export.py`
-  only parses the filters, calls the service (400 on a `ValueError`) and sends the file.
+  from `BudgetFlagService.over_budget_ids` over every exported transaction. Each returns an
+  `ExportFile` (content, mimetype, filename). The export's period is the chosen dates, with an
+  open side filled from its first or last transaction (`_period`); it names the files
+  (`transactions_<start>_to_<end>.csv`, `report_<start>_to_<end>.pdf`), is the PDF's period
+  label, and is the range every account's balance chart covers. `routes/export.py` only parses
+  the filters, calls the service (400 on a `ValueError`) and sends the file under its name.
 
 **`ImportService`** (`import_service.py`) and **`import_parser`** (`import_parser.py`): file
 import; see [Importing files](#importing-files).
@@ -503,6 +507,8 @@ Details worth knowing:
   approved preview rows; each sends `account_id`, or `account_name` with `new_account: true`.
 - `/export` routes take `account_ids` (comma-separated), `start_date`, and `end_date`. A
   malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
+  The `Content-Disposition` filename carries the export's period, e.g.
+  `transactions_2026-01-01_to_2026-06-30.csv`.
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---

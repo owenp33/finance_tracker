@@ -111,7 +111,7 @@ class TestCsvExport:
         resp = client.get(CSV_URL, headers=auth_headers)
         assert resp.status_code == 200
         assert resp.mimetype == 'text/csv'
-        assert resp.headers['Content-Disposition'] == 'attachment; filename=transactions.csv'
+        assert resp.headers['Content-Disposition'] == 'attachment; filename=transactions_2026-01-05_to_2026-02-20.csv'
         assert _csv_rows(resp) == [
             CSV_HEADER,
             ['Test Checking', '2026-01-05', 'Grocer', 'Groceries', 'weekly', '', '42.10', '-42.10'],
@@ -184,7 +184,7 @@ class TestPdfReport:
         resp = client.get(PDF_URL, headers=auth_headers)
         assert resp.status_code == 200
         assert resp.mimetype == 'application/pdf'
-        assert resp.headers['Content-Disposition'] == 'attachment; filename=report.pdf'
+        assert resp.headers['Content-Disposition'] == 'attachment; filename=report_2026-01-05_to_2026-02-20.pdf'
         assert resp.data.startswith(b'%PDF')
         assert _pdf_pages(resp) == 6 + 2
 
@@ -215,6 +215,44 @@ class TestPdfReport:
 
 
 NOTHING = (400, {'success': False, 'error': 'No transactions in this period.'})
+
+
+class TestPeriod:
+    """An export's period is the chosen dates, an open side filled from its first or last transaction."""
+
+    @pytest.mark.parametrize('query, start, end', [
+        ('', '2026-01-05', '2026-02-20'),
+        ('start_date=2026-01-01&end_date=2026-03-31', '2026-01-01', '2026-03-31'),
+        ('start_date=2026-01-10', '2026-01-10', '2026-02-20'),
+        ('end_date=2026-01-31', '2026-01-05', '2026-01-31'),
+    ], ids=['no-dates', 'both-dates', 'start-only', 'end-only'])
+    def test_files_are_named_after_it(self, client, auth_headers, ledger, query, start, end):
+        csv_resp = client.get(f'{CSV_URL}?{query}', headers=auth_headers)
+        pdf_resp = client.get(f'{PDF_URL}?{query}', headers=auth_headers)
+        assert csv_resp.headers['Content-Disposition'] == f'attachment; filename=transactions_{start}_to_{end}.csv'
+        assert pdf_resp.headers['Content-Disposition'] == f'attachment; filename=report_{start}_to_{end}.pdf'
+
+    def test_the_pdf_prints_it_and_every_account_chart_covers_it(self, client, auth_headers, ledger, monkeypatch):
+        seen = []
+        real_summary, real_account = pdf_pages.render_summary_page, pdf_pages.render_account_pages
+
+        def summary(pdf, analytics, period_label, *rest):
+            seen.append(('summary', period_label))
+            return real_summary(pdf, analytics, period_label, *rest)
+
+        def account(pdf, ledger, over_budget_ids, period_label, start, end):
+            seen.append((ledger.account.acct_name, period_label, start, end))
+            return real_account(pdf, ledger, over_budget_ids, period_label, start, end)
+
+        monkeypatch.setattr(pdf_pages, 'render_summary_page', summary)
+        monkeypatch.setattr(pdf_pages, 'render_account_pages', account)
+        client.get(PDF_URL, headers=auth_headers)
+        period = '2026-01-05 to 2026-02-20'
+        assert seen == [
+            ('summary', period),
+            ('Test Checking', period, date(2026, 1, 5), date(2026, 2, 20)),
+            ('Savings', period, date(2026, 1, 5), date(2026, 2, 20)),
+        ]
 
 
 class _PageRecorder:
