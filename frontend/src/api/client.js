@@ -53,3 +53,28 @@ export const uploadFile = async (endpoint, file, extraFields = {}) => {
 
   return response.json();
 };
+
+const saveBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+// Has the browser save the response under the server's filename (Content-Disposition), else fallbackName
+export const downloadFile = async (endpoint, fallbackName) => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) throw await failure(response, 'Download failed');
+
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  saveBlob(await response.blob(), match ? match[1] : fallbackName);
+};
