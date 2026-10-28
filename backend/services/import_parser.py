@@ -12,6 +12,8 @@ from datetime import datetime, date, timedelta
 
 import pandas as pd
 
+from services import formula_guard
+
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_ROWS = 10_000
 
@@ -26,6 +28,11 @@ def _is_blank(value) -> bool:
 def _raw_text(value) -> str:
     """A cell's original text, trimmed ('' when blank), shown in the preview when it can't be read."""
     return '' if _is_blank(value) else str(value).strip()
+
+
+def _unguard(value):
+    """A text cell without the apostrophe the app's CSV export puts in front of formula-like text."""
+    return formula_guard.unguard(value) if isinstance(value, str) else value
 
 
 def clean_currency(value) -> float | None:
@@ -145,6 +152,7 @@ def normalize_dataframe(df) -> pd.DataFrame:
     - Resolves account from: account | bank account (the app's own CSV export), if present,
       trimmed ('' for blank cells)
     - Resolves notes from: notes | description
+    - Removes the export's formula guard (an apostrophe before = + - @) from text columns
     - Validates required columns are present
     """
     df = df.copy()
@@ -193,6 +201,10 @@ def normalize_dataframe(df) -> pd.DataFrame:
         df['notes'] = df['description'].fillna('')
     else:
         df['notes'] = ''
+
+    for column in ('vendor', 'category', 'notes', 'account'):
+        if column in df.columns:
+            df[column] = df[column].map(_unguard)
 
     missing = [c for c in ['date', 'vendor', 'category', 'amount'] if c not in df.columns]
     if missing:

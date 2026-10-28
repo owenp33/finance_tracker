@@ -65,6 +65,16 @@ class TestNormalizeDataframe:
         assert _amounts(df['amount']) == [-51.71, 3987.63, 15.0, None, None]
         assert list(df['amount_raw']) == ['51.71', '3,987.63', '10 / 25', '', 'abc']
 
+    def test_the_exports_formula_apostrophe_is_removed_from_text(self):
+        raw = pd.DataFrame({'date': ['2025-01-15'] * 2, 'amount': ['-1', '-2'],
+                            'vendor': ["'=HYPERLINK(1)", "'Til Midnight"], 'category': ["'+Cat", 'X'],
+                            'notes': ["'@note", "''-x"], 'account': ["'-Card", 'Checking']})
+        df = import_parser.normalize_dataframe(raw)
+        assert list(df['vendor']) == ['=HYPERLINK(1)', "'Til Midnight"]
+        assert list(df['category']) == ['+Cat', 'X']
+        assert list(df['notes']) == ['@note', "'-x"]
+        assert list(df['account']) == ['-Card', 'Checking']
+
     def test_a_bank_account_column_is_the_account(self):
         """The app's own CSV export names the account column "Bank Account"."""
         raw = pd.DataFrame({'Bank Account': [' Checking '], 'Date': ['2025-01-15'], 'Vendor': ['A'],

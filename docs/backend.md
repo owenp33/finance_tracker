@@ -209,6 +209,15 @@ builds the summary (totals, monthly trends, category and vendor breakdowns) behi
   the importer reads "Bank Account" as the account and ignores "Running balance", so
   re-importing an export finds every row a duplicate (tested). Transfer and reimbursement marks
   aren't in the file; an import flags only `Transfer` / `Payment` categories as transfers.
+  Text cells (Bank Account, Vendor, Category, Notes) go through `formula_guard.guard`; numbers
+  don't, so a negative running balance stays a number.
+
+**`formula_guard`** (`formula_guard.py`): keeps exported CSV text from running as a spreadsheet
+formula. `guard(text)` puts an apostrophe in front of text that starts (after any apostrophes)
+with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as plain text.
+`unguard(text)` removes exactly that apostrophe, and `import_parser` applies it to the vendor,
+category, notes and account columns, so an export imports back exactly. Text without the
+pattern (e.g. `'Til Midnight`) is left alone both ways.
 - `pdf_pages.py`: the matplotlib pages. Six summary pages (summary, monthly trends, category
   pies, top vendors, spending breakdown), one function each, drawn from
   `AnalyticsService.generate_report` data; they leave transfers out. Then
@@ -323,6 +332,8 @@ rows the user approved, re-checking everything server-side.
   `YYYY-MM-DD HH:MM:SS`. `clean_currency` handles `$`, `€`, `£`, thousands separators, and
   `(12.34)`-style negatives. Both return `None` for blank or unreadable values instead of guessing, and the
   original text is kept in `date_raw` / `amount_raw` so the preview can show it.
+- The vendor, category, notes and account columns lose the export's formula guard (an
+  apostrophe in front of formula-like text; see `formula_guard`).
 
 **Preview** (`ImportService.preview(user_id, file, unmatched='create', target_account_id=None)`)
 returns `{rows, summary, unmatched_account_names}`.
@@ -546,6 +557,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_service.py` | Service logic: account review, transactions and balances, recurring generation and deletion, auth |
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
+| `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 
 ---

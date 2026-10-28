@@ -66,6 +66,17 @@ def _pdf_pages(resp):
 
 
 @pytest.fixture
+def risky(user):
+    """An account and a transaction whose text a spreadsheet would run as formulas."""
+    card = AccountModel(user_id=user.id, acct_id_str='card-1', acct_name='-Card')
+    _db.session.add(card)
+    _db.session.commit()
+    account_svc.add_transaction(card.id, date(2026, 1, 5), '=HYPERLINK("http://evil.example","x")', '+Cat',
+                                -5.0, notes='@SUM(1)')
+    return card
+
+
+@pytest.fixture
 def account_sections(monkeypatch):
     """Per account section of each PDF: (account name, its vendors, the vendors marked over budget)."""
     seen = []
@@ -124,6 +135,11 @@ class TestCsvExport:
                           headers=auth_headers)
         assert _column(resp, 'Vendor') == ['To savings']
 
+    def test_text_a_spreadsheet_would_run_gets_an_apostrophe(self, client, auth_headers, risky):
+        assert _csv_rows(client.get(CSV_URL, headers=auth_headers))[1] == [
+            "'-Card", '2026-01-05', '\'=HYPERLINK("http://evil.example","x")', "'+Cat", "'@SUM(1)", '', '5.00', '-5.00',
+        ]
+
     def test_an_empty_account_list_means_every_account(self, client, auth_headers, ledger):
         assert len(_csv_rows(client.get(f'{CSV_URL}?account_ids=,', headers=auth_headers))) == 5
 
@@ -145,6 +161,13 @@ class TestCsvRoundTrip:
             ('Test Checking', '2026-02-21', 'Joe\'s "Diner", LLC', 'Food', -12.5, 'split, two lines\nsecond line', True),
         ]
         assert resp.json['summary']['importable'] == 0
+
+    def test_guarded_text_comes_back_as_it_was(self, client, auth_headers, risky):
+        resp = _preview_import(client, auth_headers, client.get(CSV_URL, headers=auth_headers).data)
+        assert [(r['account_name'], r['vendor'], r['category'], r['notes'], r['duplicate'])
+                for r in resp.json['rows']] == [
+            ('-Card', '=HYPERLINK("http://evil.example","x")', '+Cat', '@SUM(1)', True),
+        ]
 
     def test_a_zero_amount_comes_back_as_a_zero_amount(self, client, auth_headers, account):
         account_svc.add_transaction(account.id, date(2026, 3, 1), 'Fee waived', 'Fees', 0.0)
