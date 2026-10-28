@@ -4,8 +4,8 @@ imports.py - File import routes (CSV, XLSX, XLS)
 Two-step stateless import flow (the logic lives in ImportService):
 
   POST /import/preview   Parse an uploaded file and return rows as JSON with
-                         per-row account resolution and duplicate detection.
-                         No DB writes.
+                         per-row account resolution, duplicate detection and
+                         recurring matches. No DB writes.
 
   POST /import/confirm   Accept the rows the user approved, write them to the DB.
                          Re-verifies duplicates and ownership server-side.

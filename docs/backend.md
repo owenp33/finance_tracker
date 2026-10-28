@@ -121,7 +121,9 @@ with the opposite amount in another of the user's accounts, within ±5 days; the
 match wins), `find_recurring_candidates` (transactions in no recurring series with a given
 account, vendor and amount, within a window of days around a date, nearest first), and
 `find_unlinked_transactions` (the looser suggestion query: vendor, direction, and category or
-exact amount, within a date range), `get_budget_activity` (a user's non-transfer expenses and
+exact amount, within a date range), `get_series_transactions` (transactions in any recurring
+series on some accounts between two dates, for the import preview's recurring matches),
+`get_budget_activity` (a user's non-transfer expenses and
 reimbursements in some categories between two dates, for budget flags), and
 `get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
@@ -246,6 +248,15 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
 **`ImportService`** (`import_service.py`) and **`import_parser`** (`import_parser.py`): file
 import; see [Importing files](#importing-files).
 
+**`vendor_match`** (`vendor_match.py`, pure functions): compares a file row's vendor and amount
+with a recurring series' for the import preview. `vendor_key` is the exact rule (case and
+surrounding spaces ignored, as in the database queries); `clean_vendor` reduces a name to its
+lowercase words without a card processor's prefix (`SQ *`, `TST*`, `PAYPAL *`), apostrophes,
+digits or punctuation; `vendor_match(vendor, names)` returns `'exact'`, `'similar'` (one cleaned
+name contains the other as whole words: "ANTHROPIC.COM CA" and "Anthropic") or `None`; and
+`amount_close` accepts an amount moving money the same way within `AMOUNT_TOLERANCE_PERCENT`
+(50%) of the series'.
+
 **`scheduler`** (`scheduler.py`): background generation of recurring transactions; see
 [Recurring transactions](#recurring-transactions).
 
@@ -354,7 +365,19 @@ returns `{rows, summary, unmatched_account_names}`.
 - Row flags: `new_account`, `duplicate`, `zero_amount`, `invalid_date`, `invalid_amount`,
   `is_transfer` (pre-set for the categories "transfer" and "payment"). Invalid fields carry the
   original text.
-- The summary counts each flag and lists the `new_accounts` that confirm would create. A preview
+- **Recurring matches** (`_match_recurring`): an importable row on an existing account gets a
+  `recurring_match` when it looks like a transaction already in a recurring series (generated
+  or linked): same account, within ±`MATCH_WINDOW_DAYS` (3), a vendor exact or similar to the
+  template's or the transaction's own, and an amount within 50% moving money the same way (see
+  `vendor_match`). It names the series transaction (`transaction_id`, `recurring_id`, the
+  template's `vendor`, `date`, `amount`) and says why it may not be the same charge
+  (`similar_vendor`, `different_amount`). A series transaction with an exact copy in the file
+  (a duplicate row) isn't offered. Each row and each series transaction is claimed at most once:
+  an exact vendor and amount first, then the closer amount, then the nearer date (one query for
+  the series transactions in the file's date span, then a lookup by account and day). Confirm
+  doesn't act on it yet: a matched row is imported as a new transaction.
+- The summary counts each flag and the rows with a `recurring_match` (`recurring_matches`), and
+  lists the `new_accounts` that confirm would create. A preview
   that would create more than `MAX_NEW_ACCOUNTS` (25) accounts is rejected with a 400, since that
   usually means the wrong column was read as the account.
 
@@ -438,6 +461,9 @@ always one more than their count.
   series' account and outside the series can be dismissed, and repeating either call is
   harmless. Linking a dismissed transaction to that series removes its dismissal, which is how
   the app undoes a review mistake.
+- **Import matches.** The import preview marks file rows that look like a transaction already
+  in a series, with a looser rule again (similar names, amounts within 50%), since the user
+  reviews them; see [Importing files](#importing-files).
 - **Needs attention.** Every API response that returns a template uses
   `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
   suggested), `needs_attention` (true while any are left), and `dismissed_transaction_ids`
@@ -505,7 +531,8 @@ Details worth knowing:
 - `POST /transactions/<id>/transfer/pair` with `{to_account_id}` creates the counterpart in that
   account. `DELETE` on the same path breaks the link but keeps both flagged.
 - `POST /import/preview` is multipart: `file`, plus optional `unmatched` (`create` | `account` |
-  `skip`) and `target_account_id`. `POST /import/confirm` takes `{transactions: [...]}`, the
+  `skip`) and `target_account_id`; each returned row carries `recurring_match` (an object or
+  null). `POST /import/confirm` takes `{transactions: [...]}`, the
   approved preview rows; each sends `account_id`, or `account_name` with `new_account: true`.
 - `/export` routes take `account_ids` (comma-separated), `start_date`, and `end_date`. A
   malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
@@ -565,6 +592,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_service.py` | Service logic: account review, transactions and balances, recurring generation and deletion, auth |
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
+| `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |

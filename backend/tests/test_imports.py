@@ -13,8 +13,10 @@ from models.account import AccountModel
 from models.transaction import TransactionModel
 from models.user import User
 from services.account_service import AccountService
+from services.recurring_service import RecurringService
 
 account_svc = AccountService()
+recurring_svc = RecurringService()
 
 HEADER = 'date,vendor,category,amount,account,notes\n'
 
@@ -316,11 +318,118 @@ class TestPreviewFlags:
                        unmatched='skip')
         assert resp.json['summary'] == {'total': 6, 'importable': 1, 'duplicates': 1, 'unmatched': 1,
                                         'zero_amount': 1, 'invalid_date': 1, 'invalid_amount': 1,
-                                        'new_accounts': []}
+                                        'recurring_matches': 0, 'new_accounts': []}
 
     def test_preview_writes_nothing(self, client, auth_headers, account):
         preview(client, auth_headers, HEADER + '2025-01-15,Grocer,Groceries,-5.00,Test Checking,\n')
         assert transactions_in(account.id) == []
+
+
+# ── Preview: rows matching a recurring series ─────────────────────────────────
+
+def series_row(rec, day, amount=None, vendor=None):
+    """A transaction in rec's series, as generation or a link leaves it."""
+    return account_svc.add_transaction(rec.account_id, day, vendor or rec.vendor, rec.category,
+                                       rec.amount if amount is None else amount, recurring_id=rec.id)
+
+
+@pytest.fixture
+def anthropic(account):
+    """A monthly Anthropic template (-$20) on Test Checking, with no transactions yet."""
+    return recurring_svc.add_recurring(account.id, date(2026, 10, 2), 'Anthropic', 'Subscriptions', -20.0,
+                                       next_date=date(2026, 11, 2), frequency=1, frequency_unit='months')
+
+
+def recurring_match(tx, similar_vendor=False, different_amount=False):
+    """The recurring_match of a preview row that would replace the series transaction tx."""
+    return {'transaction_id': tx.id, 'recurring_id': tx.recurring_id, 'vendor': 'Anthropic',
+            'date': tx.date.isoformat(), 'amount': tx.amount,
+            'similar_vendor': similar_vendor, 'different_amount': different_amount}
+
+
+def matches(resp):
+    return [r['recurring_match'] for r in resp.json['rows']]
+
+
+class TestPreviewRecurringMatches:
+    def test_a_row_near_a_series_transaction_matches_it(self, client, auth_headers, anthropic):
+        expected = recurring_match(series_row(anthropic, date(2026, 10, 2)))
+        resp = preview(client, auth_headers, HEADER + '2026-10-03, anthropic ,Software,-20.00,Test Checking,\n')
+        row = resp.json['rows'][0]
+        assert row['recurring_match'] == expected
+        assert row['duplicate'] is False
+        assert resp.json['summary']['recurring_matches'] == 1
+        assert resp.json['summary']['importable'] == 1
+
+    def test_a_similar_name_and_a_different_amount_are_reported(self, client, auth_headers, anthropic):
+        expected = recurring_match(series_row(anthropic, date(2026, 10, 2)), similar_vendor=True, different_amount=True)
+        resp = preview(client, auth_headers, HEADER + '2026-10-04,ANTHROPIC.COM CA,Software,-21.60,Test Checking,\n')
+        assert matches(resp) == [expected]
+
+    def test_the_series_transactions_own_vendor_counts_as_exact(self, client, auth_headers, anthropic):
+        linked = series_row(anthropic, date(2026, 10, 2), vendor='Anthropic PBC')   # linked with its bank spelling
+        resp = preview(client, auth_headers, HEADER + '2026-10-03,ANTHROPIC PBC,Software,-20.00,Test Checking,\n')
+        assert matches(resp) == [recurring_match(linked)]
+
+    @pytest.mark.parametrize('row', [
+        '2026-10-06,Anthropic,Software,-20.00,Test Checking,',
+        '2026-09-28,Anthropic,Software,-20.00,Test Checking,',
+        '2026-10-03,Anthropic,Software,20.00,Test Checking,',
+        '2026-10-03,Anthropic,Software,-30.01,Test Checking,',
+        '2026-10-03,Target,Software,-20.00,Test Checking,',
+        '2026-10-03,Anthropic,Software,-20.00,Test Savings,',
+        '2026-10-03,Anthropic,Software,0,Test Checking,',
+        '2026-10-03,Anthropic,Software,-20.00,Mystery Bank,',
+    ], ids=['4-days-late', '4-days-early', 'refund', 'over-50-percent', 'other-vendor', 'other-account',
+            'zero-amount', 'new-account'])
+    def test_no_match(self, client, auth_headers, anthropic, savings, row):
+        series_row(anthropic, date(2026, 10, 2))
+        resp = preview(client, auth_headers, HEADER + row + '\n')
+        assert matches(resp) == [None]
+        assert resp.json['summary']['recurring_matches'] == 0
+
+    def test_transactions_outside_a_series_are_not_matched(self, client, auth_headers, account):
+        account_svc.add_transaction(account.id, date(2026, 10, 2), 'Anthropic', 'Subscriptions', -20.0)
+        resp = preview(client, auth_headers, HEADER + '2026-10-03,Anthropic,Software,-20.00,Test Checking,\n')
+        assert matches(resp) == [None]
+
+    def test_an_exact_duplicate_keeps_its_series_transaction(self, client, auth_headers, anthropic):
+        series_row(anthropic, date(2026, 10, 2))
+        resp = preview(client, auth_headers, HEADER
+                       + '2026-10-02,Anthropic,Software,-20.00,Test Checking,\n'    # the same charge
+                       + '2026-10-04,Anthropic,Software,-20.00,Test Checking,\n')   # a second one
+        assert [r['duplicate'] for r in resp.json['rows']] == [True, False]
+        assert matches(resp) == [None, None]
+
+    def test_only_the_nearest_row_replaces_a_series_transaction(self, client, auth_headers, anthropic):
+        expected = recurring_match(series_row(anthropic, date(2026, 10, 2)))
+        resp = preview(client, auth_headers, HEADER
+                       + '2026-10-04,Anthropic,Software,-20.00,Test Checking,\n'
+                       + '2026-10-03,Anthropic,Software,-20.00,Test Checking,\n')
+        assert matches(resp) == [None, expected]
+
+    def test_an_exact_name_and_amount_beat_a_nearer_similar_name(self, client, auth_headers, anthropic):
+        expected = recurring_match(series_row(anthropic, date(2026, 10, 2)))
+        resp = preview(client, auth_headers, HEADER
+                       + '2026-10-03,SQ *ANTHROPIC,Software,-20.00,Test Checking,\n'
+                       + '2026-10-05,Anthropic,Software,-20.00,Test Checking,\n')
+        assert matches(resp) == [None, expected]
+
+    @pytest.mark.parametrize('farther', ['-20.00', '-21.00'], ids=['exact-amount', 'closer-amount'])
+    def test_a_closer_amount_beats_a_nearer_date(self, client, auth_headers, anthropic, farther):
+        expected = recurring_match(series_row(anthropic, date(2026, 10, 2)), different_amount=farther != '-20.00')
+        resp = preview(client, auth_headers, HEADER
+                       + '2026-10-03,Anthropic,Software,-25.00,Test Checking,\n'
+                       + f'2026-10-05,Anthropic,Software,{farther},Test Checking,\n')
+        assert matches(resp) == [None, expected]
+
+    def test_each_row_and_each_series_transaction_is_claimed_once(self, client, auth_headers, anthropic):
+        first = recurring_match(series_row(anthropic, date(2026, 10, 1)))
+        second = recurring_match(series_row(anthropic, date(2026, 10, 5)))
+        resp = preview(client, auth_headers, HEADER
+                       + '2026-10-03,Anthropic,Software,-20.00,Test Checking,\n'
+                       + '2026-10-04,Anthropic,Software,-20.00,Test Checking,\n')
+        assert matches(resp) == [first, second]
 
 
 # ── Preview: rejected uploads ─────────────────────────────────────────────────

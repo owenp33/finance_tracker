@@ -137,6 +137,14 @@ class DbService:
             TransactionModel.date <= until,
         ).all()
 
+    def get_series_transactions(self, account_ids, start_date, end_date):
+        """Transactions in a recurring series on these accounts, dated between the dates (inclusive)."""
+        return TransactionModel.query.filter(
+            TransactionModel.account_id.in_(account_ids),
+            TransactionModel.recurring_id.isnot(None),
+            TransactionModel.date.between(start_date, end_date),
+        ).all()
+
     def get_account_transactions(self, account_id, start_date=None, end_date=None,
                                   category=None, limit=None, offset=None):
         """

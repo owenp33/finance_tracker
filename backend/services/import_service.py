@@ -2,19 +2,24 @@
 import_service.py - Transaction Import Business Logic
 
 Two-step import: preview() parses an upload and annotates every row (account,
-duplicate, zero amount, invalid date/amount, transfer) without writing; confirm()
-writes the rows the user approved, re-checking ownership and duplicates server-side.
+duplicate, zero amount, invalid date/amount, transfer, a matching recurring series
+transaction) without writing; confirm() writes the rows the user approved, re-checking
+ownership and duplicates server-side.
 Rows whose account isn't found can create new accounts (flagged needs_attention),
 go into one of the user's existing accounts, or be skipped.
-Depends on import_parser for files, and db_service / account_service for data.
+Depends on import_parser for files, vendor_match for recurring matches, and
+db_service / account_service for data.
 """
 import math
 import numbers
-from datetime import date, datetime
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from models.account import AccountModel
 from services import import_parser
 from services.db_service import DbService
 from services.account_service import AccountService
+from services.recurring_service import MATCH_WINDOW_DAYS
+from services.vendor_match import amount_close, vendor_key, vendor_match
 
 db_service = DbService()
 account_service = AccountService()
@@ -77,6 +82,7 @@ class ImportService:
 
             rows.append(self._preview_row(record, account_id, account_name, new_account))
 
+        self._match_recurring(rows)
         summary = self._summary(rows)
         self._check_new_account_limit(len(summary['new_accounts']))
 
@@ -169,7 +175,61 @@ class ImportService:
             'invalid_date':   invalid_date,
             'invalid_amount': invalid_amount,
             'is_transfer':    category.strip().lower() in TRANSFER_CATEGORIES,
+            'recurring_match': None,   # set by _match_recurring
         }
+
+    def _match_recurring(self, rows):
+        """
+        Set recurring_match on each importable row that looks like a transaction already in a
+        recurring series: same account, within ±MATCH_WINDOW_DAYS, a vendor exact or similar to
+        the template's or the transaction's own, and an amount within vendor_match's tolerance.
+        A series transaction with an exact copy in the file (a duplicate row) is already
+        covered. Each row and each series transaction is claimed at most once: an exact vendor
+        and amount first, then the closer amount, then the nearer date.
+        """
+        candidates = [
+            (index, row, date.fromisoformat(row['date']), int(round(row['amount'] * 100)))
+            for index, row in enumerate(rows)
+            if row['account_id'] is not None and self._importable(row)
+        ]
+        if not candidates:
+            return
+
+        window = timedelta(days=MATCH_WINDOW_DAYS)
+        days   = [day for _, _, day, _ in candidates]
+        copied = {(r['account_id'], r['date'], vendor_key(r['vendor']), int(round(r['amount'] * 100)))
+                  for r in rows if r['duplicate']}
+        series_by_day = defaultdict(list)   # (account id, date) -> series transactions
+        for t in db_service.get_series_transactions({row['account_id'] for _, row, _, _ in candidates},
+                                                    min(days) - window, max(days) + window):
+            if (t.account_id, t.date.isoformat(), vendor_key(t.vendor), t.amount_cents) not in copied:
+                series_by_day[(t.account_id, t.date)].append(t)
+
+        pairs = []
+        for index, row, day, cents in candidates:
+            for offset in range(-MATCH_WINDOW_DAYS, MATCH_WINDOW_DAYS + 1):
+                for t in series_by_day.get((row['account_id'], day + timedelta(days=offset)), ()):
+                    vendor = vendor_match(row['vendor'], (t.recurring_source.vendor, t.vendor))
+                    if vendor and amount_close(cents, t.amount_cents):
+                        exact = vendor == 'exact' and cents == t.amount_cents
+                        rank  = (not exact, abs(cents - t.amount_cents), abs(offset), vendor != 'exact', index, t.id)
+                        pairs.append((rank, index, t, vendor, cents))
+
+        claimed_rows, claimed_series = set(), set()
+        for _, index, t, vendor, cents in sorted(pairs, key=lambda pair: pair[0]):
+            if index in claimed_rows or t.id in claimed_series:
+                continue
+            claimed_rows.add(index)
+            claimed_series.add(t.id)
+            rows[index]['recurring_match'] = {
+                'transaction_id':   t.id,
+                'recurring_id':     t.recurring_id,
+                'vendor':           t.recurring_source.vendor,
+                'date':             t.date.isoformat(),
+                'amount':           t.amount,
+                'similar_vendor':   vendor == 'similar',
+                'different_amount': cents != t.amount_cents,
+            }
 
     @staticmethod
     def _amount(value):
@@ -199,6 +259,7 @@ class ImportService:
             'zero_amount':    sum(r['zero_amount'] for r in rows),
             'invalid_date':   sum(r['invalid_date'] for r in rows),
             'invalid_amount': sum(r['invalid_amount'] for r in rows),
+            'recurring_matches': sum(r['recurring_match'] is not None for r in rows),
             # Accounts confirm would create: only those with at least one importable row
             'new_accounts':   list(dict.fromkeys(r['account_name'] for r in importable if r['new_account'])),
         }
