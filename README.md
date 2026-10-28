@@ -16,6 +16,7 @@ For how the backend is organized (layers, conventions, invariants, the API, and 
 - **Budget planning** — set monthly allocations per category with optional rollover; visual progress bars show spent vs. allocated; transactions within each category are expandable inline
 - **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats
 - **Insights** — spending reports and charts aggregated across all accounts
+- **Exports** — for any period and set of accounts, download a re-importable CSV with running balances, or a PDF report with summary charts plus each account's balance chart and transactions (over-budget rows highlighted)
 
 ---
 
@@ -28,6 +29,7 @@ For how the backend is organized (layers, conventions, invariants, the API, and 
 | Auth | Flask-JWT-Extended (JWT, 24h expiry) |
 | Background jobs | APScheduler |
 | File parsing | pandas, openpyxl, xlrd |
+| PDF reports | matplotlib |
 | WSGI server | gunicorn |
 | Frontend | React 18 |
 | Charts | Recharts |
@@ -144,6 +146,14 @@ Recurring templates store a `next_date` and `frequency` (in days). Generation ru
 
 ### CSV / Excel import
 Import is two-step (preview → confirm) so the user can review and deselect rows before writing. The parser normalizes varied column names from different banks (`expense`, `withdrawal` → `amount`; `store` → `vendor`; etc.) and detects duplicates before insertion. Encoding is detected in order: UTF-8-sig, UTF-8, Latin-1.
+
+### Exports
+Insights → Reports downloads a CSV or a PDF for a period (all time, a month, quarter or year, or custom dates) and any set of accounts. There is no category filter: an export covers every transaction of the chosen accounts in the period. Accounts with no transactions in the period are left out, and if none has any, the download says "No transactions in this period." instead of producing an empty file. Files are named after the period, e.g. `transactions_2026-01-01_to_2026-06-30.csv`; when a side is left open (all time), the first or last exported transaction's date fills it.
+
+- **CSV**: one row per transaction, oldest first, with the columns `Bank Account, Date, Vendor, Category, Notes, Income, Expense, Running balance`. Income and expense are positive amounts in their own column. The running balance is that account's balance right after the row, counting its starting balance and everything before the period.
+- **Re-importable**: the importer reads `Bank Account` as the account column and ignores `Running balance`, so importing an export on top of the same data finds every row a duplicate. Transfer and reimbursement marks aren't in the file; on import, rows in the `Transfer` or `Payment` categories are marked as transfers again.
+- **Safe to open in a spreadsheet**: text that Excel, Sheets or LibreOffice would run as a formula (starting with `=`, `+`, `-`, `@`, a tab or a carriage return) gets a leading apostrophe, which the importer removes again.
+- **PDF** (drawn with matplotlib): six summary pages (totals, monthly trends, spending and income by category, top vendors, a spending breakdown) that leave transfers out, then a section per account: its opening and closing balance, a balance-over-time chart, and its transactions with running balances, over-budget rows highlighted. Account pages include transfers, since that money really moved.
 
 ### Frontend data flow
 Each view has a corresponding custom hook that owns all data fetching and mutation logic (e.g., `useBudgetData`, `useTransactions`). Components are pure renderers that receive data and callbacks as props. This separation keeps components testable and the business logic reusable.
@@ -287,4 +297,5 @@ All routes are prefixed with `/api`.
 | `/budgets` | budget CRUD; progress report |
 | `/analytics` | spending report (per-account or aggregated) |
 | `/import` | two-step import: preview (upload file) + confirm (write selected rows) |
+| `/export` | downloads: transactions CSV and PDF report, filtered by accounts and dates |
 | `/health` | liveness check |
