@@ -27,12 +27,11 @@ const downloadBlob = async (endpoint, defaultFilename) => {
   URL.revokeObjectURL(url);
 };
 
-const buildQuery = ({ accountIds, startDate, endDate, categories } = {}) => {
+const buildQuery = ({ accountIds, startDate, endDate } = {}) => {
   const params = new URLSearchParams();
   if (accountIds?.length)  params.set('account_ids', accountIds.join(','));
   if (startDate)           params.set('start_date', startDate);
   if (endDate)             params.set('end_date', endDate);
-  if (categories?.length)  params.set('categories', categories.join(','));
   return params.toString();
 };
 

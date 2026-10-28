@@ -174,7 +174,7 @@ class DbService:
     def get_user_transactions_filtered(self, user_id, account_ids=None, start_date=None, end_date=None):
         """
         Fetch a user's transactions scoped to specific accounts and/or a date range.
-        Used by the CSV/PDF export endpoints. All filters are optional.
+        Used by BalanceService (the exports' ledgers). All filters are optional.
         """
         query = TransactionModel.query.join(AccountModel).filter(AccountModel.user_id == user_id)
 

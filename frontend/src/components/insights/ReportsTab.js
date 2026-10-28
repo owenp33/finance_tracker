@@ -1,23 +1,18 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import FilterPanel from '../FilterPanel';
 import ReportPeriodSelector from './ReportPeriodSelector';
 import { exportTransactionsCSV, exportReportPDF } from '../../api/export';
 import { resolvePeriodRange, periodContainingToday } from './reportPeriod';
 
-function ReportsTab({ transactions = [], accounts = [] }) {
+// Exports cover every transaction of the chosen accounts in the period: no category filter.
+function ReportsTab({ accounts = [] }) {
   const [startDate,          setStartDate]          = useState('');
   const [endDate,            setEndDate]            = useState('');
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
-  const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [periodMode,         setPeriodMode]         = useState('all');
   const [period,             setPeriod]             = useState(null);
   const [downloading,        setDownloading]        = useState(null); // 'csv' | 'pdf' | null
   const [downloadError,      setDownloadError]      = useState(null);
-
-  const allCategories = useMemo(
-    () => [...new Set(transactions.map(t => t.category))].sort(),
-    [transactions],
-  );
 
   const handleModeChange = (newMode) => {
     setPeriodMode(newMode);
@@ -48,14 +43,12 @@ function ReportsTab({ transactions = [], accounts = [] }) {
   const clearFilters = () => {
     handleModeChange('all');
     setSelectedAccountIds(new Set());
-    setSelectedCategories(new Set());
   };
 
   const dateActive = !!(startDate || endDate);
   const activeFilterCount =
     (dateActive ? 1 : 0) +
-    (selectedAccountIds.size > 0 ? 1 : 0) +
-    (selectedCategories.size > 0 ? 1 : 0);
+    (selectedAccountIds.size > 0 ? 1 : 0);
 
   const handleDownload = async (kind) => {
     setDownloadError(null);
@@ -65,7 +58,6 @@ function ReportsTab({ transactions = [], accounts = [] }) {
         accountIds: [...selectedAccountIds],
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        categories: [...selectedCategories],
       };
       if (kind === 'csv') await exportTransactionsCSV(filters);
       else                await exportReportPDF(filters);
@@ -113,11 +105,6 @@ function ReportsTab({ transactions = [], accounts = [] }) {
         onAccountToggle={(id) => toggle(setSelectedAccountIds, id)}
         onAccountSelectAll={() => setSelectedAccountIds(new Set(accounts.map(a => a.id)))}
         onAccountClear={() => setSelectedAccountIds(new Set())}
-        allCategories={allCategories}
-        selectedCategories={selectedCategories}
-        onCategoryToggle={(cat) => toggle(setSelectedCategories, cat)}
-        onCategorySelectAll={() => setSelectedCategories(new Set(allCategories))}
-        onCategoryClear={() => setSelectedCategories(new Set())}
         dateSectionLabel="Period"
         startDate={startDate}
         endDate={endDate}

@@ -197,16 +197,20 @@ builds the summary (totals, monthly trends, category and vendor breakdowns) behi
 `/api/analytics` and the PDF report.
 
 **Reports** (`services/reports/`, the export files):
-- `filters.py`: `ExportFilters` (account ids, start and end dates, categories) and
-  `parse_export_filters(args)`, which reads them once from the query string and raises
-  `ValueError` with a message for the user (a bad id list, a malformed date, a start after the
-  end).
+- `filters.py`: `ExportFilters` (account ids, start and end dates; no account ids means all of
+  the user's accounts) and `parse_export_filters(args)`, which reads them once from the query
+  string and raises `ValueError` with a message for the user (a bad id list, a malformed date, a
+  start after the end). There is no category filter: an export covers every transaction of the
+  chosen accounts in the period.
 - `csv_export.py`: `transactions_csv(transactions)`, the CSV text.
 - `pdf_pages.py`: one matplotlib page per function (summary, monthly trends, category pies, top
   vendors, spending breakdown), drawn from `AnalyticsService.generate_report` data.
-- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` fetch
-  the user's transactions for the filters and build the file. `routes/export.py` only parses the
-  filters (400 on a bad one) and sends the file.
+- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` build
+  the files from the `BalanceService` ledgers of the chosen accounts, leaving out accounts with
+  no transactions in the period. Transactions are listed by date, then account id, then id. When
+  no account has any, or an account isn't the user's, they raise `ValueError`
+  ("No transactions in this period." / "Unknown account: …"). `routes/export.py` only parses
+  the filters, calls the service (400 on a `ValueError`) and sends the file.
 
 **`ImportService`** (`import_service.py`) and **`import_parser`** (`import_parser.py`): file
 import; see [Importing files](#importing-files).
@@ -470,8 +474,8 @@ Details worth knowing:
 - `POST /import/preview` is multipart: `file`, plus optional `unmatched` (`create` | `account` |
   `skip`) and `target_account_id`. `POST /import/confirm` takes `{transactions: [...]}`, the
   approved preview rows; each sends `account_id`, or `account_name` with `new_account: true`.
-- `/export` routes take `account_ids` (comma-separated), `start_date`, `end_date`, and
-  `categories`, which only the PDF honors. A malformed filter is a 400.
+- `/export` routes take `account_ids` (comma-separated), `start_date`, and `end_date`. A
+  malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---
@@ -560,8 +564,8 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **CORS is configured twice.** `CORS(app, supports_credentials=True)` allows every origin, so the
   manual allowlist in `create_app()` has no effect.
 - **Hand-written migrations.** `_run_migrations` stands in for Alembic.
-- **Exports are a first pass.** The CSV doesn't honor `categories`, accounts without activity
-  in the period are still included, and the CSV has no running balance yet (roadmap Phase 3).
+- **Exports are a first pass.** The CSV has no running balance yet and the PDF has no
+  per-account pages (roadmap Phase 3).
 - **Duplicate detection ignores counts.** If the database holds one row identical to two rows in
   a file, both file rows are skipped (only overlapping bank exports can hit this).
 - **Rollover copies are created by the frontend**, not the server.

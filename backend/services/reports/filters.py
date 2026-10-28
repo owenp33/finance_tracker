@@ -10,7 +10,6 @@ class ExportFilters:
     account_ids: list | None = None   # None: every account of the user
     start_date: date | None = None    # inclusive
     end_date: date | None = None      # inclusive
-    categories: set | None = None     # only the PDF honors this today
 
 
 def _date(args, name):
@@ -28,7 +27,7 @@ def parse_export_filters(args):
     account_ids = None
     if args.get('account_ids'):
         try:
-            account_ids = [int(part) for part in args['account_ids'].split(',') if part.strip()]
+            account_ids = [int(part) for part in args['account_ids'].split(',') if part.strip()] or None
         except ValueError:
             raise ValueError('account_ids must be a comma-separated list of account ids.')
 
@@ -36,8 +35,4 @@ def parse_export_filters(args):
     if start_date and end_date and start_date > end_date:
         raise ValueError('The start date must be on or before the end date.')
 
-    categories = None
-    if args.get('categories'):
-        categories = {c for c in args['categories'].split(',') if c.strip()} or None
-
-    return ExportFilters(account_ids, start_date, end_date, categories)
+    return ExportFilters(account_ids, start_date, end_date)

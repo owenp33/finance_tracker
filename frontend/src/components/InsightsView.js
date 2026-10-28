@@ -13,7 +13,7 @@ const InsightsView = ({ transactions = [], accounts = [] }) => {
       </div>
 
       {tab === 'overview' && <OverviewTab transactions={transactions} accounts={accounts} />}
-      {tab === 'reports'  && <ReportsTab transactions={transactions} accounts={accounts} />}
+      {tab === 'reports'  && <ReportsTab accounts={accounts} />}
     </div>
   );
 };
