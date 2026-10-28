@@ -10,14 +10,18 @@ from extensions import db
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel, FREQUENCY_UNITS
 from models.recurring_dismissal import RecurringDismissalModel
+from models.recurring_alias import RecurringAliasModel
 from services.account_service import AccountService
 from services.db_service import DbService
+from services.vendor_match import clean_vendor
 
 db_service = DbService()
 account_service = AccountService()
 
 # A transaction up to this many days from an occurrence still counts as that occurrence
 MATCH_WINDOW_DAYS = 3
+
+ALIAS_LENGTH = RecurringAliasModel.alias.type.length
 
 # Looking for history before a series started stops after this many occurrences in a row
 # without a matching transaction
@@ -245,6 +249,47 @@ class RecurringService:
         _renumber(rec)
         db.session.commit()
         return rec
+
+    def replace_occurrence(self, transaction_id, date_obj, amount_cents, notes=''):
+        """
+        Give a series transaction the real charge's date and amount (an imported bank row
+        replacing the generated or linked copy), moving the balance by the difference. Its vendor
+        and category stay the series'; its notes change only when notes are given. A transfer's
+        peer follows, as when a transaction is edited. Occurrence numbers follow date order and
+        the start date moves back if needed; the template's own amount doesn't change. Raises
+        ValueError for a transaction in no series.
+        """
+        tx = db_service.get_transaction(transaction_id)
+        if not tx or tx.recurring_id is None:
+            raise ValueError("That transaction isn't part of a recurring series.")
+
+        db_service.adjust_balance(tx.account_id, amount_cents - tx.amount_cents)
+        tx.date, tx.amount_cents = date_obj, amount_cents
+        if notes:
+            tx.notes = notes
+        peer = tx.transfer_peer if tx.is_transfer else None
+        if peer:
+            db_service.adjust_balance(peer.account_id, -amount_cents - peer.amount_cents)
+            peer.date, peer.amount_cents = date_obj, -amount_cents
+            if notes:
+                peer.notes = notes
+
+        rec = tx.recurring_source
+        rec.start_date = min(rec.start_date, date_obj)
+        _renumber(rec)
+        db.session.commit()
+        return tx
+
+    def remember_alias(self, recurring_id, vendor):
+        """
+        Remember a vendor's cleaned spelling (vendor_match.clean_vendor) as another name of the
+        series, which the import preview then treats as exact. Harmless when it's already
+        remembered or nothing is left after cleaning.
+        """
+        alias = clean_vendor(vendor)[:ALIAS_LENGTH].strip()
+        if alias and not db_service.get_alias(recurring_id, alias):
+            db.session.add(RecurringAliasModel(recurring_id=recurring_id, alias=alias))
+            db.session.commit()
 
     def suggest_matches(self, recurring_id):
         """

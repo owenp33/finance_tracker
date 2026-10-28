@@ -54,10 +54,12 @@ def confirm_import():
     Commit a list of approved rows to the database.
 
     Expects JSON body: { "transactions": [ { account_id, account_name, new_account, date,
-                                             vendor, category, amount, notes, is_transfer }, ... ] }
+                                             vendor, category, amount, notes, is_transfer,
+                                             replaces_transaction_id (optional) }, ... ] }
 
-    Ownership and duplicate checks are re-run server-side — the client's
-    preview state is not trusted. Rows marked new_account create their account.
+    Ownership, duplicate and recurring-replacement checks are re-run server-side — the
+    client's preview state is not trusted. Rows marked new_account create their account;
+    rows with replaces_transaction_id update that recurring series transaction instead.
     """
     rows = json_body().get('transactions')
     if not isinstance(rows, list):
@@ -70,7 +72,11 @@ def confirm_import():
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
-    message = f"Imported {result['imported']} transactions, skipped {result['skipped']} duplicates/invalid"
+    message = f"Imported {result['imported']} transactions"
+    replaced = result['replaced']
+    if replaced:
+        message += f", replaced {replaced} recurring transaction{'s' if replaced != 1 else ''}"
+    message += f", skipped {result['skipped']} duplicates/invalid"
     created = len(result['created_accounts'])
     if created:
         message += f", created {created} new account{'s' if created != 1 else ''}"

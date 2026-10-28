@@ -36,15 +36,16 @@ def _contains_words(longer, shorter):
     return f' {shorter} ' in f' {longer} '
 
 
-def vendor_match(vendor, names):
+def vendor_match(vendor, names, aliases=()):
     """
     How a file's vendor compares with a series' names: 'exact' when it equals one of them
-    (vendor_key), 'similar' when one cleaned name contains the other as whole words
-    ("ANTHROPIC.COM CA" and "Anthropic"), else None.
+    (vendor_key) or its cleaned spelling is one of the series' remembered aliases, 'similar'
+    when one cleaned name contains the other as whole words ("ANTHROPIC.COM CA" and
+    "Anthropic"), else None.
     """
-    if vendor_key(vendor) in {vendor_key(name) for name in names}:
-        return 'exact'
     cleaned = clean_vendor(vendor)
+    if vendor_key(vendor) in {vendor_key(name) for name in names} or cleaned in aliases:
+        return 'exact'
     for name in names:
         other = clean_vendor(name)
         if cleaned and other and (_contains_words(cleaned, other) or _contains_words(other, cleaned)):

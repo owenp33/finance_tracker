@@ -153,8 +153,9 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 **`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
 `update_recurring`, `delete_recurring`), generating their due occurrences
 (`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
-`unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`, and
-`template_dict` for API responses); see [Recurring transactions](#recurring-transactions). Occurrences are
+`unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`,
+`replace_occurrence` and `remember_alias` for imports, and `template_dict` for API
+responses); see [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -252,8 +253,9 @@ import; see [Importing files](#importing-files).
 with a recurring series' for the import preview. `vendor_key` is the exact rule (case and
 surrounding spaces ignored, as in the database queries); `clean_vendor` reduces a name to its
 lowercase words without a card processor's prefix (`SQ *`, `TST*`, `PAYPAL *`), apostrophes,
-digits or punctuation; `vendor_match(vendor, names)` returns `'exact'`, `'similar'` (one cleaned
-name contains the other as whole words: "ANTHROPIC.COM CA" and "Anthropic") or `None`; and
+digits or punctuation; `vendor_match(vendor, names, aliases=())` returns `'exact'` (equal to a
+name, or its cleaned spelling is one of the aliases), `'similar'` (one cleaned name contains the
+other as whole words: "ANTHROPIC.COM CA" and "Anthropic") or `None`; and
 `amount_close` accepts an amount moving money the same way within `AMOUNT_TOLERANCE_PERCENT`
 (50%) of the series'.
 
@@ -274,6 +276,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
+| `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
 the account's database id is `id`.
@@ -292,7 +295,8 @@ Every change must keep these true.
   older history later means lowering it by that history's total.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
-  delete, transfer pairing, and deleting a recurring template with its generated transactions.
+  delete, transfer pairing, deleting a recurring template with its generated transactions, and
+  an import replacing a series transaction's amount.
   Changing the starting balance moves the balance by the difference. Import confirm resyncs each
   affected account with `recalculate_account_balance`. A new mutation path must keep the balance
   correct.
@@ -368,29 +372,39 @@ returns `{rows, summary, unmatched_account_names}`.
 - **Recurring matches** (`_match_recurring`): an importable row on an existing account gets a
   `recurring_match` when it looks like a transaction already in a recurring series (generated
   or linked): same account, within ±`MATCH_WINDOW_DAYS` (3), a vendor exact or similar to the
-  template's or the transaction's own, and an amount within 50% moving money the same way (see
+  series' names (the template's vendor, the transaction's own, and the series' aliases, which
+  count as exact), and an amount within 50% moving money the same way (`_match_kind`, using
   `vendor_match`). It names the series transaction (`transaction_id`, `recurring_id`, the
   template's `vendor`, `date`, `amount`) and says why it may not be the same charge
   (`similar_vendor`, `different_amount`). A series transaction with an exact copy in the file
   (a duplicate row) isn't offered. Each row and each series transaction is claimed at most once:
   an exact vendor and amount first, then the closer amount, then the nearer date (one query for
-  the series transactions in the file's date span, then a lookup by account and day). Confirm
-  doesn't act on it yet: a matched row is imported as a new transaction.
+  the series transactions in the file's date span, then a lookup by account and day).
 - The summary counts each flag and the rows with a `recurring_match` (`recurring_matches`), and
   lists the `new_accounts` that confirm would create. A preview
   that would create more than `MAX_NEW_ACCOUNTS` (25) accounts is rejected with a 400, since that
   usually means the wrong column was read as the account.
 
 **Confirm** (`ImportService.confirm(user_id, rows)`) returns
-`{imported, skipped, linked, created_accounts}`.
+`{imported, replaced, skipped, linked, created_accounts}`.
 1. Validate every row before inserting any. Skip non-objects, malformed fields, zero amounts,
    accounts that aren't the user's, and rows identical to a transaction that existed before this
-   import.
+   import. A row with `replaces_transaction_id` (a `recurring_match` the user confirmed) is
+   re-checked with the preview's rule (`_confirm_replacement`): the transaction must be in a
+   series, on the row's own account (so the user's), still match by date, amount and vendor,
+   and not be replaced by another row of this import; otherwise the row is skipped.
 2. Reuse an account that matches a new account's name by now; enforce `MAX_NEW_ACCOUNTS`; create
    the remaining accounts, only for names with at least one accepted row, flagged
    `needs_attention`.
-3. Insert the rows, recalculate each affected account's balance, and link new transfers to their
-   counterparts.
+3. Insert the rows, or for a replacement update the series transaction in place
+   (`RecurringService.replace_occurrence`): it takes the file row's date and amount, the
+   balance moves by the difference, its vendor and category stay the series', its notes change
+   only when the file row has some, and a transfer's peer follows. Occurrences renumber by date,
+   `start_date` moves back if needed, and the template's amount stays (only that occurrence
+   changes). Confirming a similar vendor saves its cleaned spelling as an alias of the series
+   (`remember_alias`), so later previews treat it as exact. Then recalculate each affected
+   account's balance and link new transfers to their counterparts. `imported` counts new
+   transactions, `replaced` the series transactions updated.
 
 **Duplicate key:** (account, date, vendor compared case-insensitively and trimmed, amount in cents).
 It is checked only against rows that existed before the import, so identical rows within one file
@@ -463,7 +477,10 @@ always one more than their count.
   the app undoes a review mistake.
 - **Import matches.** The import preview marks file rows that look like a transaction already
   in a series, with a looser rule again (similar names, amounts within 50%), since the user
-  reviews them; see [Importing files](#importing-files).
+  reviews them. On confirm, the bank's charge replaces the series transaction in place
+  (`replace_occurrence`), and a confirmed similar spelling becomes an alias of the series
+  (`recurring_aliases`). Aliases only affect import matching; generation and suggestions still
+  compare the template's vendor. See [Importing files](#importing-files).
 - **Needs attention.** Every API response that returns a template uses
   `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
   suggested), `needs_attention` (true while any are left), and `dismissed_transaction_ids`
@@ -533,7 +550,9 @@ Details worth knowing:
 - `POST /import/preview` is multipart: `file`, plus optional `unmatched` (`create` | `account` |
   `skip`) and `target_account_id`; each returned row carries `recurring_match` (an object or
   null). `POST /import/confirm` takes `{transactions: [...]}`, the
-  approved preview rows; each sends `account_id`, or `account_name` with `new_account: true`.
+  approved preview rows; each sends `account_id`, or `account_name` with `new_account: true`,
+  and optionally `replaces_transaction_id` to replace a matched series transaction. The
+  response adds `replaced` to the counts.
 - `/export` routes take `account_ids` (comma-separated), `start_date`, and `end_date`. A
   malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
   The `Content-Disposition` filename carries the export's period, e.g.

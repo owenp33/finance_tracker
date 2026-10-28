@@ -12,6 +12,7 @@ from models.account import AccountModel
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
+from models.recurring_alias import RecurringAliasModel
 
 
 class DbService:
@@ -265,6 +266,9 @@ class DbService:
 
     def get_dismissed_transaction_ids(self, recurring_id):
         return {d.transaction_id for d in RecurringDismissalModel.query.filter_by(recurring_id=recurring_id)}
+
+    def get_alias(self, recurring_id, alias):
+        return db.session.get(RecurringAliasModel, (recurring_id, alias))
 
     def get_all_accounts(self):
         """Return every account across all users (used by the background scheduler)."""

@@ -10,6 +10,8 @@ import pytest
 
 from extensions import db as _db
 from models.account import AccountModel
+from models.recurring import RecurringModel
+from models.recurring_alias import RecurringAliasModel
 from models.transaction import TransactionModel
 from models.user import User
 from services.account_service import AccountService
@@ -327,10 +329,11 @@ class TestPreviewFlags:
 
 # ── Preview: rows matching a recurring series ─────────────────────────────────
 
-def series_row(rec, day, amount=None, vendor=None):
+def series_row(rec, day, amount=None, vendor=None, notes=''):
     """A transaction in rec's series, as generation or a link leaves it."""
     return account_svc.add_transaction(rec.account_id, day, vendor or rec.vendor, rec.category,
-                                       rec.amount if amount is None else amount, recurring_id=rec.id)
+                                       rec.amount if amount is None else amount, notes=notes,
+                                       recurring_id=rec.id)
 
 
 @pytest.fixture
@@ -490,7 +493,8 @@ class TestConfirm:
             confirm_row(account.id, date='2025-01-16', vendor='Employer', category='Income', amount=100.0),
         ])
         assert resp.status_code == 200
-        assert resp.json == {'success': True, 'imported': 2, 'skipped': 0, 'linked': 0, 'created_accounts': [],
+        assert resp.json == {'success': True, 'imported': 2, 'replaced': 0, 'skipped': 0, 'linked': 0,
+                             'created_accounts': [],
                              'message': 'Imported 2 transactions, skipped 0 duplicates/invalid'}
         saved = transactions_in(account.id)
         assert [(t.date, t.vendor, t.category, t.amount_cents, t.notes) for t in saved] == [
@@ -658,3 +662,149 @@ class TestConfirmTransfers:
             confirm_row(savings.id, vendor='Refund', amount=100.0),
         ])
         assert resp.json['linked'] == 0
+
+
+# ── Confirm: replacing recurring series transactions ──────────────────────────
+
+def replacement(tx, **overrides):
+    """A confirm row replacing the series transaction tx, as the preview matched it (Oct 3, exact)."""
+    row = confirm_row(tx.account_id, date='2026-10-03', vendor='Anthropic', category='Software',
+                      amount=-20.0, replaces_transaction_id=tx.id)
+    row.update(overrides)
+    return row
+
+
+def aliases(recurring_id):
+    return sorted(a.alias for a in RecurringAliasModel.query.filter_by(recurring_id=recurring_id))
+
+
+def counts(resp):
+    return resp.json['imported'], resp.json['replaced'], resp.json['skipped']
+
+
+class TestConfirmRecurringReplacements:
+    def test_the_series_transaction_takes_the_banks_date_and_amount(self, client, auth_headers, anthropic):
+        tx_id = series_row(anthropic, date(2026, 10, 2)).id
+        resp = confirm(client, auth_headers, [replacement(_db.session.get(TransactionModel, tx_id),
+                                                          amount=-21.60, notes='Pro plan')])
+        assert resp.status_code == 200
+        assert resp.json == {'success': True, 'imported': 0, 'replaced': 1, 'skipped': 0, 'linked': 0,
+                             'created_accounts': [],
+                             'message': 'Imported 0 transactions, replaced 1 recurring transaction, '
+                                        'skipped 0 duplicates/invalid'}
+        # Same row: the series keeps its vendor and category, the bank's date and amount win
+        assert [(t.id, t.date, t.vendor, t.category, t.amount_cents, t.notes, t.recurring_id)
+                for t in transactions_in(anthropic.account_id)] == [
+            (tx_id, date(2026, 10, 3), 'Anthropic', 'Subscriptions', -2160, 'Pro plan', anthropic.id)]
+        assert _db.session.get(AccountModel, anthropic.account_id).balance_cents == -2160
+        assert _db.session.get(RecurringModel, anthropic.id).amount_cents == -2000   # only this occurrence
+
+    def test_the_old_notes_stay_when_the_file_row_has_none(self, client, auth_headers, anthropic):
+        tx = series_row(anthropic, date(2026, 10, 2), notes='Pro plan')
+        resp = confirm(client, auth_headers, [replacement(tx, notes='')])
+        assert counts(resp) == (0, 1, 0)
+        assert _db.session.get(TransactionModel, tx.id).notes == 'Pro plan'
+
+    def test_occurrences_renumber_by_date(self, client, auth_headers, anthropic):
+        first, extra = series_row(anthropic, date(2026, 10, 2)), series_row(anthropic, date(2026, 10, 4))
+        first_id, extra_id = first.id, extra.id
+        confirm(client, auth_headers, [replacement(first, date='2026-10-05')])
+        assert _db.session.get(TransactionModel, extra_id).recurring_index == 1
+        assert _db.session.get(TransactionModel, first_id).recurring_index == 2
+
+    def test_an_earlier_bank_date_moves_the_series_start_back(self, client, auth_headers, anthropic):
+        tx = series_row(anthropic, date(2026, 10, 2))
+        confirm(client, auth_headers, [replacement(tx, date='2026-09-30')])
+        assert _db.session.get(RecurringModel, anthropic.id).start_date == date(2026, 9, 30)
+
+    def test_a_transfer_peer_follows(self, client, auth_headers, account, savings):
+        rec = recurring_svc.add_recurring(account.id, date(2026, 10, 1), 'Savings plan', 'Transfer', -100.0,
+                                          next_date=date(2026, 11, 1), frequency=1, frequency_unit='months')
+        out = account_svc.add_transaction(account.id, date(2026, 10, 1), 'Savings plan', 'Transfer', -100.0,
+                                          recurring_id=rec.id, is_transfer=True)
+        into = account_svc.add_transaction(savings.id, date(2026, 10, 1), 'From checking', 'Transfer', 100.0,
+                                           is_transfer=True)
+        account_svc.link_transfer(out.id, into.id)
+        out_id, into_id = out.id, into.id
+        resp = confirm(client, auth_headers, [confirm_row(
+            account.id, date='2026-10-02', vendor='Savings plan', category='Transfer', amount=-120.0,
+            notes='Raised', is_transfer=True, replaces_transaction_id=out_id)])
+        assert counts(resp) == (0, 1, 0)
+        peer = _db.session.get(TransactionModel, into_id)
+        assert (peer.date, peer.amount_cents, peer.notes, peer.transfer_peer_id) == (date(2026, 10, 2), 12000,
+                                                                                    'Raised', out_id)
+        assert _db.session.get(AccountModel, account.id).balance_cents == -12000
+        assert _db.session.get(AccountModel, savings.id).balance_cents == 12000
+
+    def test_a_confirmed_similar_name_is_remembered_for_the_series(self, client, auth_headers, anthropic):
+        tx = series_row(anthropic, date(2026, 10, 2))
+        tx_id = tx.id
+        confirm(client, auth_headers, [replacement(tx, vendor='ANTHROPIC.COM CA')])
+        assert aliases(anthropic.id) == ['anthropic com ca']
+        assert _db.session.get(TransactionModel, tx_id).vendor == 'Anthropic'   # the series keeps its name
+
+        series_row(anthropic, date(2026, 11, 2))
+        same = preview(client, auth_headers, HEADER + '2026-11-03,Anthropic.com  CA,Software,-20.00,Test Checking,\n')
+        other = preview(client, auth_headers, HEADER + '2026-11-03,ANTHROPIC PBC,Software,-20.00,Test Checking,\n')
+        assert same.json['rows'][0]['recurring_match']['similar_vendor'] is False   # now exact
+        assert other.json['rows'][0]['recurring_match']['similar_vendor'] is True   # another spelling
+
+    def test_an_exact_name_saves_no_alias(self, client, auth_headers, anthropic):
+        resp = confirm(client, auth_headers, [replacement(series_row(anthropic, date(2026, 10, 2)))])
+        assert counts(resp) == (0, 1, 0)
+        assert aliases(anthropic.id) == []
+
+    def test_an_alias_is_saved_once(self, client, auth_headers, anthropic):
+        october, november = series_row(anthropic, date(2026, 10, 2)), series_row(anthropic, date(2026, 11, 2))
+        resp = confirm(client, auth_headers, [replacement(october, vendor='ANTHROPIC.COM CA'),
+                                              replacement(november, vendor='ANTHROPIC.COM CA', date='2026-11-03')])
+        assert counts(resp) == (0, 2, 0)
+        assert aliases(anthropic.id) == ['anthropic com ca']
+
+    def test_deleting_the_template_deletes_its_aliases(self, client, auth_headers, anthropic):
+        confirm(client, auth_headers, [replacement(series_row(anthropic, date(2026, 10, 2)), vendor='ANTHROPIC.COM CA')])
+        assert aliases(anthropic.id) == ['anthropic com ca']
+        recurring_svc.delete_recurring(anthropic.id)
+        assert RecurringAliasModel.query.count() == 0
+
+    @pytest.mark.parametrize('overrides', [
+        {'replaces_transaction_id': 99999},
+        {'replaces_transaction_id': 'abc'},
+        {'replaces_transaction_id': True},
+        {'date': '2026-10-06'},
+        {'amount': -30.01},
+        {'amount': 20.0},
+        {'vendor': 'Target'},
+        {'account_id': None, 'account_name': 'New Bank', 'new_account': True},
+    ], ids=['unknown-id', 'text-id', 'boolean-id', '4-days-away', 'over-50-percent', 'refund', 'other-vendor',
+            'new-account'])
+    def test_a_replacement_that_does_not_check_out_is_skipped(self, client, auth_headers, anthropic, overrides):
+        tx_id = series_row(anthropic, date(2026, 10, 2)).id
+        resp = confirm(client, auth_headers, [replacement(_db.session.get(TransactionModel, tx_id), **overrides)])
+        assert counts(resp) == (0, 0, 1)
+        assert [(t.id, t.date, t.amount_cents) for t in TransactionModel.query.all()] == [
+            (tx_id, date(2026, 10, 2), -2000)]
+        assert AccountModel.query.count() == 1
+
+    def test_a_transaction_outside_a_series_cannot_be_replaced(self, client, auth_headers, account):
+        tx = account_svc.add_transaction(account.id, date(2026, 10, 2), 'Anthropic', 'Subscriptions', -20.0)
+        resp = confirm(client, auth_headers, [replacement(tx)])
+        assert counts(resp) == (0, 0, 1)
+        assert len(transactions_in(account.id)) == 1
+
+    def test_another_users_series_transaction_cannot_be_replaced(self, client, auth_headers, account,
+                                                                  other_users_account):
+        rec = recurring_svc.add_recurring(other_users_account.id, date(2026, 10, 2), 'Anthropic', 'Subscriptions',
+                                          -20.0, next_date=date(2026, 11, 2), frequency=1, frequency_unit='months')
+        theirs = series_row(rec, date(2026, 10, 2))
+        theirs_id = theirs.id
+        resp = confirm(client, auth_headers, [replacement(theirs, account_id=account.id)])
+        assert counts(resp) == (0, 0, 1)
+        assert _db.session.get(TransactionModel, theirs_id).date == date(2026, 10, 2)
+        assert transactions_in(account.id) == []
+
+    def test_a_series_transaction_is_replaced_once_per_import(self, client, auth_headers, anthropic):
+        tx = series_row(anthropic, date(2026, 10, 2))
+        resp = confirm(client, auth_headers, [replacement(tx), replacement(tx, date='2026-10-04')])
+        assert counts(resp) == (0, 1, 1)
+        assert len(transactions_in(anthropic.account_id)) == 1

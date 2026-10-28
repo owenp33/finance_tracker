@@ -31,6 +31,10 @@ class TestVendorMatch:
     def test_exact_against_any_of_the_names(self):
         assert vendor_match('Anthropic PBC', ['Anthropic', 'anthropic pbc']) == 'exact'
 
+    def test_a_remembered_alias_is_exact(self):
+        assert vendor_match('ANTHROPIC.COM  CA #2', ['Anthropic'], aliases={'anthropic com ca'}) == 'exact'
+        assert vendor_match('ANTHROPIC PBC', ['Anthropic'], aliases={'anthropic com ca'}) == 'similar'
+
     @pytest.mark.parametrize('vendor, name', [
         ('ANTHROPIC.COM SAN FRANCISCO CA', 'Anthropic'),   # the file's name contains the series'
         ('Allina', 'Allina Health'),                      # the series' name contains the file's
