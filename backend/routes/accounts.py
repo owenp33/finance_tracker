@@ -3,14 +3,17 @@ accounts.py - Account management routes
 """
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from services import DbService, AccountService
+from services import DbService, AccountService, RecurringService, BudgetFlagService
 from middleware.ownership import owns_account
+from middleware.request_body import json_body
 from datetime import datetime, date, timedelta
 
 
 accounts_bp = Blueprint('accounts', __name__)
 db_service = DbService()
 account_service = AccountService()
+recurring_service = RecurringService()
+budget_flags = BudgetFlagService()
 
 
 @accounts_bp.route('', methods=['GET'])
@@ -29,18 +32,11 @@ def get_accounts():
 @accounts_bp.route('', methods=['POST'])
 @jwt_required()
 def create_account():
-    """Create new account for current user"""
-    user_id = get_jwt_identity()
-    data = request.get_json()
-
-    if not data.get('account_id'):
-        return jsonify({'success': False, 'error': 'account_id is required'}), 400
-
-    account = db_service.create_account(
-        user_id=user_id,
-        acct_id_str=data['account_id'],
-        account_name=data.get('account_name', data['account_id'])
-    )
+    """Create an account for the current user from account_id and (optionally) account_name."""
+    try:
+        account = account_service.create_account(get_jwt_identity(), json_body())
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     return jsonify({'success': True, 'account': account.to_dict()}), 201
 
 
@@ -52,7 +48,7 @@ def get_all_transactions():
     transactions = db_service.get_all_user_transactions(user_id)
     return jsonify({
         'success': True,
-        'transactions': [t.to_dict() for t in transactions]
+        'transactions': budget_flags.transaction_dicts(user_id, transactions)
     }), 200
 
 
@@ -80,9 +76,11 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string."""
-    data = request.get_json()
-    acc, error = account_service.update_account(account_id, data)
+    """Update account name or id string, or mark it reviewed with {"needs_attention": false}."""
+    try:
+        acc, error = account_service.update_account(account_id, json_body())
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     if error:
         return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'account': acc.to_dict()}), 200
@@ -116,20 +114,23 @@ def get_transactions(account_id):
     if args.get('over_budget') is not None:
         over_budget = args['over_budget'].lower() == 'true'
 
+    limit, offset = args.get('limit', type=int), args.get('offset', type=int)
+    # Over-budget flags are computed, so that filter applies before limit / offset in Python
+    in_sql = over_budget is None
     transactions = db_service.get_account_transactions(
         account_id,
-        start_date  = start_date,
-        end_date    = end_date,
-        category    = args.get('category'),
-        over_budget = over_budget,
-        limit       = args.get('limit',  type=int),
-        offset      = args.get('offset', type=int),
+        start_date = start_date,
+        end_date   = end_date,
+        category   = args.get('category'),
+        limit      = limit if in_sql else None,
+        offset     = offset if in_sql else None,
     )
+    rows = budget_flags.transaction_dicts(get_jwt_identity(), transactions)
+    if not in_sql:
+        rows = [r for r in rows if r['over_budget'] == over_budget][offset or 0:]
+        rows = rows if limit is None else rows[:limit]
 
-    return jsonify({
-        'success': True,
-        'transactions': [t.to_dict() for t in transactions]
-    }), 200
+    return jsonify({'success': True, 'transactions': rows}), 200
 
 
 @accounts_bp.route('/<int:account_id>/transactions', methods=['POST'])
@@ -149,14 +150,16 @@ def add_transaction(account_id):
         vendor=data['vendor'],
         category=data['category'],
         amount=float(data['amount']),
-        notes=data.get('notes', '')
+        notes=data.get('notes', ''),
+        is_transfer=data.get('is_transfer', False),
+        is_reimbursement=data.get('is_reimbursement', False),
     )
 
     acc = db_service.get_account(account_id)
 
     return jsonify({
         'success': True,
-        'transaction': transaction.to_dict(),
+        'transaction': budget_flags.transaction_dicts(get_jwt_identity(), [transaction])[0],
         'new_balance': acc.balance
     }), 201
 
@@ -197,7 +200,7 @@ def get_recurring(account_id):
 
     return jsonify({
         'success': True,
-        'recurring': [r.to_dict() for r in recurring]
+        'recurring': [recurring_service.template_dict(r) for r in recurring]
     }), 200
 
 
@@ -215,19 +218,24 @@ def add_recurring(account_id):
     start_date = datetime.fromisoformat(data['start_date']).date()
     next_date = datetime.fromisoformat(data['next_date']).date() if 'next_date' in data else start_date
 
-    recurring = account_service.add_recurring(
-        account_id=account_id,
-        start_date=start_date,
-        vendor=data['vendor'],
-        category=data['category'],
-        amount=float(data['amount']),
-        next_date=next_date,
-        frequency=int(data['frequency']),
-        number=int(data.get('number', -1)),
-        notes=data.get('notes', '')
-    )
+    try:
+        recurring = recurring_service.add_recurring(
+            account_id=account_id,
+            start_date=start_date,
+            vendor=data['vendor'],
+            category=data['category'],
+            amount=float(data['amount']),
+            next_date=next_date,
+            frequency=int(data['frequency']),
+            frequency_unit=data.get('frequency_unit', 'days'),
+            number=int(data.get('number', -1)),
+            notes=data.get('notes', ''),
+            skip_past=data.get('skip_past') is True,
+        )
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
 
     # Immediately generate any transactions that are already due
-    account_service.process_due_recurring(account_id)
+    recurring_service.process_due_recurring(account_id)
 
-    return jsonify({'success': True, 'recurring': recurring.to_dict()}), 201
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(recurring)}), 201

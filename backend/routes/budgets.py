@@ -101,6 +101,6 @@ def update_budget(budget_id):
 @jwt_required()
 @owns_budget
 def delete_budget(budget_id):
-    """Remove a budget allocation and clear related over_budget flags."""
+    """Remove a budget allocation and its future rollover copies."""
     budget_service.delete_budget(budget_id)
     return jsonify({'success': True, 'message': 'Budget deleted'}), 200

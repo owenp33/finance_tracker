@@ -1,0 +1,384 @@
+import { render, screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import RecurringTab from '../components/transactions/RecurringTab';
+import TransactionsView from '../components/TransactionsView';
+import { CategoryColorProvider } from '../CategoryColorContext';
+import { getSuggestions, getDetectedSeries } from '../api/recurring';
+
+jest.mock('../api/recurring');
+
+const template = (overrides) => ({
+  id: 1, date: '2026-04-02', vendor: 'Anthropic', category: 'Subscriptions', amount: -20, notes: '',
+  next_date: '2026-11-03', last_date: '2026-10-03', frequency: 1, frequency_unit: 'months',
+  number: -1, idx: 8, suggestion_count: 0, needs_attention: false, ...overrides,
+});
+
+const handlers = () => ({
+  onEditRecurring: jest.fn(), onLinkToRecurring: jest.fn(), onDismissSuggestion: jest.fn(), onDelete: jest.fn(),
+  onAddDetectedSeries: jest.fn().mockResolvedValue(), onDismissDetectedSeries: jest.fn().mockResolvedValue(),
+});
+
+const renderTab = (recurring, given = {}) => {
+  const props = { ...handlers(), ...given };
+  render(
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={[]} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={recurring}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onDeleteRecurring={jest.fn()}
+        {...props}
+      />
+    </CategoryColorProvider>
+  );
+  return props;
+};
+
+test('each template shows its schedule and next date', () => {
+  renderTab([
+    template(),
+    template({ id: 2, vendor: 'Old plan', frequency: 30, frequency_unit: 'days', next_date: '2026-10-29' }),
+  ]);
+  expect(screen.getByText(/Subscriptions · Monthly · Next: Nov 3$/)).toBeInTheDocument();
+  expect(screen.getByText(/Every 30 days · Next: Oct 29$/)).toBeInTheDocument();
+});
+
+test('a finished template shows its last occurrence', () => {
+  renderTab([template({ date: '2025-12-31', number: 3, idx: 4, next_date: '2026-03-31', last_date: '2026-02-28' })]);
+  expect(screen.getByText(/Last: Feb 28, 2026$/)).toBeInTheDocument();
+});
+
+const optionLabels = (select) => within(select).getAllByRole('option').map(o => o.textContent);
+
+test('editing offers the five schedules', async () => {
+  renderTab([template()]);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  const repeats = screen.getByLabelText('Repeats');
+  expect(optionLabels(repeats)).toEqual(['Weekly', 'Biweekly', 'Monthly', 'Quarterly', 'Annually']);
+  expect(repeats).toHaveDisplayValue('Monthly');
+});
+
+test('an older schedule asks for a new one and keeps its own until then', async () => {
+  const { onEditRecurring } = renderTab([template({ frequency: 30, frequency_unit: 'days' })],
+                                        { onEditRecurring: jest.fn().mockResolvedValue() });
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+  const repeats = screen.getByLabelText('Repeats');
+  expect(optionLabels(repeats)).toEqual(['Choose a schedule', 'Weekly', 'Biweekly', 'Monthly', 'Quarterly', 'Annually']);
+  expect(repeats).toHaveDisplayValue('Choose a schedule');
+  expect(within(repeats).getByRole('option', { name: 'Choose a schedule' })).toBeDisabled();
+
+  await userEvent.selectOptions(repeats, 'Monthly');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onEditRecurring).toHaveBeenCalledWith(1, expect.objectContaining({ frequency: 1, frequency_unit: 'months' }));
+});
+
+// ── Needs attention and suggestions ──────────────────────────────────────────
+
+const tx = (id, date, overrides) => ({ id, date, vendor: 'ASPIRE', category: 'Loan', amount: -75, ...overrides });
+
+const SUGGESTIONS = [
+  { date: '2026-08-31', kind: 'history', linked: [], candidates: [tx(11, '2026-08-31')] },
+  { date: '2026-09-30', kind: 'history', linked: [], candidates: [tx(12, '2026-09-30'), tx(13, '2026-10-01', { amount: -45 })] },
+  { date: '2026-10-31', kind: 'duplicate', linked: [tx(20, '2026-10-31')], candidates: [tx(14, '2026-11-01')] },
+];
+
+const aspire = (overrides) => template({
+  id: 5, vendor: 'ASPIRE', category: 'Loan', amount: -75, suggestion_count: 4, needs_attention: true, ...overrides,
+});
+
+const openSuggestions = async () => {
+  getSuggestions.mockResolvedValue(SUGGESTIONS);
+  await userEvent.click(screen.getByRole('button', { name: /4 suggested transactions to review/ }));
+  await screen.findAllByText(/Before this series started/);
+};
+
+// Suggestion rows look like the generated transactions: "<category> · <date>"
+const rowFor = (detail) => screen.getByText(detail).closest('.transaction-item');
+
+test('a template that needs attention is badged and offers its suggestions', () => {
+  renderTab([aspire(), template({ id: 2, vendor: 'Quiet' })]);
+  const flagged = screen.getByText('ASPIRE').closest('.recurring-item');
+  expect(within(flagged).getByText('Needs attention')).toHaveClass('needs-attention-badge');
+  const quiet = screen.getByText('Quiet').closest('.recurring-item');
+  expect(within(quiet).queryByText('Needs attention')).not.toBeInTheDocument();
+  expect(within(quiet).queryByRole('button', { name: /suggested/ })).not.toBeInTheDocument();
+});
+
+test('each suggestion can be linked or marked unrelated', async () => {
+  const { onLinkToRecurring, onDismissSuggestion } = renderTab([aspire()]);
+  await openSuggestions();
+  expect(getSuggestions).toHaveBeenCalledWith(5);
+  expect(screen.getByText('Aug 31, 2026 · Before this series started')).toBeInTheDocument();
+
+  const august = rowFor('Loan · Aug 31');
+  expect(within(august).queryByRole('button', { name: 'Delete duplicate' })).not.toBeInTheDocument();
+  await userEvent.click(within(august).getByRole('button', { name: 'Link to series' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [11]);
+  await userEvent.click(within(rowFor('Loan · Sep 30')).getByRole('button', { name: 'Unrelated transaction' }));
+  expect(onDismissSuggestion).toHaveBeenCalledWith(5, 12);
+});
+
+test('a possible duplicate shows the conflicting series row and can be linked, marked unrelated, or deleted', async () => {
+  const { onLinkToRecurring, onDelete, onDismissSuggestion } = renderTab([aspire()]);
+  await openSuggestions();
+  expect(screen.getByText('Oct 31, 2026 · Possible duplicate or unrelated transaction')).toBeInTheDocument();
+
+  const inSeries = rowFor('Loan · Oct 31');
+  expect(inSeries.closest('.recurring-suggestion-series')).toHaveTextContent('In the series');
+  expect(within(inSeries).queryAllByRole('button')).toHaveLength(0);
+
+  const copy = rowFor('Loan · Nov 1');
+  await userEvent.click(within(copy).getByRole('button', { name: 'Link to series' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [14]);
+  await userEvent.click(within(copy).getByRole('button', { name: 'Unrelated transaction' }));
+  expect(onDismissSuggestion).toHaveBeenCalledWith(5, 14);
+  await userEvent.click(within(copy).getByRole('button', { name: 'Delete duplicate' }));
+  expect(onDelete).toHaveBeenCalledWith(14);
+});
+
+test('link all links every suggestion except duplicates, after confirming', async () => {
+  const { onLinkToRecurring } = renderTab([aspire()]);
+  await openSuggestions();
+  const confirm = jest.spyOn(window, 'confirm');
+
+  confirm.mockReturnValueOnce(false);
+  await userEvent.click(screen.getByRole('button', { name: 'Link all 3' }));
+  expect(onLinkToRecurring).not.toHaveBeenCalled();
+
+  confirm.mockReturnValueOnce(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Link all 3' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [11, 12, 13]);
+  confirm.mockRestore();
+});
+
+test('the Recurring tab counts templates that need attention', () => {
+  render(
+    <CategoryColorProvider>
+      <TransactionsView
+        transactions={[]} accounts={[]}
+        recurringTransactions={[aspire(), aspire({ id: 6, vendor: 'Allina' }), template({ id: 7 })]}
+      />
+    </CategoryColorProvider>
+  );
+  const tab = screen.getByRole('button', { name: /^Recurring/ });
+  expect(within(tab).getByText('2')).toHaveClass('attention-badge');
+});
+
+test('the All tab marks unrelated transactions and adds them back to their series', async () => {
+  const onLinkToRecurring = jest.fn();
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;   // in the default month
+  render(
+    <CategoryColorProvider>
+      <TransactionsView
+        transactions={[{ id: 496, date, vendor: 'ASPIRE', category: 'Loan', amount: -60, account_id: 1 }]}
+        accounts={[{ id: 1, account_name: 'Checking' }]}
+        recurringTransactions={[aspire({ dismissed_transaction_ids: [496] })]}
+        onLinkToRecurring={onLinkToRecurring}
+      />
+    </CategoryColorProvider>
+  );
+  expect(screen.getByText('Unrelated')).toHaveAttribute('title', 'Marked unrelated to ASPIRE');
+  await userEvent.click(screen.getByRole('button', { name: 'Add to ASPIRE series' }));
+  expect(onLinkToRecurring).toHaveBeenCalledWith(5, [496]);
+});
+
+// ── Removing from the series, and finished templates ─────────────────────────
+
+test("a template's transactions can be removed from the series", async () => {
+  const series = [
+    { id: 31, date: '2026-09-02', vendor: 'Anthropic', category: 'Subscriptions', amount: -20, recurring_id: 1, recurring_index: 6 },
+    { id: 32, date: '2026-10-02', vendor: 'Anthropic', category: 'Subscriptions', amount: -20, recurring_id: 1, recurring_index: 7 },
+  ];
+  const onUnlinkFromRecurring = jest.fn();
+  render(
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={onUnlinkFromRecurring}
+      />
+    </CategoryColorProvider>
+  );
+  await userEvent.click(screen.getByRole('button', { name: /2 transactions in this series/ }));
+  const [october] = screen.getAllByRole('button', { name: 'Remove from series' });   // newest first
+  await userEvent.click(october);
+  expect(onUnlinkFromRecurring).toHaveBeenCalledWith(1, 32);
+});
+
+test('a finished template with no occurrences left says so instead of a last date', () => {
+  renderTab([template({ number: 1, idx: 2, last_date: null })]);
+  expect(screen.getByText(/Subscriptions · Monthly · No occurrences$/)).toBeInTheDocument();
+});
+
+// ── Finished templates ───────────────────────────────────────────────────────
+
+const shelby = (overrides) => template({
+  id: 9, date: '2025-01-01', vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900,
+  next_date: '2025-08-01', last_date: '2025-07-01', number: 7, idx: 8, ...overrides,
+});
+
+const follows = (earlier, later) => Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+test('finished templates are listed under their own heading, after the active ones', () => {
+  renderTab([shelby(), template()]);
+  expect(screen.getByRole('heading', { name: /^Recurring Transactions/ })).toHaveTextContent('Recurring Transactions 1');
+  const heading = screen.getByRole('heading', { name: 'Finished 1' });
+  expect(follows(screen.getByText('Anthropic').closest('.recurring-item'), heading)).toBe(true);
+  expect(follows(heading, screen.getByText('Shelby Jackson LLC').closest('.recurring-item'))).toBe(true);
+});
+
+test('without finished templates there is no Finished heading', () => {
+  renderTab([template()]);
+  expect(screen.queryByRole('heading', { name: /^Finished/ })).not.toBeInTheDocument();
+});
+
+test('when every template is finished, the active list says so', () => {
+  renderTab([shelby()]);
+  expect(screen.getByText('No active recurring transactions')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Finished 1' })).toBeInTheDocument();
+});
+
+test("a finished template's last date is its last payment's, with the year", () => {
+  const payments = ['2025-05-01', '2025-06-01', '2025-07-08'].map((date, i) => ({
+    id: 70 + i, date, vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900, recurring_id: 9, recurring_index: 5 + i,
+  }));
+  renderTab([shelby()], { transactions: payments });
+  expect(screen.getByText(/Rent · Monthly · Last: Jul 8, 2025$/)).toBeInTheDocument();   // its schedule says Jul 1
+});
+
+// ── Renaming a template carries over to its series ───────────────────────────
+
+const renderWithSeries = (count) => {
+  const series = Array.from({ length: count }, (_, i) => ({
+    id: 40 + i, date: `2026-0${7 + i}-02`, vendor: 'Anthropic', category: 'Subscriptions', amount: -20,
+    recurring_id: 1, recurring_index: i + 1,
+  }));
+  render(
+    <CategoryColorProvider>
+      <RecurringTab
+        transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
+        onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
+        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={jest.fn()}
+      />
+    </CategoryColorProvider>
+  );
+};
+
+const editField = async (placeholder, value) => {
+  const input = screen.getByPlaceholderText(placeholder);
+  await userEvent.clear(input);
+  if (value) await userEvent.type(input, value);
+};
+
+test('changing the vendor or category warns that the series changes too', async () => {
+  renderWithSeries(3);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.getByText('Also updates the 3 transactions in this series')).toBeInTheDocument();
+
+  await editField('e.g., Netflix', 'Anthropic');
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+
+  await editField('e.g., Subscriptions', 'AI Tools');
+  expect(screen.getByText('Also updates the 3 transactions in this series')).toBeInTheDocument();
+});
+
+test('one transaction reads in the singular', async () => {
+  renderWithSeries(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.getByText('Also updates the 1 transaction in this series')).toBeInTheDocument();
+});
+
+test('a template with no transactions shows no note', async () => {
+  renderWithSeries(0);
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await editField('e.g., Netflix', 'Claude Pro');
+  expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+});
+
+// ── Find recurring ───────────────────────────────────────────────────────────
+
+const payment = (id, date, overrides) => ({
+  id, date, vendor: 'Netflix', category: 'Subscriptions', amount: -15.49, account_id: 1, ...overrides,
+});
+
+const rent = (id, date) => payment(id, date, { vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900 });
+
+const FOUND = [
+  {
+    account_id: 1, vendor: 'Netflix', category: 'Subscriptions', amount: -15.49, frequency: 1, frequency_unit: 'months',
+    ongoing: true, next_date: '2026-11-05',
+    transactions: [payment(51, '2026-06-05'), payment(52, '2026-07-05'), payment(53, '2026-08-06'), payment(54, '2026-09-04')],
+  },
+  {
+    account_id: 1, vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900, frequency: 1, frequency_unit: 'months',
+    ongoing: false, next_date: null,
+    transactions: [rent(61, '2025-04-01'), rent(62, '2025-05-01'), rent(63, '2025-06-01'), rent(64, '2025-07-08')],
+  },
+];
+
+const openFinder = async (found = FOUND) => {
+  getDetectedSeries.mockResolvedValue(found);
+  const props = renderTab([]);
+  await userEvent.click(screen.getByRole('button', { name: 'Find recurring' }));
+  return props;
+};
+
+const foundCard = async (vendor) => (await screen.findByText(vendor)).closest('.recurring-item');
+
+test('Find recurring lists the series found, with their schedule and where they stand', async () => {
+  await openFinder();
+  const netflix = await foundCard('Netflix');
+  expect(within(netflix).getByText('Subscriptions · Monthly · 4 payments · Discover')).toBeInTheDocument();
+  expect(within(netflix).getByText('Ongoing · next Nov 5, 2026')).toBeInTheDocument();
+  expect(within(netflix).getByText('-$15.49')).toBeInTheDocument();
+  const shelby = screen.getByText('Shelby Jackson LLC').closest('.recurring-item');
+  expect(within(shelby).getByText('Ended · last paid Jul 8, 2025')).toBeInTheDocument();
+  expect(getDetectedSeries).toHaveBeenCalledTimes(1);
+});
+
+test("a found series' payments can be shown, newest first", async () => {
+  await openFinder();
+  const netflix = await foundCard('Netflix');
+  await userEvent.click(within(netflix).getByRole('button', { name: /4 payments/ }));
+  expect(within(netflix).getAllByText(/^Subscriptions · \w{3} \d+$/).map(e => e.textContent)).toEqual([
+    'Subscriptions · Sep 4', 'Subscriptions · Aug 6', 'Subscriptions · Jul 5', 'Subscriptions · Jun 5',
+  ]);
+});
+
+test('adding a found series sends its payments, then looks again', async () => {
+  const { onAddDetectedSeries } = await openFinder();
+  await userEvent.click(within(await foundCard('Netflix')).getByRole('button', { name: 'Add series' }));
+  expect(onAddDetectedSeries).toHaveBeenCalledWith([51, 52, 53, 54]);
+  await waitFor(() => expect(getDetectedSeries).toHaveBeenCalledTimes(2));
+});
+
+test("'Not recurring' asks first, then sends the series' payments and looks again", async () => {
+  const { onDismissDetectedSeries } = await openFinder();
+  const shelby = await foundCard('Shelby Jackson LLC');
+  const confirm = jest.spyOn(window, 'confirm');
+
+  confirm.mockReturnValueOnce(false);
+  await userEvent.click(within(shelby).getByRole('button', { name: 'Not recurring' }));
+  expect(onDismissDetectedSeries).not.toHaveBeenCalled();
+
+  confirm.mockReturnValueOnce(true);
+  await userEvent.click(within(shelby).getByRole('button', { name: 'Not recurring' }));
+  expect(confirm).toHaveBeenLastCalledWith("Hide Shelby Jackson LLC for good? It won't be suggested again.");
+  expect(onDismissDetectedSeries).toHaveBeenCalledWith([61, 62, 63, 64]);
+  await waitFor(() => expect(getDetectedSeries).toHaveBeenCalledTimes(2));
+  confirm.mockRestore();
+});
+
+test('Find recurring says when there is nothing new, and hides again', async () => {
+  await openFinder([]);
+  expect(await screen.findByText('No new recurring series found.')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hide found series' }));
+  expect(screen.queryByText('No new recurring series found.')).not.toBeInTheDocument();
+});

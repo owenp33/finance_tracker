@@ -1,13 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
+import BudgetProgressBar from './BudgetProgressBar';
+import BudgetTransactionList from './BudgetTransactionList';
+import ColorPickerPopover from './ColorPickerPopover';
 
-const PRESETS = [
-  '#4C6EF5', '#F76707', '#2F9E44', '#E03131', '#7950F2',
-  '#0CA678', '#F59F00', '#D6336C', '#1098AD', '#66A80F',
-];
-
-function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveError, monthlyIncome }) {
+function BudgetRow({
+  item,
+  onAmountBlur,
+  onRolloverToggle,
+  onDelete,
+  hasSaveError,
+  monthlyIncome,
+  categoryTransactions = [],
+}) {
   const [localAmount, setLocalAmount] = useState(item.allocated.toFixed(2));
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef(null);
@@ -39,78 +45,71 @@ function BudgetRow({ item, onAmountBlur, onRolloverToggle, onDelete, hasSaveErro
   };
 
   const color = getColor(item.category);
-  const pct = monthlyIncome > 0
+  const incomePct = monthlyIncome > 0
     ? ((item.allocated / monthlyIncome) * 100).toFixed(0)
     : null;
 
   return (
-    <div className={`budget-row-inline${hasSaveError ? ' has-error' : ''}`}>
-      <div className="bri-dot-wrap" ref={pickerRef}>
-        <span
-          className="bri-dot"
-          style={{ background: color }}
-          onClick={() => setPickerOpen(o => !o)}
-          title="Change color"
-        />
-        {pickerOpen && (
-          <div className="color-picker-popover">
-            <div className="color-presets">
-              {PRESETS.map(c => (
-                <button
-                  key={c}
-                  className={`color-swatch${c === color ? ' selected' : ''}`}
-                  style={{ background: c }}
-                  onClick={() => { setColor(item.category, c); setPickerOpen(false); }}
-                />
-              ))}
-            </div>
-            <div className="color-custom-row">
-              <label>Custom</label>
-              <input
-                type="color"
-                value={color}
-                onChange={e => setColor(item.category, e.target.value)}
-              />
-            </div>
-          </div>
-        )}
+    <div className={`budget-row-card${hasSaveError ? ' has-error' : ''}`}>
+
+      <div className="budget-row-inline">
+        <div className="bri-dot-wrap" ref={pickerRef}>
+          <span
+            className="bri-dot"
+            style={{ background: color }}
+            onClick={() => setPickerOpen(o => !o)}
+            title="Change color"
+          />
+          {pickerOpen && (
+            <ColorPickerPopover
+              color={color}
+              onSelect={(c) => { setColor(item.category, c); setPickerOpen(false); }}
+              onCustomChange={(c) => setColor(item.category, c)}
+            />
+          )}
+        </div>
+
+        <span className="bri-category">{item.category}</span>
+
+        <div className="bri-amount-wrap">
+          <span className="bri-prefix">$</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            className="bri-amount-input"
+            value={localAmount}
+            onChange={e => setLocalAmount(e.target.value)}
+            onBlur={handleBlur}
+            aria-label={`Monthly allocation for ${item.category}`}
+          />
+        </div>
+
+        {incomePct !== null && <span className="bri-pct">{incomePct}%</span>}
+        {hasSaveError && <span className="bri-error">Save failed</span>}
+
+        <label className="bri-rollover">
+          <input
+            type="checkbox"
+            checked={item.rollover}
+            onChange={() => onRolloverToggle(item)}
+          />
+          Rollover
+        </label>
+
+        <button
+          className="btn btn-danger btn-sm bri-delete"
+          onClick={() => onDelete(item)}
+          aria-label={`Remove ${item.category} budget`}
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
 
-      <span className="bri-category">{item.category}</span>
+      <BudgetProgressBar item={item} showCategory={false} compact />
 
-      <div className="bri-amount-wrap">
-        <span className="bri-prefix">$</span>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          className="bri-amount-input"
-          value={localAmount}
-          onChange={e => setLocalAmount(e.target.value)}
-          onBlur={handleBlur}
-          aria-label={`Monthly allocation for ${item.category}`}
-        />
-      </div>
+      <BudgetTransactionList transactions={categoryTransactions} />
 
-      {pct !== null && <span className="bri-pct">{pct}%</span>}
-      {hasSaveError && <span className="bri-error">Save failed</span>}
-
-      <label className="bri-rollover">
-        <input
-          type="checkbox"
-          checked={item.rollover}
-          onChange={() => onRolloverToggle(item)}
-        />
-        Rollover
-      </label>
-
-      <button
-        className="btn btn-danger btn-sm bri-delete"
-        onClick={() => onDelete(item)}
-        aria-label={`Remove ${item.category} budget`}
-      >
-        <Trash2 size={13} />
-      </button>
     </div>
   );
 }

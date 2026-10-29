@@ -1,35 +1,98 @@
 """
 account_service.py - Account & Transaction Business Logic
 
-Orchestrates business rules around accounts, transactions, and recurring items.
+Orchestrates business rules around accounts, transactions, and transfers (recurring
+templates live in recurring_service.py).
 Depends on db_service.py for raw data access.
 """
-from datetime import date
+import math
+import numbers
 from extensions import db
+from models.account import AccountModel
 from models.transaction import TransactionModel
-from models.recurring import RecurringModel
 from services.db_service import DbService
 
 db_service = DbService()
+
+
+def _account_label(value, column, shown_as):
+    """
+    The trimmed value for an account's name or id string column. Raises ValueError, naming
+    the field as the edit form shows it, when the value isn't text, is blank, or is too long.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f'{shown_as} must be text.')
+    label = value.strip()
+    if not label:
+        raise ValueError(f"{shown_as} can't be empty.")
+    if len(label) > column.type.length:
+        raise ValueError(f'{shown_as} must be at most {column.type.length} characters.')
+    return label
+
+
+# Dollars. Keeps balance_cents (a 32-bit INTEGER in Postgres) far from overflowing.
+MAX_OPENING_BALANCE = 10_000_000
+
+
+def _opening_balance(value):
+    """The starting balance in dollars. Raises ValueError unless it's a finite number within ±MAX_OPENING_BALANCE."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError('Starting balance must be a number.')
+    if abs(value) > MAX_OPENING_BALANCE:
+        raise ValueError(f'Starting balance must be between -${MAX_OPENING_BALANCE:,} and ${MAX_OPENING_BALANCE:,}.')
+    return value
 
 
 class AccountService:
 
     # ACCOUNT OPERATIONS ========================================================
 
+    def create_account(self, user_id, data: dict):
+        """
+        Create an account from account_id (the bank's label, required) and account_name (defaults
+        to the id string). Both are trimmed and must be text within the column length; raises
+        ValueError otherwise.
+        """
+        id_str = _account_label(data.get('account_id', ''), AccountModel.acct_id_str, 'Account ID')
+        name = data.get('account_name')
+        if isinstance(name, str) and not name.strip():
+            name = None
+        name = id_str if name is None else _account_label(name, AccountModel.acct_name, 'Display name')
+        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name)
+
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account.
-        Returns (updated_account, error_message).
+        Apply field updates to an account. Editing the name, id string, or starting balance
+        (opening_balance, in dollars), or sending needs_attention=False ("Looks good"), marks an
+        import-created account as reviewed. Names and id strings are trimmed; changing the
+        starting balance moves the balance by the same amount. Returns (updated_account,
+        error_message); raises ValueError for invalid input, before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
             return None, 'Account not found'
 
+        # Validate every field before changing any
+        if 'needs_attention' in data and data['needs_attention'] is not False:
+            raise ValueError('needs_attention can only be set to false')
+        name = account.acct_name
         if 'account_name' in data:
-            account.acct_name = data['account_name']
+            name = _account_label(data['account_name'], AccountModel.acct_name, 'Display name')
+        id_str = account.acct_id_str
         if 'account_id' in data:
-            account.acct_id_str = data['account_id']
+            id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
+        opening = account.opening_balance
+        if 'opening_balance' in data:
+            opening = _opening_balance(data['opening_balance'])
+
+        account.acct_name   = name
+        account.acct_id_str = id_str
+        # The balance includes the starting balance, so it moves by the same difference
+        old_opening_cents = account.opening_balance_cents
+        account.opening_balance = opening
+        db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
+        if {'needs_attention', 'account_name', 'account_id', 'opening_balance'} & data.keys():
+            account.needs_attention = False
 
         db.session.commit()
         return account, None
@@ -44,16 +107,22 @@ class AccountService:
         if not account:
             return False, 'Account not found'
 
+        # Unlink any transfer peers before the cascade delete to avoid
+        # SQLAlchemy circular-FK conflicts (same issue as delete_transaction).
+        transfer_ids = [t.id for t in account.transactions if t.is_transfer]
+        for tx_id in transfer_ids:
+            self.unlink_transfer(tx_id)
+
+        account = db_service.get_account(account_id)
         db.session.delete(account)
         db.session.commit()
         return True, None
 
     # TRANSACTION OPERATIONS ====================================================
 
-    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None):
+    def add_transaction(self, account_id, date_obj, vendor, category, amount, notes="", recurring_id=None, recurring_index=None, is_transfer=False, is_reimbursement=False):
         """
-        Create a transaction, update the account balance, and re-evaluate
-        over_budget flags for the category/period. Single commit for all writes.
+        Create a transaction and update the account balance. Single commit for all writes.
         """
         transaction = TransactionModel(
             account_id=account_id,
@@ -62,22 +131,17 @@ class AccountService:
             category=category,
             notes=notes,
             recurring_id=recurring_id,
+            recurring_index=recurring_index,
+            is_transfer=is_transfer,
+            is_reimbursement=is_reimbursement,
         )
         transaction.amount = amount
 
         account = db_service.get_account(account_id)
-        if account:
-            account.balance_cents += transaction.amount_cents
-
         db.session.add(transaction)
         db.session.flush()
-
-        if transaction.amount_cents < 0:
-            db_service._reevaluate_category_flags(
-                user_id=account.user_id,
-                category=category,
-                period=date_obj.strftime('%Y-%m'),
-            )
+        if account:
+            db_service.adjust_balance(account_id, transaction.amount_cents)
 
         db.session.commit()
         return transaction
@@ -132,17 +196,29 @@ class AccountService:
             # Handle account change: reverse from old account, apply to new account
             new_account_id = int(data['account_id']) if 'account_id' in data else old_account_id
             if new_account_id != old_account_id:
-                old_account = db_service.get_account(old_account_id)
-                new_account = db_service.get_account(new_account_id)
-                if old_account:
-                    old_account.balance_cents -= old_amount_cents
-                if new_account:
-                    new_account.balance_cents += trans.amount_cents
+                if db_service.get_account(old_account_id):
+                    db_service.adjust_balance(old_account_id, -old_amount_cents)
+                if db_service.get_account(new_account_id):
+                    db_service.adjust_balance(new_account_id, trans.amount_cents)
                 trans.account_id = new_account_id
             elif 'amount' in update_fields:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents += (trans.amount_cents - old_amount_cents)
+                db_service.adjust_balance(trans.account_id, trans.amount_cents - old_amount_cents)
+
+            if 'is_reimbursement' in data:
+                trans.is_reimbursement = bool(data['is_reimbursement'])
+
+            # Sync shared fields to the linked transfer peer (amount is negated on the peer)
+            if trans.is_transfer and trans.transfer_peer_id:
+                peer = db_service.get_transaction(trans.transfer_peer_id)
+                if peer:
+                    old_peer_amount_cents = peer.amount_cents
+                    if 'date' in update_fields: peer.date = trans.date
+                    if 'vendor' in update_fields: peer.vendor = trans.vendor
+                    if 'category' in update_fields: peer.category = trans.category
+                    if 'notes' in update_fields: peer.notes = trans.notes
+                    if 'amount' in update_fields:
+                        peer.amount = -update_fields['amount']
+                        db_service.adjust_balance(peer.account_id, peer.amount_cents - old_peer_amount_cents)
 
             db.session.commit()
             return trans, None
@@ -152,161 +228,167 @@ class AccountService:
 
     def delete_transaction(self, transaction_id):
         """
-        Delete a transaction, reverse its effect on the account balance, and
-        re-evaluate over_budget flags for its category/period so that removing
-        an expense that pushed the budget over clears the flag on remaining rows.
-        Returns (success, error_message).
+        Delete a transaction and reverse its effect on the account balance; a generated
+        recurring transaction also shrinks its series. Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return False, 'Transaction not found'
 
-        # Capture context before deletion — needed for re-evaluation after the row is gone
-        was_expense  = trans.amount_cents < 0
-        user_id      = trans.account.user_id
-        category     = trans.category
-        period       = trans.date.strftime('%Y-%m')
+        # Clear transfer link before deleting to avoid SQLAlchemy circular-FK conflicts.
+        # unlink_transfer commits, so we re-fetch a clean session state afterward.
+        if trans.is_transfer:
+            self.unlink_transfer(transaction_id)
+            trans = db_service.get_transaction(transaction_id)
+            if not trans:
+                return False, 'Transaction not found'
 
-        account = db_service.get_account(trans.account_id)
-        if account:
-            account.balance_cents -= trans.amount_cents
+        # Capture the series position before the row is gone
+        recurring_id  = trans.recurring_id
+        deleted_index = trans.recurring_index
 
+        db_service.adjust_balance(trans.account_id, -trans.amount_cents)
         db.session.delete(trans)
-        db.session.flush()   # remove the row from session before re-evaluation queries it
+        db.session.flush()   # remove the row from the session before the series is renumbered
 
-        if was_expense:
-            db_service._reevaluate_category_flags(user_id, category, period)
+        # When a generated recurring transaction is deleted, shift sibling indices
+        # so the "X/Y" card numbers on the remaining transactions stay contiguous.
+        if recurring_id is not None and deleted_index is not None:
+            rec = db_service.get_recurring(recurring_id)
+            if rec:
+                rec.idx = max(0, rec.idx - 1)
+                if rec.number > 0:
+                    rec.number -= 1
+                (TransactionModel.query
+                 .filter(
+                     TransactionModel.recurring_id == recurring_id,
+                     TransactionModel.recurring_index > deleted_index,
+                 )
+                 .update(
+                     {'recurring_index': TransactionModel.recurring_index - 1},
+                     synchronize_session='fetch',
+                 ))
 
         db.session.commit()
         return True, None
 
-    # RECURRING OPERATIONS ======================================================
+    def link_transfer(self, tx_id, peer_id):
+        """
+        Mark two transactions as the two sides of a transfer and link them.
+        Both are flagged is_transfer=True and each points to the other via transfer_peer_id.
+        Returns (success, error_message).
+        """
+        tx   = db_service.get_transaction(tx_id)
+        peer = db_service.get_transaction(peer_id)
+        if not tx or not peer:
+            return False, 'Transaction not found'
+        tx.is_transfer       = True
+        tx.transfer_peer_id  = peer_id
+        peer.is_transfer     = True
+        peer.transfer_peer_id = tx_id
+        db.session.commit()
+        return True, None
 
-    def add_recurring(self, account_id, start_date, vendor, category, amount,
-                      next_date, frequency, number=-1, notes=""):
-        """Create a recurring template and commit."""
-        rec = RecurringModel(
-            account_id=account_id,
-            start_date=start_date,
-            vendor=vendor,
-            category=category,
-            amount=amount,
-            next_date=next_date,
-            frequency=frequency,
-            number=number,
-            notes=notes,
-            idx=1,
+    def unlink_transfer(self, tx_id):
+        """
+        Remove the transfer link from a transaction and its peer (if any).
+        Both sides lose their is_transfer flag and transfer_peer_id.
+        Returns (success, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return False, 'Transaction not found'
+        if tx.transfer_peer_id:
+            peer = db_service.get_transaction(tx.transfer_peer_id)
+            if peer:
+                peer.transfer_peer_id = None
+                peer.is_transfer      = False
+        tx.transfer_peer_id = None
+        tx.is_transfer      = False
+        db.session.commit()
+        return True, None
+
+    def break_transfer_link(self, tx_id):
+        """
+        Clear the peer link between two transfer transactions without removing
+        the is_transfer flag. Both sides remain visible as unlinked transfers,
+        ready to be re-paired to the correct account.
+
+        Distinct from unlink_transfer, which fully removes the is_transfer flag.
+        Returns (success, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return False, 'Transaction not found'
+        if tx.transfer_peer_id:
+            peer = db_service.get_transaction(tx.transfer_peer_id)
+            if peer:
+                peer.transfer_peer_id = None
+        tx.transfer_peer_id = None
+        db.session.commit()
+        return True, None
+
+    def create_transfer_pair(self, tx_id, to_account_id):
+        """
+        Ensure tx is paired with a counterpart on to_account_id.
+
+        Three cases:
+          - No existing peer: creates one.
+          - Existing peer already on to_account_id: no-op, returns existing pair.
+          - Existing peer on a different account: deletes old peer (reversing its
+            balance effect) then creates a new one on to_account_id.
+
+        Uses a single commit to avoid SQLAlchemy session expiry issues that arise
+        when add_transaction commits mid-function and invalidates in-flight objects.
+
+        Returns (original_tx, peer_tx, error_message).
+        """
+        tx = db_service.get_transaction(tx_id)
+        if not tx:
+            return None, None, 'Transaction not found'
+
+        if tx.transfer_peer_id:
+            old_peer = db_service.get_transaction(tx.transfer_peer_id)
+            if old_peer and old_peer.account_id == to_account_id:
+                return tx, old_peer, None  # already paired correctly, nothing to do
+            if old_peer:
+                old_peer.transfer_peer_id = None
+                tx.transfer_peer_id = None
+                db.session.flush()
+                db_service.adjust_balance(old_peer.account_id, -old_peer.amount_cents)
+                db.session.delete(old_peer)
+            else:
+                tx.transfer_peer_id = None
+
+        # Create peer inline without an intermediate commit so tx stays valid.
+        peer = TransactionModel(
+            account_id=to_account_id,
+            date=tx.date,
+            vendor=tx.vendor,
+            category=tx.category,
+            notes=tx.notes or '',
+            is_transfer=True,
         )
-        db.session.add(rec)
+        peer.amount = -tx.amount
+
+        db.session.add(peer)
+        db.session.flush()  # assigns peer.id
+        db_service.adjust_balance(to_account_id, peer.amount_cents)
+
+        tx.is_transfer        = True
+        tx.transfer_peer_id   = peer.id
+        peer.transfer_peer_id = tx.id
         db.session.commit()
-        return rec
 
-    def update_recurring(self, recurring_id, **kwargs):
-        """
-        Update a recurring transaction template and clean up excess generated
-        transactions if the occurrence limit (number) was reduced.
-        """
-        rec = db_service.get_recurring(recurring_id)
-        if not rec:
-            return False
-
-        old_number = rec.number
-
-        updatable_fields = ['start_date', 'vendor', 'category', 'amount', 'notes', 'next_date', 'frequency', 'number']
-        for field in updatable_fields:
-            if field in kwargs:
-                if field == 'amount':
-                    rec.amount = kwargs[field]  # Property converts dollars to cents
-                else:
-                    setattr(rec, field, kwargs[field])
-
-        new_number = rec.number
-        number_was_reduced = new_number != -1 and (old_number == -1 or new_number < old_number)
-
-        if number_was_reduced:
-            all_generated = (
-                TransactionModel.query
-                .filter_by(recurring_id=recurring_id)
-                .order_by(TransactionModel.date.asc(), TransactionModel.id.asc())
-                .all()
-            )
-            excess = all_generated[new_number:]
-            for trans in excess:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents -= trans.amount_cents
-                db.session.delete(trans)
-
-            kept = min(len(all_generated), new_number)
-            rec.idx = kept + 1
-
-        db.session.commit()
-        return rec
-
-    def delete_recurring(self, recurring_id, delete_generated=False):
-        """
-        Delete a recurring transaction template.
-        If delete_generated=True, also deletes all auto-generated transactions
-        from this recurring and reverses their effect on the account balance.
-        Otherwise, those transactions are kept but unlinked from the recurring.
-        """
-        rec = db_service.get_recurring(recurring_id)
-        if not rec:
-            return False
-
-        if delete_generated:
-            transactions = TransactionModel.query.filter_by(recurring_id=recurring_id).all()
-            for trans in transactions:
-                account = db_service.get_account(trans.account_id)
-                if account:
-                    account.balance_cents -= trans.amount_cents
-                db.session.delete(trans)
-        else:
-            TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})
-
-        db.session.delete(rec)
-        db.session.commit()
-        return True
-
-    def process_due_recurring(self, account_id):
-        """
-        Generate transactions for all due recurring items. Intended to be called
-        on user login. Returns the number of transactions created.
-        """
-        recurring_list = db_service.get_account_recurring(account_id)
-        transactions_created = 0
-        today = date.today()
-
-        for rec in recurring_list:
-            while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
-                self.add_transaction(
-                    account_id=account_id,
-                    date_obj=rec.next_date,
-                    vendor=rec.vendor,
-                    category=rec.category,
-                    amount=rec.amount,
-                    notes=f"Auto-generated from recurring: {rec.notes}",
-                    recurring_id=rec.id
-                )
-
-                rec.next_date = rec.advance_to_next
-                rec.idx += 1
-                transactions_created += 1
-
-                if rec.number != -1 and rec.idx > rec.number:
-                    break
-
-        db.session.commit()   # persist rec.next_date updates
-        return transactions_created
+        return tx, peer, None
 
     # UTILITY OPERATIONS ========================================================
 
     def recalculate_account_balance(self, account_id):
-        """Audit helper to ensure balance matches sum of transaction history"""
+        """Reset the balance to the starting balance plus the account's transactions; returns it in dollars."""
         account = db_service.get_account(account_id)
         if account:
-            total_cents = sum(trans.amount_cents for trans in account.transactions)
-            account.balance_cents = total_cents
+            db_service.recompute_balance(account_id)
             db.session.commit()
-            return total_cents / 100.0
+            return account.balance
         return 0

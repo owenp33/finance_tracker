@@ -1,26 +1,36 @@
 import { useState } from 'react';
+import { Info } from 'lucide-react';
+import FrequencySelect from './transactions/FrequencySelect';
+import { todayISO } from '../utils/dates';
 
 const EMPTY_BASE = (accounts) => ({
   account_id: accounts?.[0]?.id || '',
-  date: new Date().toISOString().split('T')[0],
+  date: todayISO(),
   vendor: '',
   category: '',
   amount: '',
   notes: '',
+  is_transfer: false,
+  is_reimbursement: false,
 });
 
 const EMPTY_RECURRING = {
-  frequency: 30,
+  frequency: 1,
+  frequency_unit: 'months',
   number: -1,   // -1 = infinite
 };
 
-function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
+function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defaultRecurring = false }) {
   const [base, setBase] = useState(EMPTY_BASE(accounts));
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(defaultRecurring);
   const [recurring, setRecurring] = useState(EMPTY_RECURRING);
+  const [includePast, setIncludePast] = useState(false);
 
   const setB = (field, value) => setBase(prev => ({ ...prev, [field]: value }));
   const setR = (field, value) => setRecurring(prev => ({ ...prev, [field]: value }));
+
+  // A recurring template dated in the past would generate every missed occurrence at once
+  const isPastDate = base.date < todayISO();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -29,15 +39,18 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
         ...base,
         start_date: base.date,
         next_date: base.date,
-        frequency: parseInt(recurring.frequency),
+        frequency: recurring.frequency,
+        frequency_unit: recurring.frequency_unit,
         number: parseInt(recurring.number),
+        skip_past: isPastDate && !includePast,
       });
     } else {
       onSubmit(base);
     }
     setBase(EMPTY_BASE(accounts));
     setRecurring(EMPTY_RECURRING);
-    setIsRecurring(false);
+    setIncludePast(false);
+    setIsRecurring(defaultRecurring);
   };
 
   return (
@@ -63,39 +76,76 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
         <input type="text" value={base.category} onChange={e => setB('category', e.target.value)} placeholder="e.g., Subscriptions" required />
       </div>
       <div className="form-group">
-        <label>Amount</label>
-        <input type="number" step="0.01" value={base.amount} onChange={e => setB('amount', e.target.value)} placeholder="Negative = expense" required />
+        <label>Amount <span className="info-tip" data-tip="Negative = expense, positive = income"><Info /></span></label>
+        <input type="number" step="0.01" value={base.amount} onChange={e => setB('amount', e.target.value)} required />
       </div>
       <div className="form-group">
         <label>Notes <small>(optional)</small></label>
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
       </div>
 
-      {/* Recurring toggle */}
-      <div className="recurring-toggle-row">
-        <label className="recurring-toggle-label">
-          <input
-            type="checkbox"
-            checked={isRecurring}
-            onChange={e => setIsRecurring(e.target.checked)}
-          />
-          Make this a recurring transaction
-        </label>
-      </div>
+      {/* Mark as pill group + recurring toggle — hidden when form is locked to recurring mode */}
+      {!defaultRecurring && (
+        <>
+          <div className="mark-as-row">
+            <span className="mark-as-label">Mark as</span>
+            <button
+              type="button"
+              className={`mark-as-btn${base.is_transfer ? ' active' : ''}`}
+              onClick={() => {
+                const next = !base.is_transfer;
+                setB('is_transfer', next);
+                setB('is_reimbursement', false);
+                if (next) setIsRecurring(false);
+              }}
+            >Transfer</button>
+            <button
+              type="button"
+              className={`mark-as-btn${base.is_reimbursement ? ' active' : ''}`}
+              onClick={() => {
+                const next = !base.is_reimbursement;
+                setB('is_reimbursement', next);
+                setB('is_transfer', false);
+                if (next) setIsRecurring(false);
+              }}
+            >Reimbursement</button>
+          </div>
+          <div className="recurring-toggle-row">
+            <label className="recurring-toggle-label">
+              <input
+                type="checkbox"
+                checked={isRecurring}
+                onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) { setB('is_transfer', false); setB('is_reimbursement', false); } }}
+              />
+              Make this recurring
+            </label>
+          </div>
+        </>
+      )}
 
-      {/* Expandable recurring fields */}
+      {/* Recurring fields — always visible when defaultRecurring, otherwise expandable */}
       {isRecurring && (
         <div className="recurring-extra-fields">
+          {isPastDate && (
+            <div className="recurring-past-note">
+              <p>
+                This date is in the past. The template will start at its next occurrence from today,
+                so past ones (which may already be in your transactions) aren't added again.
+              </p>
+              <label className="recurring-toggle-label">
+                <input type="checkbox" checked={includePast} onChange={e => setIncludePast(e.target.checked)} />
+                Also add the past occurrences
+              </label>
+            </div>
+          )}
           <div className="form-group">
-            <label>Frequency <small>(days between occurrences)</small></label>
-            <select value={recurring.frequency} onChange={e => setR('frequency', e.target.value)}>
-              <option value={7}>Weekly (7 days)</option>
-              <option value={14}>Biweekly (14 days)</option>
-              <option value={30}>Monthly (30 days)</option>
-              <option value={60}>Every 2 months (60 days)</option>
-              <option value={90}>Quarterly (90 days)</option>
-              <option value={365}>Yearly (365 days)</option>
-            </select>
+            <label htmlFor="recurring-frequency">Repeats</label>
+            <FrequencySelect
+              id="recurring-frequency"
+              frequency={recurring.frequency}
+              unit={recurring.frequency_unit}
+              onChange={schedule => setRecurring(prev => ({ ...prev, ...schedule }))}
+            />
           </div>
           <div className="form-group">
             <label>Number of occurrences <small>(-1 = infinite)</small></label>
@@ -103,7 +153,12 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts }) {
               type="number"
               min="-1"
               value={recurring.number}
-              onChange={e => setR('number', e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '' || val === '-') { setR('number', val); return; }
+                if (parseInt(val) === 0) return;
+                setR('number', val);
+              }}
             />
           </div>
         </div>

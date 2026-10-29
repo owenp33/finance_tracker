@@ -20,15 +20,15 @@ def _process_all(app):
     """
     with app.app_context():
         from services.db_service import DbService
-        from services.account_service import AccountService
+        from services.recurring_service import RecurringService
 
         db_svc = DbService()
-        acct_svc = AccountService()
+        recurring_svc = RecurringService()
 
         total = 0
         for account in db_svc.get_all_accounts():
             try:
-                total += acct_svc.process_due_recurring(account.id)
+                total += recurring_svc.process_due_recurring(account.id)
             except Exception:
                 logger.exception(
                     "Scheduler: failed to process recurring for account %s", account.id

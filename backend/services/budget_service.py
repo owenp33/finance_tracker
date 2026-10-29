@@ -47,14 +47,31 @@ class BudgetService:
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.amount_cents < 0,      # expenses only
+                TransactionModel.is_transfer == False,  # exclude inter-account transfers
             )
             .all()
         )
 
-        # Sum absolute spending per category (in cents)
+        # Fetch reimbursements — positive transactions marked as reimbursements
+        reimbursement_rows = (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                TransactionModel.date >= period_start,
+                TransactionModel.date <  period_end,
+                TransactionModel.is_reimbursement == True,
+                TransactionModel.amount_cents > 0,
+            )
+            .all()
+        )
+
+        # Sum absolute spending per category (in cents), then subtract reimbursements
         spending: dict[str, int] = {}
         for t in expense_rows:
             spending[t.category] = spending.get(t.category, 0) + abs(t.amount_cents)
+        for t in reimbursement_rows:
+            spending[t.category] = max(0, spending.get(t.category, 0) - t.amount_cents)
 
         result = []
         for budget in budgets:
@@ -84,10 +101,7 @@ class BudgetService:
     # MUTATIONS =================================================================
 
     def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
-        """
-        Create a budget allocation and immediately re-evaluate flags for the
-        category/period — existing spending may already exceed the new limit.
-        """
+        """Create a budget allocation. (Over-budget flags are computed when transactions are read.)"""
         budget = BudgetModel(
             user_id=user_id,
             category=category,
@@ -97,50 +111,33 @@ class BudgetService:
             carried_over_cents=int(round(carried_over * 100)),
         )
         db.session.add(budget)
-        db.session.flush()
-        db_service._reevaluate_category_flags(user_id, category, period)
         db.session.commit()
         return budget
 
     def update_budget(self, budget_id, data):
         """
-        Apply field updates to a budget allocation and re-evaluate flags when
-        the threshold changes (amount, carried_over) or category is renamed.
+        Apply field updates to a budget allocation.
         Returns (updated_budget, error_message).
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
             return None, 'Budget not found'
 
-        old_category = budget.category
-        needs_reevaluation = False
-
         if 'amount' in data:
             budget.amount = float(data['amount'])
-            needs_reevaluation = True
         if 'rollover' in data:
             budget.rollover = bool(data['rollover'])
         if 'carried_over' in data:
             budget.carried_over = float(data['carried_over'])
-            needs_reevaluation = True
         if 'category' in data:
             budget.category = data['category']
-            needs_reevaluation = True
-
-        if needs_reevaluation:
-            db.session.flush()
-            # If category was renamed, clear flags on the old name too
-            if budget.category != old_category:
-                db_service._reevaluate_category_flags(budget.user_id, old_category, budget.period)
-            db_service._reevaluate_category_flags(budget.user_id, budget.category, budget.period)
 
         db.session.commit()
         return budget, None
 
     def delete_budget(self, budget_id):
         """
-        Remove a budget allocation and any future rollover copies of it, then
-        clear over_budget flags on transactions for every affected period.
+        Remove a budget allocation and any future rollover copies of it.
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
@@ -160,30 +157,6 @@ class BudgetService:
         to_delete = [budget] + future_rollover
 
         for b in to_delete:
-            b_year, b_month = int(b.period[:4]), int(b.period[5:7])
-            b_next_year, b_next_month = (b_year + 1, 1) if b_month == 12 else (b_year, b_month + 1)
-            period_start = date(b_year,      b_month,      1)
-            period_end   = date(b_next_year, b_next_month, 1)
-
-            # SELECT ids first — .update() cannot be used with .join()
-            tx_ids = [
-                t.id for t in (
-                    TransactionModel.query
-                    .join(AccountModel, TransactionModel.account_id == AccountModel.id)
-                    .filter(
-                        AccountModel.user_id        == user_id,
-                        TransactionModel.category   == category,
-                        TransactionModel.date       >= period_start,
-                        TransactionModel.date       <  period_end,
-                    )
-                    .all()
-                )
-            ]
-            if tx_ids:
-                TransactionModel.query.filter(
-                    TransactionModel.id.in_(tx_ids)
-                ).update({'over_budget': False}, synchronize_session='fetch')
-
             db.session.delete(b)
 
         db.session.commit()
