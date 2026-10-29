@@ -712,5 +712,11 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.
+- **Template responses don't say which account they're on.** `RecurringModel.to_dict` has no
+  `account_id`; a client only knows it from having asked `GET /accounts/<id>/recurring`.
+- **Analytics count reimbursements as income.** `AnalyticsService.generate_report` (the
+  `/analytics` routes and the PDF's summary pages) counts every positive transaction that isn't
+  a transfer as income, while budgets and over-budget flags count a reimbursement against its
+  category's spending.
 - **`authenticate` answers faster for an unknown username** (no hash check), which leaks whether
   a username exists to someone timing requests.
