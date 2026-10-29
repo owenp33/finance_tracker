@@ -7,6 +7,7 @@ from models.transaction import TransactionModel
 from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
+from models.series_dismissal import SeriesDismissalModel
 from models.budget import BudgetModel
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     'RecurringModel',
     'RecurringDismissalModel',
     'RecurringAliasModel',
+    'SeriesDismissalModel',
     'BudgetModel',
 ]

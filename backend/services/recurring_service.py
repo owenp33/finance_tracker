@@ -11,6 +11,7 @@ from models.transaction import TransactionModel
 from models.recurring import RecurringModel, FREQUENCY_UNITS, MATCH_WINDOW_DAYS
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
+from models.series_dismissal import SeriesDismissalModel
 from services import series_detection
 from services.account_service import AccountService
 from services.db_service import DbService
@@ -367,11 +368,64 @@ class RecurringService:
     def detect_series(self, user_id):
         """
         Recurring series among the user's transactions that aren't in a series yet, for the user
-        to confirm (series_detection.detect_series). Vendors that already have a template on the
-        account are left to that template's suggestions.
+        to confirm (series_detection.detect_series). A series matching a template (same account,
+        vendor and a similar amount) is left to that template's suggestions, and series marked
+        "Not recurring" stay out.
         """
-        tracked = {(r.account_id, vendor_key(r.vendor)) for r in db_service.get_user_recurring(user_id)}
-        return series_detection.detect_series(db_service.get_all_user_transactions(user_id), date.today(), tracked)
+        tracked = [(r.account_id, vendor_key(r.vendor), r.amount_cents) for r in db_service.get_user_recurring(user_id)]
+        return series_detection.detect_series(db_service.get_all_user_transactions(user_id), date.today(),
+                                              tracked, db_service.get_series_dismissals(user_id))
+
+    def _detected(self, user_id, transaction_ids):
+        """The detected series whose payments are exactly these transactions; raises ValueError when none is (anymore)."""
+        wanted = set(transaction_ids)
+        series = next((s for s in self.detect_series(user_id) if {t.id for t in s.transactions} == wanted), None)
+        if series is None:
+            raise ValueError('That series has changed. Find recurring again.')
+        return series
+
+    def add_detected_series(self, user_id, transaction_ids):
+        """
+        Make the detected series with exactly these payments a template (its vendor, category,
+        latest amount and schedule), linking the payments to it, and commit. An ended series
+        becomes a finished template limited to its payments, so it never generates; an ongoing
+        one continues from its next date, on or after today, so nothing in the past is generated.
+        Raises ValueError when no detected series has these payments (anymore).
+        """
+        series = self._detected(user_id, transaction_ids)
+        rec = RecurringModel(
+            account_id=series.account_id,
+            start_date=series.transactions[0].date,
+            vendor=series.vendor,
+            category=series.category,
+            amount_cents=series.amount_cents,
+            notes='',
+            frequency=series.frequency,
+            frequency_unit=series.frequency_unit,
+            day_of_month=series.anchor.day if series.frequency_unit == 'months' else None,
+            next_date=series.next_date if series.ongoing else series.due_date,
+            number=-1 if series.ongoing else len(series.transactions),
+            idx=1,
+        )
+        db.session.add(rec)
+        db.session.flush()
+        for t in series.transactions:
+            t.recurring_id = rec.id
+        _renumber(rec)
+        db.session.commit()
+        return rec
+
+    def dismiss_detected_series(self, user_id, transaction_ids):
+        """
+        Remember that the detected series with exactly these payments isn't recurring, so finding
+        series leaves out payments of a similar size to that vendor on that account from then on.
+        Raises ValueError when no detected series has these payments (anymore).
+        """
+        series = self._detected(user_id, transaction_ids)
+        key = (series.account_id, vendor_key(series.vendor), series.typical_cents)
+        if not db_service.get_series_dismissal(*key):
+            db.session.add(SeriesDismissalModel(account_id=key[0], vendor_key=key[1], amount_cents=key[2]))
+            db.session.commit()
 
     def template_dict(self, rec):
         """

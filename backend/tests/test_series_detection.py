@@ -1,6 +1,6 @@
 """
 Series detection tests: finding recurring series among a user's transactions (the pure rules in
-series_detection), and GET /api/recurring/detected end to end.
+series_detection), and the /api/recurring/detected endpoints (list, add, "Not recurring") end to end.
 """
 import itertools
 from datetime import date
@@ -10,6 +10,9 @@ import pytest
 
 from extensions import db as _db
 from models.account import AccountModel
+from models.recurring import RecurringModel
+from models.series_dismissal import SeriesDismissalModel
+from models.transaction import TransactionModel
 from models.user import User
 from services.account_service import AccountService
 from services.recurring_service import RecurringService
@@ -143,9 +146,14 @@ def test_series_transactions_and_transfers_are_left_out(fields):
     assert detect_series(payments(MONTHLY, **fields), TODAY) == []
 
 
-def test_vendors_with_a_template_on_the_account_are_left_out():
-    assert detect_series(payments(MONTHLY, vendor=' NETFLIX'), TODAY, tracked={(1, 'netflix')}) == []
-    assert len(detect_series(payments(MONTHLY), TODAY, tracked={(2, 'netflix')})) == 1   # another account's
+@pytest.mark.parametrize('tracked, found', [
+    ({(1, 'netflix', -1549)}, False),
+    ({(1, 'netflix', -1999)}, False),     # the template's amount went up: still that series
+    ({(1, 'netflix', -65000)}, True),     # another series to the same vendor (a rent and its fee)
+    ({(2, 'netflix', -1549)}, True),      # another account's template
+], ids=['same', 'similar-amount', 'other-amount', 'other-account'])
+def test_a_series_matching_a_template_is_left_out(tracked, found):
+    assert len(detect_series(payments(MONTHLY, vendor=' NETFLIX'), TODAY, tracked=tracked)) == (1 if found else 0)
 
 
 def test_an_ongoing_series_starts_on_or_after_today():
@@ -166,6 +174,26 @@ def test_ongoing_is_judged_by_the_accounts_newest_transaction(newest, ongoing):
 def test_a_month_end_series_stays_on_the_months_last_day():
     [series] = detect_series(payments(['2026-05-31', '2026-06-30', '2026-07-31', '2026-08-31']), TODAY)
     assert series.next_date == date(2026, 10, 31)
+
+
+def test_the_due_date_and_typical_amount():
+    other = tx('2026-10-20', vendor='Grocer', amount=-40.00)
+    [series] = detect_series(payments(MONTHLY[:3], amount=-15.49) + payments(MONTHLY[3:], amount=-17.99) + [other],
+                             TODAY)
+    assert series.due_date == date(2026, 10, 5)     # the payment after Sep's, which never came
+    assert series.typical_cents == -1549            # the median payment
+    assert series.amount_cents == -1799             # the latest
+
+
+@pytest.mark.parametrize('dismissed, found', [
+    ({(1, 'netflix', -1549)}, False),
+    ({(1, 'netflix', -1800)}, False),     # a similar size: the same series
+    ({(1, 'netflix', -4000)}, True),      # another size: another series
+    ({(1, 'netflix', 1549)}, True),       # income, not spending
+    ({(2, 'netflix', -1549)}, True),      # another account
+], ids=['same', 'similar-size', 'other-size', 'other-direction', 'other-account'])
+def test_a_dismissed_series_is_left_out(dismissed, found):
+    assert len(detect_series(payments(MONTHLY), TODAY, dismissed=dismissed)) == (1 if found else 0)
 
 
 def test_ongoing_series_come_first_then_the_most_recently_paid():
@@ -218,3 +246,144 @@ class TestDetectedEndpoint:
         recurring_svc.add_recurring(account.id, date(2026, 6, 5), 'netflix', 'Subscriptions', -15.49,
                                     next_date=date(2026, 11, 5), frequency=1, frequency_unit='months')
         assert client.get('/api/recurring/detected', headers=auth_headers).json['series'] == []
+
+
+def detected(client, headers):
+    return client.get('/api/recurring/detected', headers=headers).json['series']
+
+
+def add_series(client, headers, transaction_ids):
+    return client.post('/api/recurring/detected', json={'transaction_ids': transaction_ids}, headers=headers)
+
+
+def dismiss_series(client, headers, transaction_ids):
+    return client.post('/api/recurring/detected/dismissals', json={'transaction_ids': transaction_ids},
+                       headers=headers)
+
+
+CHANGED = 'That series has changed. Find recurring again.'
+BAD_IDS = "'transaction_ids' must be a list of transaction ids."
+
+
+class TestAddDetectedSeries:
+    def test_requires_login(self, client):
+        assert add_series(client, {}, [1]).status_code == 401
+
+    def test_an_ongoing_series_becomes_a_template_that_starts_today_or_later(self, client, auth_headers,
+                                                                             account, pin_today):
+        pin_today(TODAY)
+        ids = [t.id for t in add_payments(account.id, MONTHLY)]
+        resp = add_series(client, auth_headers, ids)
+        assert resp.status_code == 201
+        assert resp.json['recurring']['next_date'] == '2026-11-05'
+        rec = _db.session.get(RecurringModel, resp.json['recurring']['id'])
+        assert (rec.account_id, rec.vendor, rec.category, rec.amount_cents) == (
+            account.id, 'Netflix', 'Subscriptions', -1549)
+        assert (rec.frequency, rec.frequency_unit, rec.day_of_month) == (1, 'months', 5)
+        assert (rec.start_date, rec.next_date, rec.number, rec.idx) == (date(2026, 6, 5), date(2026, 11, 5), -1, 5)
+        linked = sorted(rec.generated_transactions, key=lambda t: t.date)
+        assert [(t.id, t.recurring_index) for t in linked] == [(tid, n) for n, tid in enumerate(ids, start=1)]
+
+    def test_an_ongoing_series_never_fills_in_the_past(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        add_series(client, auth_headers, [t.id for t in add_payments(account.id, MONTHLY)])
+        assert recurring_svc.process_due_recurring(account.id) == 0          # Oct 5 stays empty
+        pin_today(date(2026, 11, 5))
+        assert recurring_svc.process_due_recurring(account.id) == 1          # Nov 5 comes due
+        assert [t.date for t in TransactionModel.query.filter_by(vendor='Netflix').order_by(TransactionModel.date)][-2:] == [
+            date(2026, 9, 4), date(2026, 11, 5)]
+
+    def test_an_ended_series_becomes_a_finished_template(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        ids = [t.id for t in add_payments(account.id, MONTHLY)]
+        add_payments(account.id, ['2026-10-20'], vendor='Grocer', amount=-40.00)    # the account goes on without it
+        resp = add_series(client, auth_headers, ids)
+        assert resp.status_code == 201
+        rec = _db.session.get(RecurringModel, resp.json['recurring']['id'])
+        assert (rec.number, rec.idx, rec.next_date) == (4, 5, date(2026, 10, 5))
+        assert resp.json['recurring']['last_date'] == '2026-09-05'
+        assert recurring_svc.process_due_recurring(account.id) == 0          # finished: nothing to generate
+
+    def test_an_added_series_is_no_longer_detected(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        add_series(client, auth_headers, [t.id for t in add_payments(account.id, MONTHLY)])
+        assert detected(client, auth_headers) == []
+
+    def test_adding_the_rent_leaves_its_fee_to_add(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        rent = add_payments(account.id, MONTHLY, vendor='Millenium Apartments', amount=-650.00, category='Rent')
+        add_payments(account.id, MONTHLY, vendor='Millenium Apartments', amount=-2.49, category='Rent')
+        add_series(client, auth_headers, [t.id for t in rent])
+        [fee] = detected(client, auth_headers)
+        assert fee['amount'] == -2.49
+        assert add_series(client, auth_headers, [t['id'] for t in fee['transactions']]).status_code == 201
+
+    @pytest.mark.parametrize('change', ['missing', 'extra', 'unknown'])
+    def test_a_series_that_changed_is_rejected(self, client, auth_headers, account, pin_today, change):
+        pin_today(TODAY)
+        ids = [t.id for t in add_payments(account.id, MONTHLY)]
+        extra = add_payments(account.id, ['2026-07-20'], vendor='Grocer', amount=-40.00)[0].id
+        sent = {'missing': ids[:3], 'extra': ids + [extra], 'unknown': ids[:3] + [99999]}[change]
+        resp = add_series(client, auth_headers, sent)
+        assert (resp.status_code, resp.json['error']) == (400, CHANGED)
+        assert RecurringModel.query.count() == 0
+
+    def test_another_users_series_cannot_be_added(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        other = User(username='other', email='other@example.com')
+        other.set_password('otherpass')
+        _db.session.add(other)
+        _db.session.flush()
+        theirs = AccountModel(user_id=other.id, acct_id_str='other-0001', acct_name='Other Checking')
+        _db.session.add(theirs)
+        _db.session.commit()
+        resp = add_series(client, auth_headers, [t.id for t in add_payments(theirs.id, MONTHLY)])
+        assert (resp.status_code, resp.json['error']) == (400, CHANGED)
+        assert RecurringModel.query.count() == 0
+
+    @pytest.mark.parametrize('body', [{}, {'transaction_ids': '1,2'}, {'transaction_ids': []},
+                                      {'transaction_ids': [True]}, {'transaction_ids': ['1']}],
+                             ids=['missing', 'text', 'empty', 'boolean', 'text-id'])
+    def test_bad_transaction_ids_are_rejected(self, client, auth_headers, body):
+        resp = client.post('/api/recurring/detected', json=body, headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (400, BAD_IDS)
+
+
+class TestDismissDetectedSeries:
+    def test_requires_login(self, client):
+        assert dismiss_series(client, {}, [1]).status_code == 401
+
+    def test_not_recurring_hides_the_series_for_good(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        ids = [t.id for t in add_payments(account.id, MONTHLY)]
+        resp = dismiss_series(client, auth_headers, ids)
+        assert (resp.status_code, resp.json) == (200, {'success': True})
+        assert detected(client, auth_headers) == []
+        add_payments(account.id, ['2026-10-05'])        # the series goes on: still hidden
+        assert detected(client, auth_headers) == []
+        assert RecurringModel.query.count() == 0
+
+    def test_dismissing_the_fee_keeps_the_rent(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        add_payments(account.id, MONTHLY, vendor='Millenium Apartments', amount=-650.00, category='Rent')
+        fee = add_payments(account.id, MONTHLY, vendor='Millenium Apartments', amount=-2.49, category='Rent')
+        dismiss_series(client, auth_headers, [t.id for t in fee])
+        assert [s['amount'] for s in detected(client, auth_headers)] == [-650.00]
+
+    def test_a_series_that_changed_is_rejected(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        ids = [t.id for t in add_payments(account.id, MONTHLY)]
+        resp = dismiss_series(client, auth_headers, ids[:3])
+        assert (resp.status_code, resp.json['error']) == (400, CHANGED)
+        assert SeriesDismissalModel.query.count() == 0
+
+    def test_bad_transaction_ids_are_rejected(self, client, auth_headers):
+        resp = client.post('/api/recurring/detected/dismissals', json={'transaction_ids': 'all'}, headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (400, BAD_IDS)
+
+    def test_deleting_the_account_deletes_its_dismissals(self, client, auth_headers, account, pin_today):
+        pin_today(TODAY)
+        dismiss_series(client, auth_headers, [t.id for t in add_payments(account.id, MONTHLY)])
+        assert SeriesDismissalModel.query.count() == 1
+        account_svc.delete_account(account.id)
+        assert SeriesDismissalModel.query.count() == 0

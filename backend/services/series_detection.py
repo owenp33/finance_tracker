@@ -44,6 +44,7 @@ class DetectedSeries:
     frequency_unit: str
     anchor: date             # a date on the schedule (one of the payments'); monthly schedules keep its day
     transactions: tuple
+    due_date: date           # the next payment after the last one: the first scheduled date it can't have kept
     ongoing: bool
     next_date: Optional[date]   # ongoing only: the schedule's first date on or after today
 
@@ -52,15 +53,22 @@ class DetectedSeries:
         """The latest payment's amount."""
         return self.transactions[-1].amount_cents
 
+    @property
+    def typical_cents(self):
+        """The median payment, which "Not recurring" remembers the series by."""
+        return round(statistics.median(t.amount_cents for t in self.transactions))
 
-def detect_series(transactions, today, tracked=frozenset()):
+
+def detect_series(transactions, today, tracked=(), dismissed=()):
     """
     Recurring series among a user's transactions: at least MIN_PAYMENTS payments on one account
     to one vendor (vendor_key), moving money the same way and within vendor_match's tolerance of
     each other in size, that keep at least MIN_SCHEDULE_SHARE of one of SCHEDULES (_fit).
-    Transactions already in a series, transfers, and vendors in `tracked` ((account_id,
-    vendor_key) pairs that already have a template) are left out; every transaction still counts
-    toward its account's newest date.
+    Transactions already in a series and transfers are left out (every transaction still counts
+    toward its account's newest date), and so is a series matching a template (`tracked`) or a
+    "Not recurring" mark (`dismissed`), both (account_id, vendor_key, amount_cents): the same
+    account and vendor, and a typical payment close to that amount (vendor_match.amount_close),
+    so a rent's template doesn't hide its small fee.
     A series is ongoing when its next scheduled payment is overdue by no more than its schedule's
     window by its account's newest transaction (not by today, since imports lag); its next_date is then the
     schedule's first date on or after today, so nothing in the past would be generated. Ongoing
@@ -70,9 +78,8 @@ def detect_series(transactions, today, tracked=frozenset()):
     by_vendor = defaultdict(list)   # (account id, vendor key, is expense) -> payments
     for t in transactions:
         newest[t.account_id] = max(newest.get(t.account_id, t.date), t.date)
-        key = (t.account_id, vendor_key(t.vendor))
-        if t.recurring_id is None and not t.is_transfer and t.amount_cents != 0 and key not in tracked:
-            by_vendor[(*key, t.amount_cents < 0)].append(t)
+        if t.recurring_id is None and not t.is_transfer and t.amount_cents != 0:
+            by_vendor[(t.account_id, vendor_key(t.vendor), t.amount_cents < 0)].append(t)
 
     found = []
     for vendor_payments in by_vendor.values():
@@ -84,8 +91,16 @@ def detect_series(transactions, today, tracked=frozenset()):
             if share >= MIN_SCHEDULE_SHARE:
                 found.append(_series(payments, frequency, unit, anchor, newest[payments[0].account_id], today))
 
+    found = [s for s in found if not _matches_any(s, tracked) and not _matches_any(s, dismissed)]
     return sorted(found, key=lambda s: (not s.ongoing, -s.transactions[-1].date.toordinal(),
                                         s.account_id, vendor_key(s.vendor), s.amount_cents))
+
+
+def _matches_any(series, marks):
+    """True when one of marks, (account_id, vendor_key, amount_cents), is this series: same account and vendor, a close amount."""
+    return any(account_id == series.account_id and key == vendor_key(series.vendor)
+               and amount_close(series.typical_cents, amount_cents)
+               for account_id, key, amount_cents in marks)
 
 
 def _amount_groups(payments):
@@ -171,6 +186,7 @@ def _series(payments, frequency, unit, anchor, account_newest, today):
         frequency_unit=unit,
         anchor=anchor,
         transactions=tuple(payments),
+        due_date=expected,
         ongoing=ongoing,
         next_date=_first_after(anchor, frequency, unit, max(last_kept, today - timedelta(days=1))) if ongoing else None,
     )

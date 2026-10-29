@@ -6,6 +6,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from services import DbService, RecurringService, BudgetFlagService
 from middleware.ownership import owns_recurring, owns_transaction
+from middleware.request_body import json_body
 
 recurring_bp = Blueprint('recurring', __name__)
 db_service        = DbService()
@@ -174,3 +175,47 @@ def detected_series():
     rows = [t for s in series for t in s.transactions]
     transaction_dicts = {d['id']: d for d in budget_flags.transaction_dicts(user_id, rows)}
     return jsonify({'success': True, 'series': [_detected_dict(s, transaction_dicts) for s in series]}), 200
+
+
+BAD_TRANSACTION_IDS = "'transaction_ids' must be a list of transaction ids."
+
+
+def _transaction_ids():
+    """The request body's non-empty list of transaction ids (whole numbers), or None when it isn't one."""
+    ids = json_body().get('transaction_ids')
+    if not isinstance(ids, list) or not ids:
+        return None
+    if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+        return None
+    return ids
+
+
+@recurring_bp.route('/detected', methods=['POST'])
+@jwt_required()
+def add_detected_series():
+    """
+    Make a detected series a template, linking its payments. Body: {transaction_ids}, exactly the
+    series' payments as GET /detected listed them; a series that has changed since is a 400.
+    """
+    ids = _transaction_ids()
+    if ids is None:
+        return jsonify({'success': False, 'error': BAD_TRANSACTION_IDS}), 400
+    try:
+        rec = recurring_service.add_detected_series(get_jwt_identity(), ids)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 201
+
+
+@recurring_bp.route('/detected/dismissals', methods=['POST'])
+@jwt_required()
+def dismiss_detected_series():
+    """Mark a detected series "Not recurring", so finding series leaves it out from then on. Body as for POST /detected."""
+    ids = _transaction_ids()
+    if ids is None:
+        return jsonify({'success': False, 'error': BAD_TRANSACTION_IDS}), 400
+    try:
+        recurring_service.dismiss_detected_series(get_jwt_identity(), ids)
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True}), 200

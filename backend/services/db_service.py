@@ -13,6 +13,7 @@ from models.transaction import TransactionModel
 from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
+from models.series_dismissal import SeriesDismissalModel
 
 
 class DbService:
@@ -269,6 +270,15 @@ class DbService:
 
     def get_alias(self, recurring_id, alias):
         return db.session.get(RecurringAliasModel, (recurring_id, alias))
+
+    def get_series_dismissal(self, account_id, vendor_key, amount_cents):
+        return db.session.get(SeriesDismissalModel, (account_id, vendor_key, amount_cents))
+
+    def get_series_dismissals(self, user_id):
+        """The user's "Not recurring" marks as (account_id, vendor_key, amount_cents)."""
+        rows = (SeriesDismissalModel.query.join(AccountModel)
+                .filter(AccountModel.user_id == user_id).all())
+        return [(d.account_id, d.vendor_key, d.amount_cents) for d in rows]
 
     def get_all_accounts(self):
         """Return every account across all users (used by the background scheduler)."""

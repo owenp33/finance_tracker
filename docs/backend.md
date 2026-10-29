@@ -156,7 +156,8 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 `unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`,
 `replace_occurrence` and `remember_alias` for imports, and `template_dict` for API
 responses), and finding series among a user's transactions (`detect_series`, using the pure
-`series_detection` module); see [Recurring transactions](#recurring-transactions). Occurrences are
+`series_detection` module; `add_detected_series`, `dismiss_detected_series`); see
+[Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -278,6 +279,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
+| `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
 the account's database id is `id`.
@@ -490,8 +492,10 @@ for the user to confirm; nothing is written.
 - **Who counts:** payments on one account to one vendor (`vendor_key`), moving money the same
   way. A vendor's payments split into groups by size (a payment more than 50% from its group's
   median starts a new one), so a rent and its small fee are two series. Transactions already in
-  a series, transfers, and vendors that already have a template on that account (their
-  suggestions cover them) are left out.
+  a series and transfers are left out, and so is a series that matches a template (left to
+  that template's suggestions) or a "Not recurring" mark: the same account and vendor, and a
+  typical (median) payment within 50% of the template's amount or the mark's. A rent's template
+  therefore doesn't hide its fee.
 - **Schedule:** one of the five (`SCHEDULES`: weekly, biweekly, monthly, quarterly, annually).
   The schedule's dates run through one of the payments' dates (the `anchor`, chosen to keep the
   most payments, then the fewest days off); each date from the first payment to the last can be
@@ -507,6 +511,18 @@ for the user to confirm; nothing is written.
   fills in the past.
 - Each series carries its most common vendor spelling and category, the latest payment's
   amount, its schedule, and its payments; ongoing ones come first, then the most recently paid.
+- **Adding a series** (`add_detected_series(user_id, transaction_ids)`): the client sends the
+  series' payments, and the server runs detection again and takes the series with exactly
+  those payments (none: a `ValueError`, "That series has changed", so a stale or foreign request
+  can't create anything). It becomes a template with the series' vendor, category, latest
+  amount and schedule (`day_of_month` from the anchor), starting at the first payment, and every
+  payment is linked and numbered. An ended series becomes a **finished** template: `number` is
+  its payment count and `next_date` the payment that never came (`due_date`), so it never
+  generates. An ongoing one gets `number = -1` and its `next_date` (on or after today), so
+  generation never fills in the past.
+- **"Not recurring"** (`dismiss_detected_series`, same lookup) stores the series' account,
+  `vendor_key` and median payment in `series_dismissals`; detection leaves out that series, and
+  any later one of a similar size to that vendor on that account, for good.
 - **Needs attention.** Every API response that returns a template uses
   `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
   suggested), `needs_attention` (true while any are left), and `dismissed_transaction_ids`
@@ -539,7 +555,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET /detected` |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
@@ -569,7 +585,10 @@ Details worth knowing:
 - `GET /recurring/detected` returns `{series: [{account_id, vendor, category, amount, frequency,
   frequency_unit, ongoing, next_date, transactions}]}` (see Finding series): `amount` is the
   latest payment's, `next_date` is null for an ended series, and `transactions` are the payments,
-  oldest first.
+  oldest first. `POST /recurring/detected` with `{transaction_ids}` (exactly a series' payments)
+  adds it as a template and returns it (201); `POST /recurring/detected/dismissals` with the same
+  body marks it "Not recurring". A missing or malformed list, or a series that has changed since
+  it was listed, is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -642,7 +661,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
-| `test_series_detection.py` | Finding recurring series: the pure rules, and `GET /recurring/detected` |
+| `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
