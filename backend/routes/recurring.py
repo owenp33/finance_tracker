@@ -147,3 +147,30 @@ def undo_dismissal(recurring_id, transaction_id):
     """Let a dismissed transaction be suggested for this series again."""
     rec = recurring_service.undo_dismissal(recurring_id, transaction_id)
     return jsonify({'success': True, 'recurring': recurring_service.template_dict(rec)}), 200
+
+
+# FINDING SERIES ================================================================
+
+def _detected_dict(series, transaction_dicts):
+    return {
+        'account_id':     series.account_id,
+        'vendor':         series.vendor,
+        'category':       series.category,
+        'amount':         series.amount_cents / 100,
+        'frequency':      series.frequency,
+        'frequency_unit': series.frequency_unit,
+        'ongoing':        series.ongoing,
+        'next_date':      series.next_date.isoformat() if series.next_date else None,
+        'transactions':   [transaction_dicts[t.id] for t in series.transactions],
+    }
+
+
+@recurring_bp.route('/detected', methods=['GET'])
+@jwt_required()
+def detected_series():
+    """Recurring series found among the user's transactions that aren't in a series yet, for the user to confirm."""
+    user_id = get_jwt_identity()
+    series = recurring_service.detect_series(user_id)
+    rows = [t for s in series for t in s.transactions]
+    transaction_dicts = {d['id']: d for d in budget_flags.transaction_dicts(user_id, rows)}
+    return jsonify({'success': True, 'series': [_detected_dict(s, transaction_dicts) for s in series]}), 200

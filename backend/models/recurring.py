@@ -7,12 +7,26 @@ from datetime import date, timedelta
 
 FREQUENCY_UNITS = ('days', 'months')
 
+# A transaction up to this many days from an occurrence still counts as that occurrence
+MATCH_WINDOW_DAYS = 3
+
 
 def _add_months(day, months, day_of_month):
     """The date `months` months after `day` (negative goes back), on day_of_month, or the last day of a shorter month."""
     year_offset, month_index = divmod(day.month - 1 + months, 12)
     year, month = day.year + year_offset, month_index + 1
     return date(year, month, min(day_of_month, calendar.monthrange(year, month)[1]))
+
+
+def shift_date(day, frequency, unit, steps=1, day_of_month=None):
+    """
+    The date `steps` repeats of every `frequency` days or calendar months after day (negative steps
+    go back). Monthly repeats fall on day_of_month (default: day's own), or the last day of a
+    shorter month.
+    """
+    if unit == 'months':
+        return _add_months(day, steps * frequency, day_of_month or day.day)
+    return day + timedelta(days=steps * frequency)
 
 
 class RecurringModel(db.Model):
@@ -48,9 +62,7 @@ class RecurringModel(db.Model):
     
     def shift(self, from_date, steps=1):
         """The occurrence `steps` repeats after from_date (negative steps go back)."""
-        if self.frequency_unit == 'months':
-            return _add_months(from_date, steps * self.frequency, self.day_of_month)
-        return from_date + timedelta(days=steps * self.frequency)
+        return shift_date(from_date, self.frequency, self.frequency_unit, steps, self.day_of_month)
 
     @property
     def advance_to_next(self):

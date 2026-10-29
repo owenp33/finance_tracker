@@ -277,6 +277,9 @@ class DbService:
     def get_account_recurring(self, account_id):
         return RecurringModel.query.filter_by(account_id=account_id).all()
 
+    def get_user_recurring(self, user_id):
+        return RecurringModel.query.join(AccountModel).filter(AccountModel.user_id == user_id).all()
+
     # BUDGET OPERATIONS =========================================================
 
     def get_user_budgets(self, user_id, period=None):

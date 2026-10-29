@@ -155,7 +155,8 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 (`process_due_recurring`), and series membership (`match_candidates`, `link_transaction`,
 `unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`,
 `replace_occurrence` and `remember_alias` for imports, and `template_dict` for API
-responses); see [Recurring transactions](#recurring-transactions). Occurrences are
+responses), and finding series among a user's transactions (`detect_series`, using the pure
+`series_detection` module); see [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
@@ -424,7 +425,8 @@ bank from being counted twice. Otherwise a transaction is generated.
 **Schedules.** A template repeats every `frequency` days (`frequency_unit = 'days'`) or every
 `frequency` calendar months (`'months'`: monthly is 1, quarterly 3, yearly 12). A monthly template
 falls on `day_of_month`, or on the last day of a shorter month, without drifting: a template on
-the 31st runs Jan 31, Feb 28, Mar 31. `RecurringModel.shift()` does this date math, and `to_dict`
+the 31st runs Jan 31, Feb 28, Mar 31. `shift_date()` in `models/recurring.py` does this date math
+(`RecurringModel.shift()` and series detection use it; `MATCH_WINDOW_DAYS` lives there too), and `to_dict`
 reports `last_date` (the latest occurrence generated so far) so clients don't repeat it.
 `day_of_month` is set from the next date when a template is created or becomes monthly, and again
 when its next date moves to a different day; re-saving an unchanged next date keeps it. The
@@ -481,6 +483,30 @@ always one more than their count.
   (`replace_occurrence`), and a confirmed similar spelling becomes an alias of the series
   (`recurring_aliases`). Aliases only affect import matching; generation and suggestions still
   compare the template's vendor. See [Importing files](#importing-files).
+
+**Finding series** (`RecurringService.detect_series(user_id)`, rules in the pure
+`series_detection.detect_series`) lists series hiding among transactions that aren't in one yet,
+for the user to confirm; nothing is written.
+- **Who counts:** payments on one account to one vendor (`vendor_key`), moving money the same
+  way. A vendor's payments split into groups by size (a payment more than 50% from its group's
+  median starts a new one), so a rent and its small fee are two series. Transactions already in
+  a series, transfers, and vendors that already have a template on that account (their
+  suggestions cover them) are left out.
+- **Schedule:** one of the five (`SCHEDULES`: weekly, biweekly, monthly, quarterly, annually).
+  The schedule's dates run through one of the payments' dates (the `anchor`, chosen to keep the
+  most payments, then the fewest days off); each date from the first payment to the last can be
+  kept by one payment within its window: `MATCH_WINDOW_DAYS` (3), but 1 day for weekly and 2
+  for biweekly (`SHORT_SCHEDULE_WINDOWS`), since 3 days either way would cover half the period
+  or more and any habit would pass. A group is a series with at least `MIN_PAYMENTS` (4)
+  payments and when the dates kept are at least `MIN_SCHEDULE_SHARE` (70%) of all its payments
+  plus the dates missed, so a missed date and an extra payment both count against it, and a late
+  payment only once.
+- **Ongoing or ended:** ongoing when the next scheduled payment is overdue by no more than the
+  window as of the account's newest transaction (not today: imports lag). An ongoing series'
+  `next_date` is the schedule's first date on or after today, so a template made from it never
+  fills in the past.
+- Each series carries its most common vendor spelling and category, the latest payment's
+  amount, its schedule, and its payments; ongoing ones come first, then the most recently paid.
 - **Needs attention.** Every API response that returns a template uses
   `RecurringService.template_dict`, which adds `suggestion_count` (transactions currently
   suggested), `needs_attention` (true while any are left), and `dismissed_transaction_ids`
@@ -513,7 +539,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>` |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET /detected` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
@@ -540,6 +566,10 @@ Details worth knowing:
   invalid link or unlink is a 400. `POST /recurring/<id>/dismissals/<transaction_id>` dismisses a
   suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count`,
   `needs_attention`, and `dismissed_transaction_ids`.
+- `GET /recurring/detected` returns `{series: [{account_id, vendor, category, amount, frequency,
+  frequency_unit, ongoing, next_date, transactions}]}` (see Finding series): `amount` is the
+  latest payment's, `next_date` is null for an ended series, and `transactions` are the payments,
+  oldest first.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -612,6 +642,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
+| `test_series_detection.py` | Finding recurring series: the pure rules, and `GET /recurring/detected` |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |

@@ -8,18 +8,16 @@ so balances and budget flags stay in one place.
 from datetime import date, timedelta
 from extensions import db
 from models.transaction import TransactionModel
-from models.recurring import RecurringModel, FREQUENCY_UNITS
+from models.recurring import RecurringModel, FREQUENCY_UNITS, MATCH_WINDOW_DAYS
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
+from services import series_detection
 from services.account_service import AccountService
 from services.db_service import DbService
-from services.vendor_match import clean_vendor
+from services.vendor_match import clean_vendor, vendor_key
 
 db_service = DbService()
 account_service = AccountService()
-
-# A transaction up to this many days from an occurrence still counts as that occurrence
-MATCH_WINDOW_DAYS = 3
 
 ALIAS_LENGTH = RecurringAliasModel.alias.type.length
 
@@ -363,6 +361,17 @@ class RecurringService:
             db.session.delete(dismissal)
             db.session.commit()
         return rec
+
+    # FINDING SERIES ============================================================
+
+    def detect_series(self, user_id):
+        """
+        Recurring series among the user's transactions that aren't in a series yet, for the user
+        to confirm (series_detection.detect_series). Vendors that already have a template on the
+        account are left to that template's suggestions.
+        """
+        tracked = {(r.account_id, vendor_key(r.vendor)) for r in db_service.get_user_recurring(user_id)}
+        return series_detection.detect_series(db_service.get_all_user_transactions(user_id), date.today(), tracked)
 
     def template_dict(self, rec):
         """

@@ -15,10 +15,11 @@ import numbers
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from models.account import AccountModel
+from models.recurring import MATCH_WINDOW_DAYS
 from services import import_parser
 from services.db_service import DbService
 from services.account_service import AccountService
-from services.recurring_service import MATCH_WINDOW_DAYS, RecurringService
+from services.recurring_service import RecurringService
 from services.vendor_match import amount_close, vendor_key, vendor_match
 
 db_service = DbService()
