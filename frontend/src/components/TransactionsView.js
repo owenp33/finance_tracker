@@ -23,6 +23,8 @@ function TransactionsView({
   onLinkToRecurring,
   onDismissSuggestion,
   onUnlinkFromRecurring,
+  onAddDetectedSeries,
+  onDismissDetectedSeries,
   onImportDone,
   onCreateAccount,
   onEditAccount,
@@ -84,6 +86,8 @@ function TransactionsView({
           onLinkToRecurring={onLinkToRecurring}
           onDismissSuggestion={onDismissSuggestion}
           onUnlinkFromRecurring={onUnlinkFromRecurring}
+          onAddDetectedSeries={onAddDetectedSeries}
+          onDismissDetectedSeries={onDismissDetectedSeries}
         />
       )}
 

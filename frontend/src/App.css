@@ -861,6 +861,28 @@ body {
   gap: 15px;
 }
 
+/* "Find recurring": found series, in the templates' own card style, framed above the list */
+.find-recurring {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 20px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 10px;
+}
+
+.find-recurring h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.find-recurring .recurring-info small {
+  color: #999;
+  font-size: 0.85rem;
+}
+
 .recurring-item {
   display: flex;
   flex-direction: column;

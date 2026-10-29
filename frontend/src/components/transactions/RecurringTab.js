@@ -4,6 +4,7 @@ import TransactionForm from '../TransactionForm';
 import TransactionList from '../TransactionList';
 import FrequencySelect from './FrequencySelect';
 import RecurringSuggestions from './RecurringSuggestions';
+import FindRecurring from './FindRecurring';
 import { sortList, dateStrToDate, formatDate, frequencyLabel } from './utils';
 
 function RecurringTab({
@@ -22,8 +23,11 @@ function RecurringTab({
   onLinkToRecurring,
   onDismissSuggestion,
   onUnlinkFromRecurring,
+  onAddDetectedSeries,
+  onDismissDetectedSeries,
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [showFinder, setShowFinder] = useState(false);
   const [reviewingIds, setReviewingIds] = useState(new Set());
   const [recurringSort, setRecurringSort] = useState('date-asc');
 
@@ -91,11 +95,17 @@ function RecurringTab({
             <option value="vendor-asc">Vendor (A → Z)</option>
             <option value="vendor-desc">Vendor (Z → A)</option>
           </select>
+          <button className="btn btn-ghost" onClick={() => setShowFinder(f => !f)}>
+            {showFinder ? 'Hide found series' : 'Find recurring'}
+          </button>
           <button className="btn btn-primary" onClick={() => setShowForm(f => !f)}>
             {showForm ? 'Cancel' : '+ Add Recurring'}
           </button>
         </div>
       </div>
+      {showFinder && (
+        <FindRecurring accounts={accounts} onAdd={onAddDetectedSeries} onDismiss={onDismissDetectedSeries} />
+      )}
       {showForm && (
         <TransactionForm
           onSubmit={async (data) => { await onAdd(data); setShowForm(false); }}

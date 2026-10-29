@@ -33,3 +33,20 @@ export const unlinkFromRecurring = (id, transactionId) =>
 
 export const dismissSuggestion = (id, transactionId) =>
   fetchAPI(`/api/recurring/${id}/dismissals/${transactionId}`, { method: 'POST' }).then(d => d.recurring);
+
+// Finding series: recurring series among the user's transactions that aren't templates yet. A
+// series is named by its payments' ids, exactly as listed.
+export const getDetectedSeries = () =>
+  fetchAPI('/api/recurring/detected').then(d => d.series);
+
+export const addDetectedSeries = (transactionIds) =>
+  fetchAPI('/api/recurring/detected', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+  }).then(d => d.recurring);
+
+export const dismissDetectedSeries = (transactionIds) =>
+  fetchAPI('/api/recurring/detected/dismissals', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+  });

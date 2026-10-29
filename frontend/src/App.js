@@ -241,6 +241,26 @@ function App() {
     }
   };
 
+  // A found series becomes a template linked to its payments, so templates, the upcoming list
+  // and transactions all reload
+  const handleAddDetectedSeries = async (transactionIds) => {
+    try {
+      await recurringAPI.addDetectedSeries(transactionIds);
+      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Only the found-series list changes, and it reloads itself
+  const handleDismissDetectedSeries = async (transactionIds) => {
+    try {
+      await recurringAPI.dismissDetectedSeries(transactionIds);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleCreateAccount = async (accountId, accountName) => {
     try {
       const account = await accountsAPI.createAccount(accountId, accountName);
@@ -375,6 +395,8 @@ function App() {
             onLinkToRecurring={handleLinkToRecurring}
             onDismissSuggestion={handleDismissSuggestion}
             onUnlinkFromRecurring={handleUnlinkFromRecurring}
+            onAddDetectedSeries={handleAddDetectedSeries}
+            onDismissDetectedSeries={handleDismissDetectedSeries}
             onToggleTransfer={handleToggleTransfer}
             onToggleTransferMany={handleToggleTransferMany}
             onPairTransfer={handlePairTransfer}

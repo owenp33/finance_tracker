@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RecurringTab from '../components/transactions/RecurringTab';
 import TransactionsView from '../components/TransactionsView';
 import { CategoryColorProvider } from '../CategoryColorContext';
-import { getSuggestions } from '../api/recurring';
+import { getSuggestions, getDetectedSeries } from '../api/recurring';
 
 jest.mock('../api/recurring');
 
@@ -15,6 +15,7 @@ const template = (overrides) => ({
 
 const handlers = () => ({
   onEditRecurring: jest.fn(), onLinkToRecurring: jest.fn(), onDismissSuggestion: jest.fn(), onDelete: jest.fn(),
+  onAddDetectedSeries: jest.fn().mockResolvedValue(), onDismissDetectedSeries: jest.fn().mockResolvedValue(),
 });
 
 const renderTab = (recurring, given = {}) => {
@@ -263,4 +264,85 @@ test('a template with no transactions shows no note', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await editField('e.g., Netflix', 'Claude Pro');
   expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
+});
+
+// ── Find recurring ───────────────────────────────────────────────────────────
+
+const payment = (id, date, overrides) => ({
+  id, date, vendor: 'Netflix', category: 'Subscriptions', amount: -15.49, account_id: 1, ...overrides,
+});
+
+const rent = (id, date) => payment(id, date, { vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900 });
+
+const FOUND = [
+  {
+    account_id: 1, vendor: 'Netflix', category: 'Subscriptions', amount: -15.49, frequency: 1, frequency_unit: 'months',
+    ongoing: true, next_date: '2026-11-05',
+    transactions: [payment(51, '2026-06-05'), payment(52, '2026-07-05'), payment(53, '2026-08-06'), payment(54, '2026-09-04')],
+  },
+  {
+    account_id: 1, vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900, frequency: 1, frequency_unit: 'months',
+    ongoing: false, next_date: null,
+    transactions: [rent(61, '2025-04-01'), rent(62, '2025-05-01'), rent(63, '2025-06-01'), rent(64, '2025-07-08')],
+  },
+];
+
+const openFinder = async (found = FOUND) => {
+  getDetectedSeries.mockResolvedValue(found);
+  const props = renderTab([]);
+  await userEvent.click(screen.getByRole('button', { name: 'Find recurring' }));
+  return props;
+};
+
+const foundCard = async (vendor) => (await screen.findByText(vendor)).closest('.recurring-item');
+
+test('Find recurring lists the series found, with their schedule and where they stand', async () => {
+  await openFinder();
+  const netflix = await foundCard('Netflix');
+  expect(within(netflix).getByText('Subscriptions · Monthly · 4 payments · Discover')).toBeInTheDocument();
+  expect(within(netflix).getByText('Ongoing · next Nov 5, 2026')).toBeInTheDocument();
+  expect(within(netflix).getByText('-$15.49')).toBeInTheDocument();
+  const shelby = screen.getByText('Shelby Jackson LLC').closest('.recurring-item');
+  expect(within(shelby).getByText('Ended · last paid Jul 8, 2025')).toBeInTheDocument();
+  expect(getDetectedSeries).toHaveBeenCalledTimes(1);
+});
+
+test("a found series' payments can be shown, newest first", async () => {
+  await openFinder();
+  const netflix = await foundCard('Netflix');
+  await userEvent.click(within(netflix).getByRole('button', { name: /4 payments/ }));
+  expect(within(netflix).getAllByText(/^Subscriptions · \w{3} \d+$/).map(e => e.textContent)).toEqual([
+    'Subscriptions · Sep 4', 'Subscriptions · Aug 6', 'Subscriptions · Jul 5', 'Subscriptions · Jun 5',
+  ]);
+});
+
+test('adding a found series sends its payments, then looks again', async () => {
+  const { onAddDetectedSeries } = await openFinder();
+  await userEvent.click(within(await foundCard('Netflix')).getByRole('button', { name: 'Add series' }));
+  expect(onAddDetectedSeries).toHaveBeenCalledWith([51, 52, 53, 54]);
+  await waitFor(() => expect(getDetectedSeries).toHaveBeenCalledTimes(2));
+});
+
+test("'Not recurring' asks first, then sends the series' payments and looks again", async () => {
+  const { onDismissDetectedSeries } = await openFinder();
+  const shelby = await foundCard('Shelby Jackson LLC');
+  const confirm = jest.spyOn(window, 'confirm');
+
+  confirm.mockReturnValueOnce(false);
+  await userEvent.click(within(shelby).getByRole('button', { name: 'Not recurring' }));
+  expect(onDismissDetectedSeries).not.toHaveBeenCalled();
+
+  confirm.mockReturnValueOnce(true);
+  await userEvent.click(within(shelby).getByRole('button', { name: 'Not recurring' }));
+  expect(confirm).toHaveBeenLastCalledWith("Hide Shelby Jackson LLC for good? It won't be suggested again.");
+  expect(onDismissDetectedSeries).toHaveBeenCalledWith([61, 62, 63, 64]);
+  await waitFor(() => expect(getDetectedSeries).toHaveBeenCalledTimes(2));
+  confirm.mockRestore();
+});
+
+test('Find recurring says when there is nothing new, and hides again', async () => {
+  await openFinder([]);
+  expect(await screen.findByText('No new recurring series found.')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hide found series' }));
+  expect(screen.queryByText('No new recurring series found.')).not.toBeInTheDocument();
 });
