@@ -883,6 +883,13 @@ body {
   font-size: 0.85rem;
 }
 
+/* Templates that never generate again, below the active ones */
+.recurring-finished-heading {
+  margin: 35px 0 15px;
+  color: #666;
+  font-size: 1.2rem;
+}
+
 .recurring-item {
   display: flex;
   flex-direction: column;

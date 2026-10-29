@@ -212,6 +212,42 @@ test('a finished template with no occurrences left says so instead of a last dat
   expect(screen.getByText(/Subscriptions · Monthly · No occurrences$/)).toBeInTheDocument();
 });
 
+// ── Finished templates ───────────────────────────────────────────────────────
+
+const shelby = (overrides) => template({
+  id: 9, date: '2025-01-01', vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900,
+  next_date: '2025-08-01', last_date: '2025-07-01', number: 7, idx: 8, ...overrides,
+});
+
+const follows = (earlier, later) => Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+test('finished templates are listed under their own heading, after the active ones', () => {
+  renderTab([shelby(), template()]);
+  expect(screen.getByRole('heading', { name: /^Recurring Transactions/ })).toHaveTextContent('Recurring Transactions 1');
+  const heading = screen.getByRole('heading', { name: 'Finished 1' });
+  expect(follows(screen.getByText('Anthropic').closest('.recurring-item'), heading)).toBe(true);
+  expect(follows(heading, screen.getByText('Shelby Jackson LLC').closest('.recurring-item'))).toBe(true);
+});
+
+test('without finished templates there is no Finished heading', () => {
+  renderTab([template()]);
+  expect(screen.queryByRole('heading', { name: /^Finished/ })).not.toBeInTheDocument();
+});
+
+test('when every template is finished, the active list says so', () => {
+  renderTab([shelby()]);
+  expect(screen.getByText('No active recurring transactions')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Finished 1' })).toBeInTheDocument();
+});
+
+test("a finished template's last date is its last payment's, with the year", () => {
+  const payments = ['2025-05-01', '2025-06-01', '2025-07-08'].map((date, i) => ({
+    id: 70 + i, date, vendor: 'Shelby Jackson LLC', category: 'Rent', amount: -900, recurring_id: 9, recurring_index: 5 + i,
+  }));
+  renderTab([shelby()], { transactions: payments });
+  expect(screen.getByText(/Rent · Monthly · Last: Jul 8, 2025$/)).toBeInTheDocument();   // its schedule says Jul 1
+});
+
 // ── Renaming a template carries over to its series ───────────────────────────
 
 const renderWithSeries = (count) => {
