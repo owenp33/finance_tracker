@@ -226,7 +226,7 @@ mkdir ~/money-tracker
 
 ## Authentication
 
-Passwords are stored as salted hashes (Werkzeug's `generate_password_hash`, scrypt by default), never in plain text. Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests; when it expires or is rejected, the app returns to the login screen with the reason. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
+Passwords are stored as salted hashes (Werkzeug's `generate_password_hash`, scrypt by default), never in plain text. Registration and login return a JWT (24 h expiry). The token is stored in `localStorage` and sent as a `Bearer` header on all API requests; when it expires or is rejected, the app returns to the login screen with the reason, which goes away once you log back in. Every protected route verifies the token, then checks that the requested resource belongs to the authenticated user via ownership middleware decorators (`owns_account`, `owns_transaction`, etc.).
 
 ---
 

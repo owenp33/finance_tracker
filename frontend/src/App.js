@@ -40,17 +40,26 @@ function App() {
   const { analytics, loadAnalytics } = useAnalytics({ setError });
   // AUTH HANDLERS =============================================================
 
-  const handleLogout = useCallback(() => {
+  // Forgets the login; the caller decides what the login screen says
+  const endSession = useCallback(() => {
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('token');
   }, []);
 
+  // Logging out on purpose leaves no message behind on the login screen
+  const handleLogout = useCallback(() => {
+    endSession();
+    setError(null);
+  }, [endSession]);
+
+  // A message from before logging in (an expired login, a failed attempt) no longer applies
   const startSession = (data) => {
     setToken(data.access_token);
     setUser(data.user);
     setIsAuthenticated(true);
+    setError(null);
     localStorage.setItem('token', data.access_token);
   };
 
@@ -309,24 +318,24 @@ function App() {
           setUser(data.user);
           setIsAuthenticated(true);
         } catch {
-          handleLogout();
+          endSession();   // an expired login has already said so (see below)
         }
       }
       setLoading(false);
     };
     checkAuth();
-  }, [token, handleLogout]);
+  }, [token, endSession]);
 
   // A protected request found the login missing, expired, or invalid: back to the login screen,
   // showing the server's message there
   useEffect(() => {
     const onSessionExpired = (e) => {
-      handleLogout();
+      endSession();
       setError(e.detail);
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
-  }, [handleLogout]);
+  }, [endSession]);
 
   useEffect(() => {
     if (isAuthenticated) {
