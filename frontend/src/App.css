@@ -4,6 +4,13 @@
   box-sizing: border-box;
 }
 
+/* Chart palette (Phase V). Orange means over budget or a warning, always with text. */
+:root {
+  --chart-blue: #2a78d6;
+  --chart-orange: #eb6834;
+  --chart-aqua: #1baf7a;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -3093,40 +3100,165 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Progress bar inside budget row ───────────────────────────────────────── */
-.bri-progress {
+/* ── Budget pace inside budget row (Phase V, V1) ──────────────────────────── */
+.budget-pace {
   padding: 2px 4px 6px;
 }
 
-.bri-bar-track {
-  height: 6px;
-  background: #e9ecef;
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 5px;
+.budget-pace-chart {
+  position: relative;
 }
 
-.bri-bar-fill {
+/* The padding gives the marker room and the bar a bigger hit target */
+.budget-pace-bar {
+  position: relative;
+  padding: 4px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.budget-pace-bar:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* The track is a lighter step of the bar's own colour (set inline) */
+.budget-pace-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.budget-pace-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.budget-pace-fill {
+  position: relative;
   height: 100%;
-  background: #667eea;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.4s ease;
 }
 
-.bri-bar-fill.over {
-  background: #dc2626;
+/* Over budget: orange with a hatch, so it never reads as an orange category */
+.budget-pace-fill.over {
+  background: repeating-linear-gradient(135deg, var(--chart-orange) 0 4px, #f6b49a 4px 7px);
 }
 
-.bri-bar-meta {
+/* Where the expected spend sits by now; the white ring keeps it visible over any fill */
+.budget-pace-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #1a1a2e;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.budget-pace-details {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 8px 10px;
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.budget-pace-details dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 14px;
+}
+
+.budget-pace-details dt {
+  color: #cbd5e1;
+}
+
+.budget-pace-details dd {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-pace-meta {
   display: flex;
   justify-content: space-between;
+  margin-top: 2px;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: #6b7280;
 }
 
-.bri-bar-meta .over {
-  color: #dc2626;
+.budget-pace-status {
   font-weight: 600;
+}
+
+/* A darker step of the chart orange, readable as text on white */
+.budget-pace-status.over {
+  color: #b5441c;
+}
+
+/* ── "View as table" under a chart (Phase V) ──────────────────────────────── */
+.view-as-table {
+  margin-top: 14px;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+.view-as-table summary {
+  width: fit-content;
+  color: #6b7280;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.view-as-table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.view-as-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.view-as-table caption {
+  padding-bottom: 6px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.view-as-table th,
+.view-as-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.view-as-table thead th {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.view-as-table th:first-child {
+  text-align: left;
+}
+
+.view-as-table tbody th {
+  font-weight: 500;
 }
 
 /* ── Expand button ────────────────────────────────────────────────────────── */

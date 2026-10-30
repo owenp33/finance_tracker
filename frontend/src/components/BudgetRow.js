@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
-import BudgetProgressBar from './BudgetProgressBar';
+import BudgetPace from './BudgetPace';
 import BudgetTransactionList from './BudgetTransactionList';
 import ColorPickerPopover from './ColorPickerPopover';
 
 function BudgetRow({
   item,
+  pace,
+  current,
   onAmountBlur,
   onRolloverToggle,
   onDelete,
@@ -106,7 +108,7 @@ function BudgetRow({
         </button>
       </div>
 
-      <BudgetProgressBar item={item} showCategory={false} compact />
+      <BudgetPace category={item.category} pace={pace} current={current} />
 
       <BudgetTransactionList transactions={categoryTransactions} />
 

@@ -13,7 +13,7 @@ This README covers what the app does and how to run it. For how the backend is b
 - **Transfers** — link paired transactions across accounts (auto-detected or manually paired); both balances reflect the move
 - **Reimbursements** — flag positive transactions as reimbursements to offset category spending in budgets while still crediting the account balance normally
 - **Recurring transactions** — templates repeat weekly, biweekly, monthly, quarterly, or annually; due occurrences appear automatically, an existing matching charge is linked instead of duplicated, the Recurring tab suggests past transactions that belong to a series, and "Find recurring" spots series you haven't set up yet (ongoing or already ended)
-- **Budget planning** — set monthly allocations per category with optional rollover; visual progress bars show spent vs. allocated; transactions within each category are expandable inline
+- **Budget planning** — set monthly allocations per category with optional rollover; each category's bar shows how much of its budget is spent, with a marker where an even pace through the month would be today and the status in words ("$15 ahead", "$43 under", "On pace", "Over by $19.40"); hover or tap a bar for the expected spend and projected month end, or view the whole month as a table; transactions within each category are expandable inline
 - **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats; accounts the file names that you don't have yet can be created, mapped to an existing account, or skipped; a row that matches a recurring transaction already in the app can replace it instead of duplicating it
 - **Insights** — spending reports and charts aggregated across all accounts
 - **Exports** — for any period and set of accounts, download a re-importable CSV with running balances, or a PDF report with summary charts plus each account's balance chart and transactions (over-budget rows highlighted)
@@ -52,7 +52,7 @@ finance_tracker/
 │   │   ├── api/                # Per-domain wrappers; every request goes through api/client.js
 │   │   ├── hooks/              # Data fetching (accounts, transactions, budgets, ...)
 │   │   ├── components/         # Views and UI components (feature folders insights/, transactions/)
-│   │   └── utils/              # Shared pure helpers (money, dates, sequencing)
+│   │   └── utils/              # Shared pure helpers (money, dates, sequencing, budget pace)
 │   ├── nginx.conf
 │   └── Dockerfile
 ├── docs/
@@ -108,8 +108,8 @@ There's no router: `App.js` switches between the Dashboard, Transactions, Budget
 
 ### SOLID in the budget UI
 The budget UI follows SOLID principles explicitly:
-- **SRP**: `BudgetRow`, `BudgetProgressBar`, `BudgetTransactionList`, `ColorPickerPopover`, and `AddBudgetForm` each have one job
-- **OCP**: `BudgetProgressBar` accepts a `compact` prop to render in either the dashboard layout or the budget row layout without modifying the component
+- **SRP**: `BudgetRow`, `BudgetPace`, `BudgetTransactionList`, `ColorPickerPopover`, and `AddBudgetForm` each have one job; the pace arithmetic lives in pure functions (`src/utils/budgetPace.js`)
+- **OCP**: `BudgetPace` draws whatever expected spend it's given (an even pace through the month, from `evenExpectation`), so a new way of pacing a category doesn't change the component
 - **ISP**: `BudgetingView` pre-filters transactions by category and passes only the relevant slice to each `BudgetRow` — rows do not receive data they don't need
 - **DIP**: `BudgetingView` depends on the `useBudgetData` hook abstraction, not directly on fetch calls
 

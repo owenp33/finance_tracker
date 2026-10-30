@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import BudgetRow from './BudgetRow';
 import AddBudgetForm from './AddBudgetForm';
+import ViewAsTable from './ViewAsTable';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -8,10 +9,29 @@ import {
   getNextPeriod,
   formatPeriod,
 } from '../hooks/useBudgetData';
+import { todayISO, monthElapsed } from '../utils/dates';
+import { formatCents } from '../utils/money';
+import { budgetPace, evenExpectation, percentUsed, paceLabel } from '../utils/budgetPace';
 
 const getCurrentPeriod = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// The rows' paces as a table; the current month adds the expected and projected amounts
+const paceTableColumns = (current) => [
+  'Category', 'Spent', 'Budget', 'Used',
+  ...(current ? ['Expected by today', 'Projected month end'] : []),
+  'Status',
+];
+
+const paceTableRow = (item, pace, current) => {
+  const used = percentUsed(pace);
+  return [
+    item.category, formatCents(pace.spent), formatCents(pace.effective), used === null ? '—' : `${used}%`,
+    ...(current ? [formatCents(pace.expected), formatCents(pace.projected)] : []),
+    paceLabel(pace),
+  ];
 };
 
 function BudgetingView({ transactions, onBudgetChange }) {
@@ -43,6 +63,13 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const totalSpent = progress.reduce((sum, item) => sum + item.spent, 0);
   const unallocated = monthlyIncome - totalAllocated;
   const incomeSet = monthlyIncome > 0;
+
+  // Each row's pace: even through the month, so a past month expects its whole budget and a
+  // future one nothing yet
+  const today = todayISO();
+  const isCurrentMonth = period === today.slice(0, 7);
+  const elapsed = monthElapsed(period, today);
+  const paces = progress.map(item => budgetPace(item, evenExpectation(item, elapsed)));
 
   const budgetedCategories = new Set(progress.map(p => p.category));
   const suggestedCategories = [
@@ -183,20 +210,29 @@ function BudgetingView({ transactions, onBudgetChange }) {
         ) : progress.length === 0 ? (
           <p className="no-data">No budgets set for this period. Add a category above.</p>
         ) : (
-          <div className="budget-rows">
-            {progress.map(item => (
-              <BudgetRow
-                key={item.id}
-                item={item}
-                onAmountBlur={handleAmountBlur}
-                onRolloverToggle={handleRolloverToggle}
-                onDelete={handleDelete}
-                hasSaveError={saveErrors.has(item.id)}
-                monthlyIncome={monthlyIncome}
-                categoryTransactions={txsByCategory[item.category] || []}
-              />
-            ))}
-          </div>
+          <>
+            <div className="budget-rows">
+              {progress.map((item, i) => (
+                <BudgetRow
+                  key={item.id}
+                  item={item}
+                  pace={paces[i]}
+                  current={isCurrentMonth}
+                  onAmountBlur={handleAmountBlur}
+                  onRolloverToggle={handleRolloverToggle}
+                  onDelete={handleDelete}
+                  hasSaveError={saveErrors.has(item.id)}
+                  monthlyIncome={monthlyIncome}
+                  categoryTransactions={txsByCategory[item.category] || []}
+                />
+              ))}
+            </div>
+            <ViewAsTable
+              caption={`Budget pace, ${formatPeriod(period)}`}
+              columns={paceTableColumns(isCurrentMonth)}
+              rows={progress.map((item, i) => paceTableRow(item, paces[i], isCurrentMonth))}
+            />
+          </>
         )}
       </div>
 
