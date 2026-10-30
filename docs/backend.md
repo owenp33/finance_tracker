@@ -156,7 +156,8 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 `unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`,
 `replace_occurrence` and `remember_alias` for imports, and `template_dict` for API
 responses), and finding series among a user's transactions (`detect_series`, using the pure
-`series_detection` module; `add_detected_series`, `dismiss_detected_series`); see
+`series_detection` module; `add_detected_series`, `dismiss_detected_series`), and the
+occurrences still to come (`projected_occurrences`); see
 [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
@@ -486,6 +487,15 @@ always one more than their count.
   (`recurring_aliases`). Aliases only affect import matching; generation and suggestions still
   compare the template's vendor. See [Importing files](#importing-files).
 
+**Projection** (`RecurringService.projected_occurrences(user_id, days)`) lists the occurrences
+still to come from today through `days` days ahead, by date, without writing anything: each
+template's schedule from its `next_date` on its own anchor (`shift`, so month ends clamp), while
+a limited series has occurrences left (`idx <= number`; finished templates list nothing). Dates
+before today are left out (generation fills them at the next page load), and so is an occurrence
+whose real charge is already in: an exact match (`match_candidates`) that generation would link
+instead. A charge stands in for one occurrence only, the earliest, as generation would use it.
+Income templates are included; the caller decides what to count.
+
 **Finding series** (`RecurringService.detect_series(user_id)`, rules in the pure
 `series_detection.detect_series`) lists series hiding among transactions that aren't in one yet,
 for the user to confirm; nothing is written.
@@ -555,7 +565,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals` |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
@@ -589,6 +599,9 @@ Details worth knowing:
   adds it as a template and returns it (201); `POST /recurring/detected/dismissals` with the same
   body marks it "Not recurring". A missing or malformed list, or a series that has changed since
   it was listed, is a 400.
+- `GET /recurring/projection?days=60` returns `{occurrences: [{recurring_id, account_id, date,
+  vendor, category, amount}]}` by date (see Projection). `days` defaults to 60; anything but a
+  whole number from 1 to 366 is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -662,6 +675,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_import_parser.py` | The pure parsing functions |
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
+| `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
@@ -714,9 +728,9 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
   template lists. Fine at today's scale; cache or store it if templates or history grow large.
 - **Template responses don't say which account they're on.** `RecurringModel.to_dict` has no
   `account_id`; a client only knows it from having asked `GET /accounts/<id>/recurring`.
-- **Analytics count reimbursements as income.** `AnalyticsService.generate_report` (the
-  `/analytics` routes and the PDF's summary pages) counts every positive transaction that isn't
-  a transfer as income, while budgets and over-budget flags count a reimbursement against its
-  category's spending.
+- **Analytics' spending by category ignores reimbursements.** `AnalyticsService.generate_report`
+  (the `/analytics` routes and the PDF's summary pages) counts a reimbursement as income, as
+  intended for the totals, but doesn't subtract it from its category's spending, while budgets
+  and over-budget flags do.
 - **`authenticate` answers faster for an unknown username** (no hash check), which leaks whether
   a username exists to someone timing requests.

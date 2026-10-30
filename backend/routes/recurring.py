@@ -179,6 +179,38 @@ def detected_series():
 
 BAD_TRANSACTION_IDS = "'transaction_ids' must be a list of transaction ids."
 
+DEFAULT_PROJECTION_DAYS = 60
+MAX_PROJECTION_DAYS = 366
+
+
+@recurring_bp.route('/projection', methods=['GET'])
+@jwt_required()
+def projection():
+    """
+    The user's recurring occurrences still to come, from today through ?days= days ahead
+    (default DEFAULT_PROJECTION_DAYS, at most MAX_PROJECTION_DAYS), by date.
+    """
+    try:
+        days = int(request.args.get('days', DEFAULT_PROJECTION_DAYS))
+    except ValueError:
+        days = 0
+    if not 1 <= days <= MAX_PROJECTION_DAYS:
+        return jsonify({'success': False,
+                        'error': f"'days' must be a whole number from 1 to {MAX_PROJECTION_DAYS}."}), 400
+
+    occurrences = recurring_service.projected_occurrences(get_jwt_identity(), days)
+    return jsonify({'success': True, 'occurrences': [
+        {
+            'recurring_id': rec.id,
+            'account_id':   rec.account_id,
+            'date':         day.isoformat(),
+            'vendor':       rec.vendor,
+            'category':     rec.category,
+            'amount':       rec.amount,
+        }
+        for rec, day in occurrences
+    ]}), 200
+
 
 def _transaction_ids():
     """The request body's non-empty list of transaction ids (whole numbers), or None when it isn't one."""
