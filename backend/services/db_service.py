@@ -14,6 +14,7 @@ from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
 from models.series_dismissal import SeriesDismissalModel
+from models.scheduled_pace import ScheduledPaceModel
 
 
 class DbService:
@@ -302,4 +303,11 @@ class DbService:
     def get_budget(self, budget_id):
         from models.budget import BudgetModel
         return db.session.get(BudgetModel, budget_id)
+
+    def get_scheduled_pace(self, user_id, category):
+        return db.session.get(ScheduledPaceModel, (user_id, category))
+
+    def get_scheduled_pace_categories(self, user_id):
+        """The budget categories the user paces by their recurring charges."""
+        return {p.category for p in ScheduledPaceModel.query.filter_by(user_id=user_id)}
 

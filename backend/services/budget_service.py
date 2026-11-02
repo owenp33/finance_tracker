@@ -7,6 +7,7 @@ calculation. Raw reads (get_budget, get_user_budgets) stay in db_service.
 from datetime import date
 from extensions import db
 from models.budget import BudgetModel
+from models.scheduled_pace import ScheduledPaceModel
 from models.account import AccountModel
 from models.transaction import TransactionModel
 from services.db_service import DbService
@@ -24,6 +25,7 @@ class BudgetService:
         Spending is the absolute sum of negative transactions (expenses)
         across all of the user's accounts for the given calendar month,
         matching the sign convention used throughout analytics_service.py.
+        Each row also says whether its category has a scheduled pace.
         """
         budgets = BudgetModel.query.filter_by(user_id=user_id, period=period).all()
         if not budgets:
@@ -73,6 +75,8 @@ class BudgetService:
         for t in reimbursement_rows:
             spending[t.category] = max(0, spending.get(t.category, 0) - t.amount_cents)
 
+        scheduled = db_service.get_scheduled_pace_categories(user_id)
+
         result = []
         for budget in budgets:
             spent_cents           = spending.get(budget.category, 0)
@@ -93,6 +97,7 @@ class BudgetService:
                 'remaining_cents':      remaining_cents,
                 'rollover':             budget.rollover,
                 'over_budget':          remaining_cents < 0,
+                'scheduled_pace':       budget.category in scheduled,
             })
 
         result.sort(key=lambda x: x['category'])
@@ -161,3 +166,31 @@ class BudgetService:
 
         db.session.commit()
         return True
+
+    # SCHEDULED PACE ============================================================
+
+    def set_scheduled_pace(self, user_id, category, scheduled):
+        """
+        Pace a budget category by its recurring charges (scheduled=True) or evenly (False), in
+        every month. The category matches exactly, as its budgets name it, and the setting stays
+        when its budgets are deleted. Raises ValueError unless the category is text of 1 to 50
+        characters and `scheduled` is a boolean. Setting the pace a category already has changes
+        nothing.
+        """
+        if not isinstance(category, str):
+            raise ValueError("'category' must be text.")
+        if not category.strip():
+            raise ValueError("'category' can't be empty.")
+        limit = ScheduledPaceModel.category.type.length
+        if len(category) > limit:
+            raise ValueError(f"'category' must be at most {limit} characters.")
+        if not isinstance(scheduled, bool):
+            raise ValueError("'scheduled' must be true or false.")
+
+        user_id = int(user_id)   # the JWT identity is a string; the session's keys hold ints
+        setting = db_service.get_scheduled_pace(user_id, category)
+        if scheduled and setting is None:
+            db.session.add(ScheduledPaceModel(user_id=user_id, category=category))
+        elif not scheduled and setting is not None:
+            db.session.delete(setting)
+        db.session.commit()

@@ -115,7 +115,7 @@ HTTP request
 ## Services
 
 **`DbService`** (`db_service.py`): data access. CRUD and lookups for users, accounts,
-transactions, recurring templates, and budgets, plus two queries used by business logic:
+transactions, recurring templates, budgets, and scheduled paces, plus two queries used by business logic:
 `transaction_exists` (the import duplicate check), `find_transfer_peer` (an unlinked transfer
 with the opposite amount in another of the user's accounts, within ±5 days; the earliest such
 match wins), `find_recurring_candidates` (transactions in no recurring series with a given
@@ -184,9 +184,18 @@ and every route that returns transactions uses it. The walk itself is the pure f
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
-against the allocation (`amount + carried_over`). `delete_budget` also deletes the budget's
-future rollover copies. Budget changes don't touch transactions: over-budget flags are computed
-when transactions are read (`BudgetFlagService`), so they follow every budget change on their own.
+against the allocation (`amount + carried_over`), and whether the category has a scheduled pace.
+`delete_budget` also deletes the budget's future rollover copies. Budget changes don't touch
+transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
+so they follow every budget change on their own.
+
+**Scheduled pace.** Budget pace (the Budgeting view) expects a category's spending evenly
+through the month unless the user sets the category to a scheduled pace, which expects it on
+its recurring charges' dates. `set_scheduled_pace(user_id, category, scheduled)` stores the
+choice per category in `scheduled_paces`, for every month: the category matches its budgets'
+name exactly, and the setting stays when those budgets are deleted (adding the budget back finds
+it). Setting the pace a category already has changes nothing; a category that isn't text of 1 to
+50 characters, or a `scheduled` that isn't a boolean, raises `ValueError`.
 
 **`AuthService`** (`auth_service.py`)
 - `register(username, email, password)` trims the username and email, lowercases the email, and
@@ -281,6 +290,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 | `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
+| `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
 the account's database id is `id`.
@@ -327,7 +337,8 @@ Every change must keep these true.
 - **`MIN_PASSWORD_LENGTH`** (8) is defined in both `services/auth_service.py` and the frontend's
   `AuthScreen.js`. Keep them equal.
 - **Budgets** are per user (they cover all accounts). Rollover copies for new months are created by
-  the frontend (`useBudgetData`, looking back up to 12 months).
+  the frontend (`useBudgetData`, looking back up to 12 months). A category's scheduled pace
+  belongs to the category, not to one month's budget.
 
 ---
 
@@ -566,7 +577,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
 | `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
-| `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
+| `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PUT /scheduled-pace`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
@@ -602,6 +613,11 @@ Details worth knowing:
 - `GET /recurring/projection?days=60` returns `{occurrences: [{recurring_id, account_id, date,
   vendor, category, amount}]}` by date (see Projection). `days` defaults to 60; anything but a
   whole number from 1 to 366 is a 400.
+- `GET /budgets/progress?period=YYYY-MM` (default: this month) returns `{period, progress: [...]}`
+  sorted by category; each row has `id`, `category`, `period`, `allocated`, `carried_over`,
+  `spent`, `remaining` (each also as `*_cents`), `rollover`, `over_budget`, and
+  `scheduled_pace`. `PUT /budgets/scheduled-pace` with `{category, scheduled}` sets a category's
+  pace (see Scheduled pace) and returns `{category, scheduled}`; invalid input is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -678,6 +694,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
+| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
