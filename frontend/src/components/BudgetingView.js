@@ -9,9 +9,16 @@ import {
   getNextPeriod,
   formatPeriod,
 } from '../hooks/useBudgetData';
-import { todayISO, monthElapsed } from '../utils/dates';
+import { useProjection } from '../hooks/useProjection';
+import { todayISO, daysInMonth, monthElapsed } from '../utils/dates';
 import { formatCents } from '../utils/money';
-import { budgetPace, evenExpectation, percentUsed, paceLabel } from '../utils/budgetPace';
+import {
+  budgetPace,
+  evenExpectation,
+  scheduledExpectation,
+  percentUsed,
+  paceLabel,
+} from '../utils/budgetPace';
 
 const getCurrentPeriod = () => {
   const now = new Date();
@@ -53,9 +60,16 @@ function BudgetingView({ transactions, onBudgetChange }) {
     setError,
     handleAmountBlur,
     handleRolloverToggle,
+    handlePaceToggle,
     handleDelete,
     handleAdd,
   } = useBudgetData(period, onBudgetChange);
+
+  // The recurring charges still to come this month, for scheduled paces (the projection runs
+  // from today through `days` days ahead, at least 1)
+  const today = todayISO();
+  const thisMonth = today.slice(0, 7);
+  const occurrences = useProjection(Math.max(daysInMonth(thisMonth) - Number(today.slice(8, 10)), 1), setError);
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -64,12 +78,14 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const unallocated = monthlyIncome - totalAllocated;
   const incomeSet = monthlyIncome > 0;
 
-  // Each row's pace: even through the month, so a past month expects its whole budget and a
-  // future one nothing yet
-  const today = todayISO();
-  const isCurrentMonth = period === today.slice(0, 7);
+  // Each row's pace. This month, a category on scheduled pace expects its recurring charges and
+  // the rest an even share; a past month expects its whole budget and a future one nothing yet.
+  const isCurrentMonth = period === thisMonth;
   const elapsed = monthElapsed(period, today);
-  const paces = progress.map(item => budgetPace(item, evenExpectation(item, elapsed)));
+  const expectation = (item) => (isCurrentMonth && item.scheduled_pace
+    ? scheduledExpectation(item, { transactions, occurrences, period, today })
+    : evenExpectation(item, elapsed));
+  const paces = progress.map(item => budgetPace(item, expectation(item)));
 
   const budgetedCategories = new Set(progress.map(p => p.category));
   const suggestedCategories = [
@@ -220,6 +236,7 @@ function BudgetingView({ transactions, onBudgetChange }) {
                   current={isCurrentMonth}
                   onAmountBlur={handleAmountBlur}
                   onRolloverToggle={handleRolloverToggle}
+                  onPaceToggle={handlePaceToggle}
                   onDelete={handleDelete}
                   hasSaveError={saveErrors.has(item.id)}
                   monthlyIncome={monthlyIncome}

@@ -50,3 +50,7 @@ export const dismissDetectedSeries = (transactionIds) =>
     method: 'POST',
     body: JSON.stringify({ transaction_ids: transactionIds }),
   });
+
+// The recurring occurrences still to come, from today through `days` days ahead, by date
+export const getProjection = (days) =>
+  fetchAPI(`/api/recurring/projection?days=${days}`).then(d => d.occurrences);

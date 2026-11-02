@@ -1,6 +1,6 @@
 import {
   getSuggestions, linkToRecurring, unlinkFromRecurring, dismissSuggestion,
-  getDetectedSeries, addDetectedSeries, dismissDetectedSeries,
+  getDetectedSeries, addDetectedSeries, dismissDetectedSeries, getProjection,
 } from '../api/recurring';
 import { fetchAPI } from '../api/client';
 
@@ -37,4 +37,10 @@ test('found series are listed, then added or marked not recurring by their payme
   expect(fetchAPI).toHaveBeenLastCalledWith('/api/recurring/detected', body);
   dismissDetectedSeries([51, 52]);
   expect(fetchAPI).toHaveBeenLastCalledWith('/api/recurring/detected/dismissals', body);
+});
+
+test('the projection lists the occurrences still to come over the next days', async () => {
+  fetchAPI.mockResolvedValue({ occurrences: ['one'] });
+  expect(await getProjection(16)).toEqual(['one']);
+  expect(fetchAPI).toHaveBeenLastCalledWith('/api/recurring/projection?days=16');
 });

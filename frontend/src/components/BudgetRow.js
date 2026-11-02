@@ -11,6 +11,7 @@ function BudgetRow({
   current,
   onAmountBlur,
   onRolloverToggle,
+  onPaceToggle,
   onDelete,
   hasSaveError,
   monthlyIncome,
@@ -90,13 +91,25 @@ function BudgetRow({
         {incomePct !== null && <span className="bri-pct">{incomePct}%</span>}
         {hasSaveError && <span className="bri-error">Save failed</span>}
 
-        <label className="bri-rollover">
+        <label className="bri-toggle">
           <input
             type="checkbox"
             checked={item.rollover}
             onChange={() => onRolloverToggle(item)}
           />
           Rollover
+        </label>
+
+        <label
+          className="bri-toggle"
+          title="Expect this category's spending on its recurring charges' dates instead of evenly through the month"
+        >
+          <input
+            type="checkbox"
+            checked={item.scheduled_pace}
+            onChange={() => onPaceToggle(item)}
+          />
+          Scheduled pace
         </label>
 
         <button

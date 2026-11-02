@@ -1,19 +1,22 @@
-import { render, screen, within, act } from '@testing-library/react';
+import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BudgetingView from '../components/BudgetingView';
 import { CategoryColorProvider } from '../CategoryColorContext';
-import { getBudgetProgress, getBudgets } from '../api/budgets';
+import { getBudgetProgress, getBudgets, setScheduledPace } from '../api/budgets';
+import { getProjection } from '../api/recurring';
 
 jest.mock('../api/budgets');
+jest.mock('../api/recurring');
 
 // A row of GET /api/budgets/progress, as the backend sends it
-const progressRow = (id, category, allocated, spent, carriedOver = 0) => {
+const progressRow = (id, category, allocated, spent, carriedOver = 0, scheduledPace = false) => {
   const cents = (dollars) => Math.round(dollars * 100);
   const remaining = cents(allocated) + cents(carriedOver) - cents(spent);
   return {
     id, category, period: '2026-10', rollover: true,
     allocated, allocated_cents: cents(allocated), carried_over: carriedOver, carried_over_cents: cents(carriedOver),
     spent, spent_cents: cents(spent), remaining: remaining / 100, remaining_cents: remaining, over_budget: remaining < 0,
+    scheduled_pace: scheduledPace,
   };
 };
 
@@ -25,6 +28,14 @@ const OCTOBER = [
 ];
 const SEPTEMBER = [progressRow(5, 'Groceries', 400, 380)];
 
+// Subscriptions ($30, on scheduled pace): Anthropic's $20 posted Oct 2, and a $5 app due Oct 28
+const SUBSCRIPTIONS = progressRow(6, 'Subscriptions', 30, 20, 0, true);
+const ANTHROPIC = {
+  id: 11, account_id: 1, date: '2026-10-02', vendor: 'Anthropic', category: 'Subscriptions', notes: '',
+  amount: -20, amount_cents: -2000, recurring_id: 3, is_transfer: false, is_reimbursement: false,
+};
+const APP_DUE = { recurring_id: 4, account_id: 1, date: '2026-10-28', vendor: 'App', category: 'Subscriptions', amount: -5 };
+
 let user;
 
 beforeEach(() => {
@@ -32,21 +43,24 @@ beforeEach(() => {
   user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   getBudgets.mockResolvedValue([]);
   getBudgetProgress.mockImplementation(async (period) => (period === '2026-09' ? SEPTEMBER : OCTOBER));
+  getProjection.mockResolvedValue([]);
+  setScheduledPace.mockResolvedValue({ success: true });
 });
 
 afterEach(() => jest.useRealTimers());
 
-const renderView = async () => {
+const renderView = async (transactions = []) => {
   render(
     <CategoryColorProvider>
-      <BudgetingView transactions={[]} onBudgetChange={jest.fn()} />
+      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} />
     </CategoryColorProvider>
   );
-  await screen.findByRole('img', { name: /^Groceries:/ });
+  await screen.findAllByRole('img', { name: /:/ });
 };
 
 const bar = (category) => screen.getByRole('img', { name: new RegExp(`^${category}:`) });
 const pace = (category) => bar(category).closest('.budget-pace');
+const paceCheckbox = (category) => within(bar(category).closest('.budget-row-card')).getByRole('checkbox', { name: 'Scheduled pace' });
 const markerAt = (category) => parseFloat(pace(category).querySelector('.budget-pace-marker').style.left);
 const details = (tooltip) => [...tooltip.querySelectorAll('dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]);
 const cells = (table) => [...table.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th, td')].map(c => c.textContent));
@@ -85,6 +99,7 @@ test('hovering a bar shows the numbers behind it', async () => {
     ['Spent', '$76.00'],
     ['Budget', '$120.00'],
     ['Includes carried over', '$20.00'],
+    ['Pace', 'Even'],
     ['Expected by today', '$58.06'],
     ['Projected month end', '$157.07'],
   ]);
@@ -98,7 +113,8 @@ test('focusing a bar shows the numbers too, and Escape hides them', async () => 
   await renderView();
   act(() => bar('Groceries').focus());
   expect(details(screen.getByRole('tooltip'))).toEqual([
-    ['Spent', '$150.00'], ['Budget', '$400.00'], ['Expected by today', '$193.55'], ['Projected month end', '$310.00'],
+    ['Spent', '$150.00'], ['Budget', '$400.00'], ['Pace', 'Even'],
+    ['Expected by today', '$193.55'], ['Projected month end', '$310.00'],
   ]);
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
@@ -138,4 +154,60 @@ test('a past month expects its whole budget, with nothing left to project', asyn
     ['Category', 'Spent', 'Budget', 'Used', 'Status'],
     ['Groceries', '$380.00', '$400.00', '95%', '$20 under'],
   ]);
+});
+
+describe('scheduled pace', () => {
+  test("each row's checkbox shows its category's setting", async () => {
+    getBudgetProgress.mockResolvedValue([...OCTOBER, SUBSCRIPTIONS]);
+    await renderView();
+    expect(paceCheckbox('Subscriptions')).toBeChecked();
+    expect(paceCheckbox('Groceries')).not.toBeChecked();
+  });
+
+  test('ticking it saves the setting and reloads the rows', async () => {
+    await renderView();
+    await user.click(paceCheckbox('Groceries'));
+    expect(setScheduledPace).toHaveBeenCalledWith('Groceries', true);
+    await waitFor(() => expect(getBudgetProgress).toHaveBeenCalledTimes(2));
+  });
+
+  test('unticking it goes back to an even pace', async () => {
+    getBudgetProgress.mockResolvedValue([SUBSCRIPTIONS]);
+    await renderView();
+    await user.click(paceCheckbox('Subscriptions'));
+    expect(setScheduledPace).toHaveBeenCalledWith('Subscriptions', false);
+  });
+
+  test('a failed save says why', async () => {
+    setScheduledPace.mockRejectedValue(new Error('Network error'));
+    await renderView();
+    await user.click(paceCheckbox('Groceries'));
+    expect(await screen.findByText('Network error')).toBeInTheDocument();
+  });
+
+  test('a scheduled category expects its recurring charges by today, not an even share', async () => {
+    getBudgetProgress.mockResolvedValue([SUBSCRIPTIONS]);
+    getProjection.mockResolvedValue([APP_DUE]);
+    await renderView([ANTHROPIC]);
+    await waitFor(() => expect(getProjection).toHaveBeenCalledWith(16));   // Oct 15 through Oct 31
+
+    await waitFor(() => expect(within(pace('Subscriptions')).getByText('On pace')).toBeInTheDocument());
+    expect(markerAt('Subscriptions')).toBeCloseTo((20 / 30) * 100, 1);
+    await user.hover(bar('Subscriptions'));
+    expect(details(screen.getByRole('tooltip'))).toEqual([
+      ['Spent', '$20.00'], ['Budget', '$30.00'], ['Pace', 'Scheduled'],
+      ['Expected by today', '$20.00'], ['Projected month end', '$25.00'],
+    ]);
+  });
+
+  test('a past month paces a scheduled category by its whole budget', async () => {
+    getBudgetProgress.mockResolvedValue([SUBSCRIPTIONS]);
+    await renderView([ANTHROPIC]);
+    await user.click(screen.getByRole('button', { name: '←' }));
+    await screen.findByText('September 2026');
+    await waitFor(() => expect(getBudgetProgress).toHaveBeenCalledWith('2026-09'));
+    await screen.findByRole('img', { name: /^Subscriptions:/ });
+    expect(markerAt('Subscriptions')).toBe(100);
+    expect(within(pace('Subscriptions')).getByText('$10 under')).toBeInTheDocument();
+  });
 });

@@ -5,6 +5,7 @@ import {
   createBudget,
   updateBudget,
   deleteBudget,
+  setScheduledPace,
 } from '../api/budgets';
 
 // ── Period utilities ──────────────────────────────────────────────────────────
@@ -132,6 +133,17 @@ export function useBudgetData(period, onBudgetChange) {
     }
   };
 
+  // The pace is the category's in every month and doesn't change spending or flags, so only
+  // the rows reload
+  const handlePaceToggle = async (item) => {
+    try {
+      await setScheduledPace(item.category, !item.scheduled_pace);
+      await loadProgress(period);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleDelete = async (item) => {
     if (!window.confirm(
       `Remove "${item.category}" budget? This will also delete all future rollover copies and clear over-budget flags on affected transactions.`
@@ -159,6 +171,7 @@ export function useBudgetData(period, onBudgetChange) {
     setError,
     handleAmountBlur,
     handleRolloverToggle,
+    handlePaceToggle,
     handleDelete,
     handleAdd,
   };

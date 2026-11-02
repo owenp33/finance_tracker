@@ -16,7 +16,29 @@ const effectiveCents = (row) => row.allocated_cents + row.carried_over_cents;
 export const evenExpectation = (row, elapsed) => ({
   expected:  Math.round(effectiveCents(row) * elapsed),
   projected: elapsed > 0 ? Math.round(row.spent_cents / elapsed) : null,
+  basis:     'even',
 });
+
+// Spending in cents: an outflow as a positive amount; money in counts as none
+const spendingCents = (amountCents) => Math.max(-amountCents, 0);
+
+// A scheduled pace on `today` in the current month `period`: the category's recurring charges so
+// far (the month's charges in a series, from the user's `transactions`, transfers left out, plus
+// the projection's `occurrences` due by today), and the month's end at what's spent plus the
+// occurrences still to come (GET /api/recurring/projection only lists ones not charged yet)
+export const scheduledExpectation = (row, { transactions, occurrences, period, today }) => {
+  const inCategoryMonth = ({ category, date }) => category === row.category && date.startsWith(period);
+  const posted = transactions
+    .filter(t => t.recurring_id != null && !t.is_transfer && inCategoryMonth(t))
+    .reduce((sum, t) => sum + spendingCents(t.amount_cents), 0);
+  const upcoming = occurrences.filter(inCategoryMonth);
+  const total = (list) => list.reduce((sum, o) => sum + spendingCents(Math.round(o.amount * 100)), 0);
+  return {
+    expected:  posted + total(upcoming.filter(o => o.date <= today)),
+    projected: row.spent_cents + total(upcoming),
+    basis:     'scheduled',
+  };
+};
 
 // Over budget (by how much), or how far the spending is ahead of or under the expected spend
 export const paceStatus = (spent, expected, effective) => {
@@ -26,8 +48,9 @@ export const paceStatus = (spent, expected, effective) => {
   return gap > 0 ? { status: 'ahead', gap } : { status: 'under', gap: -gap };
 };
 
-// A budget row's pace, given what was expected of it ({expected, projected}: evenExpectation)
-export const budgetPace = (row, { expected, projected }) => {
+// A budget row's pace, given what was expected of it ({expected, projected, basis}:
+// evenExpectation or scheduledExpectation)
+export const budgetPace = (row, { expected, projected, basis }) => {
   const effective = effectiveCents(row);
   return {
     effective,
@@ -35,6 +58,7 @@ export const budgetPace = (row, { expected, projected }) => {
     carriedOver: row.carried_over_cents,
     expected,
     projected,
+    basis,
     ...paceStatus(row.spent_cents, expected, effective),
   };
 };
