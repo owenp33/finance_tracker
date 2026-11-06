@@ -189,7 +189,7 @@ against the allocation (`amount + carried_over`), and whether the category has a
 transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
 so they follow every budget change on their own.
 
-**Scheduled pace.** Budget pace (the Budgeting view) expects a category's spending evenly
+**Scheduled pace.** Budget pace (the Budgeting view, and the Dashboard's budgets furthest ahead of pace) expects a category's spending evenly
 through the month unless the user sets the category to a scheduled pace (shown as "Pace by
 recurring"), which expects it on its recurring charges' dates. `set_scheduled_pace(user_id, category, scheduled)` stores the
 choice per category in `scheduled_paces`, for every month: the category matches its budgets'

@@ -2179,70 +2179,6 @@ body {
   text-decoration: underline;
 }
 
-/* === Budget Progress ======================================== */
-.budget-progress-section {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-  margin-bottom: 30px;
-}
-
-.budget-progress-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.budget-progress-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.budget-progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.budget-category {
-  font-weight: 600;
-  color: #333;
-  font-size: 0.95rem;
-}
-
-.budget-amounts {
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: #555;
-}
-
-.budget-bar-track {
-  height: 8px;
-  background: #e9ecef;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.budget-bar-fill {
-  height: 100%;
-  background: #667eea;
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-
-.budget-bar-fill.over-budget {
-  background: #ff6b6b;
-}
-
-.budget-over-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #ff6b6b;
-  text-align: right;
-}
-
 /* === Upcoming Section ======================================= */
 .upcoming-section {
   background: white;
@@ -3420,9 +3356,21 @@ body {
   flex-shrink: 0;
 }
 
-.dashboard-col .budget-progress-list {
-  max-height: 320px;
-  overflow-y: auto;
+/* The budgets furthest ahead of pace (Phase V, V2b): each category's name over its BudgetPace */
+.dashboard-pace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-pace-category {
+  padding: 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
 }
 
 /* Transaction search bar */

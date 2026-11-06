@@ -7,6 +7,7 @@ import { login, me } from '../api/auth';
 import { getAccounts } from '../api/accounts';
 import { getAllTransactions } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
+import { getProjection } from '../api/recurring';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
@@ -32,6 +33,7 @@ beforeEach(() => {
   getAccounts.mockResolvedValue([]);
   getAllTransactions.mockResolvedValue([]);
   getBudgetProgress.mockResolvedValue([]);
+  getProjection.mockResolvedValue([]);
 });
 
 const renderApp = () => render(<CategoryColorProvider><App /></CategoryColorProvider>);
@@ -79,6 +81,13 @@ test("logging out leaves the session's messages behind", async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Logout' }));
   expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument();
   expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's errors show in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
 });
 
 test('a login that expires while you use the app sends you to the login screen, saying why', async () => {

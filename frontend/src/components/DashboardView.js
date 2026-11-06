@@ -1,11 +1,15 @@
 import TransactionList from './TransactionList';
-import BudgetProgressBar from './BudgetProgressBar';
+import BudgetPace from './BudgetPace';
 import UpcomingList from './UpcomingList';
-import { todayISO, sameDayLastMonth, dayRangeLabel } from '../utils/dates';
+import { useMonthProjection } from '../hooks/useProjection';
+import { todayISO, sameDayLastMonth, dayRangeLabel, monthEndLabel } from '../utils/dates';
 import { formatCents, formatWholeDollars } from '../utils/money';
 import { cashFlow } from '../utils/moneyRules';
+import { rowPace, furthestAheadFirst } from '../utils/budgetPace';
 
+// As many budgets as recent transactions, so the two columns line up
 const RECENT_LIMIT = 5;
+const PACE_LIMIT = RECENT_LIMIT;
 
 // How this month's amount compares with last month's over the days in `label`, in whole dollars
 const changeFrom = (nowCents, beforeCents, label) => {
@@ -24,12 +28,16 @@ function StatCard({ title, value, valueClass, sub }) {
   );
 }
 
-function DashboardView({ transactions, budgetData = [], upcoming, onNavigate }) {
-  // This month so far, against the same days of last month (a partial month never against a whole one)
+// `onError` reports a failed request (this month's projection)
+function DashboardView({ transactions, budgetData = [], upcoming, onNavigate, onError }) {
   const today = todayISO();
+  const period = today.slice(0, 7);
+  const occurrences = useMonthProjection(today, onError);
+
+  // This month so far, against the same days of last month (a partial month never against a whole one)
   const lastMonthDay = sameDayLastMonth(today);
   const lastMonthStart = `${lastMonthDay.slice(0, 7)}-01`;
-  const thisMonth = cashFlow(transactions, `${today.slice(0, 7)}-01`, today);
+  const thisMonth = cashFlow(transactions, `${period}-01`, today);
   const lastMonth = cashFlow(transactions, lastMonthStart, lastMonthDay);
   const comparedWith = dayRangeLabel(lastMonthStart, lastMonthDay);
 
@@ -37,6 +45,12 @@ function DashboardView({ transactions, budgetData = [], upcoming, onNavigate }) 
   // spending, which reimbursements lower (budget progress)
   const budgeted = budgetData.reduce((sum, b) => sum + b.allocated_cents + b.carried_over_cents, 0);
   const left = budgeted - budgetData.reduce((sum, b) => sum + b.spent_cents, 0);
+
+  // The budgets furthest ahead of pace, each paced as the Budgeting view paces it
+  const watched = budgetData
+    .map(row => ({ row, pace: rowPace(row, { period, today, transactions, occurrences }) }))
+    .sort((a, b) => furthestAheadFirst(a.pace, b.pace))
+    .slice(0, PACE_LIMIT);
 
   const recentTransactions = transactions.slice(0, RECENT_LIMIT);
 
@@ -74,21 +88,24 @@ function DashboardView({ transactions, budgetData = [], upcoming, onNavigate }) 
         />
       </div>
 
-      {/* Two-column section: spending vs budget + recent transactions */}
+      {/* Two-column section: the budgets furthest ahead of pace + recent transactions */}
       <div className="dashboard-columns">
         <div className="dashboard-col">
           <div className="section-header">
-            <h3>Spending vs Budget</h3>
+            <h3>Budget Pace</h3>
             <button className="link-btn" onClick={() => onNavigate('budgeting')}>
               Manage →
             </button>
           </div>
-          {budgetData.length > 0 ? (
-            <div className="budget-progress-list">
-              {budgetData.map(item => (
-                <BudgetProgressBar key={item.id} item={item} />
+          {watched.length > 0 ? (
+            <ul className="dashboard-pace-list">
+              {watched.map(({ row, pace }) => (
+                <li key={row.id}>
+                  <span className="dashboard-pace-category">{row.category}</span>
+                  <BudgetPace category={row.category} pace={pace} monthEnd={monthEndLabel(period)} />
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <p className="no-data">No budgets set for this period.</p>
           )}

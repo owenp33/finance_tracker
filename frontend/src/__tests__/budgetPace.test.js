@@ -1,5 +1,6 @@
 import {
-  evenExpectation, scheduledExpectation, billsDue, paceStatus, budgetPace, percentUsed, paceLabel,
+  evenExpectation, scheduledExpectation, billsDue, paceStatus, budgetPace, rowPace, furthestAheadFirst,
+  percentUsed, paceLabel,
 } from '../utils/budgetPace';
 
 // A row of GET /api/budgets/progress: $400 for Groceries, $150 spent
@@ -127,6 +128,39 @@ test("a row's pace carries its bills still due, and how far past the budget they
   expect(budgetPace(row(), expectation, 30000)).toMatchObject({ due: 30000, overAfterDue: 5000 });
   // Already over: the overspending is the status's, not the bills'
   expect(budgetPace(row({ spent_cents: 45000 }), expectation, 1000)).toMatchObject({ status: 'over', overAfterDue: 0 });
+});
+
+describe("a row's pace in its month, as every view works it out", () => {
+  // Oct 15: Groceries has $150 of $400 spent, and a $50 bill due Oct 28
+  const bill = { recurring_id: 4, date: '2026-10-28', category: 'Groceries', amount: -50 };
+  const on15th = (period, overrides) =>
+    rowPace(row(overrides), { period, today: '2026-10-15', transactions: [], occurrences: [bill] });
+
+  test('this month, an even pace, with its bills still due', () => {
+    expect(on15th('2026-10')).toEqual(budgetPace(row(), evenExpectation(row(), 15 / 31), 5000));
+  });
+
+  test('this month, a row paced by recurring expects its recurring charges', () => {
+    expect(on15th('2026-10', { scheduled_pace: true }))
+      .toMatchObject({ expected: 0, projected: 20000, basis: 'scheduled', due: 5000 });
+  });
+
+  test('a past month expects its whole budget and a future one nothing, without bills, whatever the pace', () => {
+    expect(on15th('2026-09', { scheduled_pace: true })).toMatchObject({ expected: 40000, basis: 'even', due: 0 });
+    expect(on15th('2026-11', { scheduled_pace: true })).toMatchObject({ expected: 0, basis: 'even', due: 0 });
+  });
+});
+
+test('furthest ahead of pace first: over budget (by the most first), then by how far past the expected spend', () => {
+  const pace = (status, gap, spent, expected) => ({ status, gap, spent, expected });
+  const overByMore = pace('over', 3940, 8940, 833);
+  const overByLittle = pace('over', 500, 5500, 4000);
+  const farAhead = pace('ahead', 20333, 27000, 6667);
+  const ahead = pace('ahead', 1500, 2000, 500);
+  const onPace = pace('on-pace', 0, 2050, 2000);      // 50 cents past
+  const under = pace('under', 500, 2000, 2500);
+  expect([under, ahead, onPace, overByLittle, farAhead, overByMore].sort(furthestAheadFirst))
+    .toEqual([overByMore, overByLittle, farAhead, ahead, onPace, under]);
 });
 
 test('the share of the budget used is a whole percent, and none without a budget', () => {

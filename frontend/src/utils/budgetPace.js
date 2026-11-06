@@ -1,4 +1,5 @@
 import { formatDollars, formatWholeDollars } from './money';
+import { monthElapsed } from './dates';
 
 // Budget pace (Phase V, V1): how a budgeted category's spending so far compares with what it was
 // expected to have spent by now. Works on rows of GET /api/budgets/progress, in cents.
@@ -73,6 +74,27 @@ export const budgetPace = (row, { expected, projected, basis }, due = 0) => {
     due,
     overAfterDue: status.status === 'over' ? 0 : Math.max(spent + due - effective, 0),
   };
+};
+
+// A budget row's pace in `period` on `today`, the same in every view: this month, its recurring
+// charges so far when it's paced by recurring (else an even share), with its bills still due; a
+// past month expects its whole budget and a future one nothing yet. `transactions` are the user's,
+// `occurrences` this month's projection (hooks/useProjection.js useMonthProjection).
+export const rowPace = (row, { period, today, transactions, occurrences }) => {
+  const current = period === today.slice(0, 7);
+  const expectation = current && row.scheduled_pace
+    ? scheduledExpectation(row, { transactions, occurrences, period, today })
+    : evenExpectation(row, monthElapsed(period, today));
+  return budgetPace(row, expectation, current ? billsDue(row, occurrences, period) : 0);
+};
+
+// Sorts paces furthest ahead of pace first: over budget (the most over first), then by how far the
+// spending is past what was expected by now
+export const furthestAheadFirst = (a, b) => {
+  const aOver = a.status === 'over';
+  const bOver = b.status === 'over';
+  if (aOver !== bOver) return aOver ? -1 : 1;
+  return aOver ? b.gap - a.gap : (b.spent - b.expected) - (a.spent - a.expected);
 };
 
 // The share of the budget spent, as a whole percent (null without a budget)

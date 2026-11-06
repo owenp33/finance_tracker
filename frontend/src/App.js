@@ -383,6 +383,7 @@ function App() {
             budgetData={budgetData}
             upcoming={upcoming}
             onNavigate={setView}
+            onError={setError}
           />
         )}
         {view === 'transactions' && (

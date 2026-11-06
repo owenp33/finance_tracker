@@ -9,17 +9,10 @@ import {
   getNextPeriod,
   formatPeriod,
 } from '../hooks/useBudgetData';
-import { useProjection } from '../hooks/useProjection';
-import { todayISO, daysInMonth, monthElapsed, monthEndLabel } from '../utils/dates';
+import { useMonthProjection } from '../hooks/useProjection';
+import { todayISO, monthEndLabel } from '../utils/dates';
 import { formatCents } from '../utils/money';
-import {
-  budgetPace,
-  evenExpectation,
-  scheduledExpectation,
-  billsDue,
-  percentUsed,
-  paceLabel,
-} from '../utils/budgetPace';
+import { rowPace, percentUsed, paceLabel } from '../utils/budgetPace';
 
 const getCurrentPeriod = () => {
   const now = new Date();
@@ -69,11 +62,9 @@ function BudgetingView({ transactions, onBudgetChange }) {
     handleAdd,
   } = useBudgetData(period, onBudgetChange);
 
-  // The recurring charges still to come this month, for scheduled paces (the projection runs
-  // from today through `days` days ahead, at least 1)
+  // The recurring charges still to come this month, for paces by recurring and bills still due
   const today = todayISO();
-  const thisMonth = today.slice(0, 7);
-  const occurrences = useProjection(Math.max(daysInMonth(thisMonth) - Number(today.slice(8, 10)), 1), setError);
+  const occurrences = useMonthProjection(today, setError);
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -82,17 +73,10 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const unallocated = monthlyIncome - totalAllocated;
   const incomeSet = monthlyIncome > 0;
 
-  // Each row's pace. This month, a category paced by recurring expects its recurring charges and
-  // the rest an even share, and each shows its bills still due; a past month expects its whole
-  // budget and a future one nothing yet.
-  const isCurrentMonth = period === thisMonth;
-  const monthEnd = isCurrentMonth ? monthEndLabel(period) : null;
-  const elapsed = monthElapsed(period, today);
-  const expectation = (item) => (isCurrentMonth && item.scheduled_pace
-    ? scheduledExpectation(item, { transactions, occurrences, period, today })
-    : evenExpectation(item, elapsed));
-  const paces = progress.map(item =>
-    budgetPace(item, expectation(item), isCurrentMonth ? billsDue(item, occurrences, period) : 0));
+  // Each row's pace, worked out as the Dashboard does (rowPace); this month's also says where the
+  // month ends
+  const monthEnd = period === today.slice(0, 7) ? monthEndLabel(period) : null;
+  const paces = progress.map(item => rowPace(item, { period, today, transactions, occurrences }));
 
   const budgetedCategories = new Set(progress.map(p => p.category));
   const suggestedCategories = [
