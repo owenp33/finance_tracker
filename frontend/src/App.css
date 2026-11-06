@@ -261,6 +261,17 @@ body {
   color: #ff6b6b;
 }
 
+/* Over budget, in the darker step of the chart orange that reads on white */
+.stat-card .value.over {
+  color: #b5441c;
+}
+
+.stat-card .stat-sub {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
 /* Category Section */
 .category-section {
   background: white;

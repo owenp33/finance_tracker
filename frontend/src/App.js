@@ -10,7 +10,6 @@ import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
 import { useUpcoming } from './hooks/useUpcoming';
-import { useAnalytics } from './hooks/useAnalytics';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -37,7 +36,6 @@ function App() {
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
   const { upcoming, loadUpcoming } = useUpcoming({ setError });
-  const { analytics, loadAnalytics } = useAnalytics({ setError });
   // AUTH HANDLERS =============================================================
 
   // Forgets the login; the caller decides what the login screen says
@@ -101,8 +99,8 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadAnalytics()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -342,9 +340,8 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
-      loadAnalytics();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
@@ -382,7 +379,6 @@ function App() {
       <main className="App-main">
         {view === 'dashboard' && (
           <DashboardView
-            analytics={analytics}
             transactions={transactions}
             budgetData={budgetData}
             upcoming={upcoming}

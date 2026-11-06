@@ -13,6 +13,7 @@ This README covers what the app does and how to run it. For how the backend is b
 - **Transfers** — link paired transactions across accounts (auto-detected or manually paired); both balances reflect the move
 - **Reimbursements** — flag positive transactions as reimbursements to offset category spending in budgets while still crediting the account balance normally
 - **Recurring transactions** — templates repeat weekly, biweekly, monthly, quarterly, or annually; due occurrences appear automatically, an existing matching charge is linked instead of duplicated, the Recurring tab suggests past transactions that belong to a series, and "Find recurring" spots series you haven't set up yet (ongoing or already ended)
+- **Dashboard** — this month so far at a glance: what's left to spend of your budgets, plus income, expenses, and net, each compared with the same days of last month (Nov 1–5 against Oct 1–5, never a partial month against a whole one); transfers never count, and reimbursements count as income
 - **Budget planning** — set monthly allocations per category with optional rollover; each category's bar shows how much of its budget is spent, with a marker where spending should be today and the status in words ("$15 ahead", "$43 under", "On pace", "Over by $19.40"). Recurring charges still due this month appear as stripes after what's spent (orange, with a note, when they'd take the category over budget). The marker assumes even spending through the month unless the category is set to "Pace by recurring", which expects its recurring charges on their due dates (so an early subscription charge isn't called "ahead"). Hover or tap a bar for the expected spend, the bills still due, and where the month ends at this rate; transactions within each category are expandable inline
 - **CSV / Excel import** — two-step import (preview → confirm) supporting CSV, XLSX, and XLS exports from most banks; flexible column-name mapping handles varied export formats; accounts the file names that you don't have yet can be created, mapped to an existing account, or skipped; a row that matches a recurring transaction already in the app can replace it instead of duplicating it
 - **Insights** — spending reports and charts aggregated across all accounts
@@ -52,7 +53,7 @@ finance_tracker/
 │   │   ├── api/                # Per-domain wrappers; every request goes through api/client.js
 │   │   ├── hooks/              # Data fetching (accounts, transactions, budgets, ...)
 │   │   ├── components/         # Views and UI components (feature folders insights/, transactions/)
-│   │   └── utils/              # Shared pure helpers (money, dates, sequencing, budget pace)
+│   │   └── utils/              # Shared pure helpers (money, dates, sequencing, money rules, budget pace)
 │   ├── nginx.conf
 │   └── Dockerfile
 ├── docs/

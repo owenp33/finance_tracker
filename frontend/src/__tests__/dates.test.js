@@ -1,4 +1,6 @@
-import { todayISO, daysInMonth, monthElapsed, monthEndLabel } from '../utils/dates';
+import {
+  todayISO, daysInMonth, monthElapsed, monthEndLabel, sameDayLastMonth, dayRangeLabel,
+} from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
 
@@ -18,6 +20,19 @@ test("names a month's last day", () => {
   expect(monthEndLabel('2026-10')).toBe('Oct 31');
   expect(monthEndLabel('2026-11')).toBe('Nov 30');
   expect(monthEndLabel('2028-02')).toBe('Feb 29');
+});
+
+test('the same day last month, or its last day when last month is shorter', () => {
+  expect(sameDayLastMonth('2026-11-05')).toBe('2026-10-05');
+  expect(sameDayLastMonth('2026-10-31')).toBe('2026-09-30');
+  expect(sameDayLastMonth('2026-03-30')).toBe('2026-02-28');
+  expect(sameDayLastMonth('2026-01-15')).toBe('2025-12-15');
+});
+
+test('names a run of days in one month', () => {
+  expect(dayRangeLabel('2026-10-01', '2026-10-05')).toBe('Oct 1–5');
+  expect(dayRangeLabel('2026-09-01', '2026-09-30')).toBe('Sep 1–30');
+  expect(dayRangeLabel('2026-10-01', '2026-10-01')).toBe('Oct 1');
 });
 
 test("the current month has passed by today's share of its days, today included", () => {
