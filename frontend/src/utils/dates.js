@@ -12,6 +12,12 @@ export const daysInMonth = (period) => {
   return new Date(year, month, 0).getDate();
 };
 
+// The last day of the month 'YYYY-MM', as "Oct 31"
+export const monthEndLabel = (period) => {
+  const [year, month] = period.split('-').map(Number);
+  return new Date(year, month, 0).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 // How much of the month 'YYYY-MM' has passed on `today` (YYYY-MM-DD): all of a past month, none of a
 // future one, and today's share of the current one's days (today counts as passed)
 export const monthElapsed = (period, today) => {

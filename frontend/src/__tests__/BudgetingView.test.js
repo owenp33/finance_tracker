@@ -60,7 +60,7 @@ const renderView = async (transactions = []) => {
 
 const bar = (category) => screen.getByRole('img', { name: new RegExp(`^${category}:`) });
 const pace = (category) => bar(category).closest('.budget-pace');
-const paceCheckbox = (category) => within(bar(category).closest('.budget-row-card')).getByRole('checkbox', { name: 'Scheduled pace' });
+const paceCheckbox = (category) => within(bar(category).closest('.budget-row-card')).getByRole('checkbox', { name: 'Pace by recurring' });
 const markerAt = (category) => parseFloat(pace(category).querySelector('.budget-pace-marker').style.left);
 const details = (tooltip) => [...tooltip.querySelectorAll('dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent]);
 const cells = (table) => [...table.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th, td')].map(c => c.textContent));
@@ -101,7 +101,7 @@ test('hovering a bar shows the numbers behind it', async () => {
     ['Includes carried over', '$20.00'],
     ['Pace', 'Even'],
     ['Expected by today', '$58.06'],
-    ['Projected month end', '$157.07'],
+    ['At this rate', '$157.07 by Oct 31'],
   ]);
   expect(bar('Restaurants')).toHaveAccessibleDescription(/Expected by today/);
 
@@ -114,7 +114,7 @@ test('focusing a bar shows the numbers too, and Escape hides them', async () => 
   act(() => bar('Groceries').focus());
   expect(details(screen.getByRole('tooltip'))).toEqual([
     ['Spent', '$150.00'], ['Budget', '$400.00'], ['Pace', 'Even'],
-    ['Expected by today', '$193.55'], ['Projected month end', '$310.00'],
+    ['Expected by today', '$193.55'], ['At this rate', '$310.00 by Oct 31'],
   ]);
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
@@ -132,11 +132,11 @@ test('"View as table" lists every row of the chart', async () => {
   await renderView();
   await user.click(screen.getByText('View as table'));
   expect(cells(screen.getByRole('table', { name: 'Budget pace, October 2026' }))).toEqual([
-    ['Category', 'Spent', 'Budget', 'Used', 'Expected by today', 'Projected month end', 'Status'],
-    ['Fun', '$69.40', '$50.00', '139%', '$24.19', '$143.43', 'Over by $19.40'],
-    ['Gasoline', '$96.00', '$200.00', '48%', '$96.77', '$198.40', 'On pace'],
-    ['Groceries', '$150.00', '$400.00', '38%', '$193.55', '$310.00', '$44 under'],
-    ['Restaurants', '$76.00', '$120.00', '63%', '$58.06', '$157.07', '$18 ahead'],
+    ['Category', 'Spent', 'Budget', 'Used', 'Expected by today', 'Bills still due', 'At this rate, by Oct 31', 'Status'],
+    ['Fun', '$69.40', '$50.00', '139%', '$24.19', '$0.00', '$143.43', 'Over by $19.40'],
+    ['Gasoline', '$96.00', '$200.00', '48%', '$96.77', '$0.00', '$198.40', 'On pace'],
+    ['Groceries', '$150.00', '$400.00', '38%', '$193.55', '$0.00', '$310.00', '$44 under'],
+    ['Restaurants', '$76.00', '$120.00', '63%', '$58.06', '$0.00', '$157.07', '$18 ahead'],
   ]);
 });
 
@@ -156,12 +156,13 @@ test('a past month expects its whole budget, with nothing left to project', asyn
   ]);
 });
 
-describe('scheduled pace', () => {
+describe('pace by recurring', () => {
   test("each row's checkbox shows its category's setting", async () => {
     getBudgetProgress.mockResolvedValue([...OCTOBER, SUBSCRIPTIONS]);
     await renderView();
     expect(paceCheckbox('Subscriptions')).toBeChecked();
     expect(paceCheckbox('Groceries')).not.toBeChecked();
+    expect(paceCheckbox('Groceries').closest('label')).not.toHaveAttribute('title');   // no hover note
   });
 
   test('ticking it saves the setting and reloads the rows', async () => {
@@ -195,9 +196,12 @@ describe('scheduled pace', () => {
     expect(markerAt('Subscriptions')).toBeCloseTo((20 / 30) * 100, 1);
     await user.hover(bar('Subscriptions'));
     expect(details(screen.getByRole('tooltip'))).toEqual([
-      ['Spent', '$20.00'], ['Budget', '$30.00'], ['Pace', 'Scheduled'],
-      ['Expected by today', '$20.00'], ['Projected month end', '$25.00'],
+      ['Spent', '$20.00'], ['Budget', '$30.00'], ['Pace', 'By recurring'],
+      ['Expected by today', '$20.00'], ['Bills still due', '$5.00'], ['With bills still due', '$25.00 by Oct 31'],
     ]);
+    await user.click(screen.getByText('View as table'));
+    expect(cells(screen.getByRole('table', { name: 'Budget pace, October 2026' }))[1])
+      .toEqual(['Subscriptions', '$20.00', '$30.00', '67%', '$20.00', '$5.00', '$25.00 with bills due', 'On pace']);
   });
 
   test('a past month paces a scheduled category by its whole budget', async () => {
@@ -209,5 +213,57 @@ describe('scheduled pace', () => {
     await screen.findByRole('img', { name: /^Subscriptions:/ });
     expect(markerAt('Subscriptions')).toBe(100);
     expect(within(pace('Subscriptions')).getByText('$10 under')).toBeInTheDocument();
+  });
+});
+
+describe('bills still due', () => {
+  // A bill due later this month, from the projection
+  const bill = (category, amount, date = '2026-10-20') => ({ recurring_id: 9, account_id: 1, date, vendor: 'Bill', category, amount });
+  const due = (category) => pace(category).querySelector('.budget-pace-due');
+
+  test("a category's recurring charges still due this month show as stripes after what's spent", async () => {
+    getProjection.mockResolvedValue([bill('Groceries', -50)]);
+    await renderView();
+    await waitFor(() => expect(due('Groceries')).not.toBeNull());
+
+    expect(parseFloat(due('Groceries').style.left)).toBe(37.5);     // after $150 of $400
+    expect(parseFloat(due('Groceries').style.width)).toBe(12.5);    // $50 of $400
+    expect(due('Groceries')).not.toHaveClass('over');
+    expect(within(pace('Groceries')).getByText('+ $50.00 due')).toBeInTheDocument();
+    expect(bar('Groceries')).toHaveAccessibleName('Groceries: $150.00 of $400.00, $50.00 in bills still due, $44 under');
+    expect(due('Gasoline')).toBeNull();
+
+    await user.hover(bar('Groceries'));
+    expect(details(screen.getByRole('tooltip'))).toEqual([
+      ['Spent', '$150.00'], ['Budget', '$400.00'], ['Pace', 'Even'], ['Expected by today', '$193.55'],
+      ['Bills still due', '$50.00'], ['At this rate', '$310.00 by Oct 31'],
+    ]);
+  });
+
+  test('bills that would take a category over budget turn the stripes orange and say by how much', async () => {
+    getProjection.mockResolvedValue([bill('Restaurants', -60)]);
+    await renderView();
+    await waitFor(() => expect(due('Restaurants')).not.toBeNull());
+
+    expect(due('Restaurants')).toHaveClass('over');
+    expect(parseFloat(due('Restaurants').style.width)).toBeCloseTo((44 / 120) * 100, 1);   // up to the bar's end
+    expect(within(pace('Restaurants')).getByText('+ $60.00 due (over by $16.00)')).toBeInTheDocument();
+  });
+
+  test('a category already over budget has no room for stripes', async () => {
+    getProjection.mockResolvedValue([bill('Fun', -10)]);
+    await renderView();
+    await waitFor(() => expect(within(pace('Fun')).getByText('+ $10.00 due')).toBeInTheDocument());
+    expect(due('Fun')).toBeNull();
+  });
+
+  test("other months don't show this month's bills", async () => {
+    getProjection.mockResolvedValue([bill('Groceries', -50)]);
+    await renderView();
+    await waitFor(() => expect(due('Groceries')).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: '←' }));
+    await screen.findByText('$380.00 of $400.00');
+    expect(due('Groceries')).toBeNull();
+    expect(within(pace('Groceries')).queryByText(/due/)).not.toBeInTheDocument();
   });
 });

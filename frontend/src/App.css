@@ -3149,6 +3149,19 @@ body {
   background: repeating-linear-gradient(135deg, var(--chart-orange) 0 4px, #f6b49a 4px 7px);
 }
 
+/* Bills still due this month: stripes of the bar's colour (set inline as `color`) after what's
+   spent, orange when they'd go over the budget */
+.budget-pace-due {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px);
+}
+
+.budget-pace-due.over {
+  color: var(--chart-orange);
+}
+
 /* Where the expected spend sits by now; the white ring keeps it visible over any fill */
 .budget-pace-marker {
   position: absolute;
@@ -3205,8 +3218,10 @@ body {
 }
 
 /* A darker step of the chart orange, readable as text on white */
-.budget-pace-status.over {
+.budget-pace-status.over,
+.budget-pace-due-note.over {
   color: #b5441c;
+  font-weight: 600;
 }
 
 /* ── "View as table" under a chart (Phase V) ──────────────────────────────── */

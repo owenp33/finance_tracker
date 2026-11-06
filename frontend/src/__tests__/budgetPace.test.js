@@ -1,5 +1,5 @@
 import {
-  evenExpectation, scheduledExpectation, paceStatus, budgetPace, percentUsed, paceLabel,
+  evenExpectation, scheduledExpectation, billsDue, paceStatus, budgetPace, percentUsed, paceLabel,
 } from '../utils/budgetPace';
 
 // A row of GET /api/budgets/progress: $400 for Groceries, $150 spent
@@ -69,6 +69,19 @@ describe('a scheduled pace', () => {
   });
 });
 
+describe('bills still due', () => {
+  const occurrence = (overrides) => ({ recurring_id: 4, date: '2026-10-28', category: 'Groceries', amount: -50, ...overrides });
+
+  test("sums the category's occurrences left this month, as spending", () => {
+    expect(billsDue(row(), [occurrence(), occurrence({ date: '2026-10-15', amount: -12.5 })], '2026-10')).toBe(6250);
+  });
+
+  test('leaves out other categories, other months and money in', () => {
+    expect(billsDue(row(), [occurrence({ category: 'Fun' }), occurrence({ date: '2026-11-02' }), occurrence({ amount: 40 })], '2026-10'))
+      .toBe(0);
+  });
+});
+
 describe('the status', () => {
   test('spending past the budget is over, by the amount past it', () => {
     expect(paceStatus(6940, 2419, 5000)).toEqual({ status: 'over', gap: 1940 });
@@ -104,8 +117,16 @@ describe('the status', () => {
 test("a row's pace puts its amounts, its expectation and its status together", () => {
   expect(budgetPace(row({ carried_over_cents: 2000 }), { expected: 20323, projected: 31000, basis: 'even' })).toEqual({
     effective: 42000, spent: 15000, carriedOver: 2000, expected: 20323, projected: 31000, basis: 'even',
-    status: 'under', gap: 5323,
+    status: 'under', gap: 5323, due: 0, overAfterDue: 0,
   });
+});
+
+test("a row's pace carries its bills still due, and how far past the budget they would take it", () => {
+  const expectation = { expected: 19355, projected: 31000, basis: 'even' };
+  expect(budgetPace(row(), expectation, 5000)).toMatchObject({ due: 5000, overAfterDue: 0 });
+  expect(budgetPace(row(), expectation, 30000)).toMatchObject({ due: 30000, overAfterDue: 5000 });
+  // Already over: the overspending is the status's, not the bills'
+  expect(budgetPace(row({ spent_cents: 45000 }), expectation, 1000)).toMatchObject({ status: 'over', overAfterDue: 0 });
 });
 
 test('the share of the budget used is a whole percent, and none without a budget', () => {

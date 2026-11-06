@@ -8,7 +8,7 @@ import ColorPickerPopover from './ColorPickerPopover';
 function BudgetRow({
   item,
   pace,
-  current,
+  monthEnd,
   onAmountBlur,
   onRolloverToggle,
   onPaceToggle,
@@ -100,16 +100,13 @@ function BudgetRow({
           Rollover
         </label>
 
-        <label
-          className="bri-toggle"
-          title="Expect this category's spending on its recurring charges' dates instead of evenly through the month"
-        >
+        <label className="bri-toggle">
           <input
             type="checkbox"
             checked={item.scheduled_pace}
             onChange={() => onPaceToggle(item)}
           />
-          Scheduled pace
+          Pace by recurring
         </label>
 
         <button
@@ -121,7 +118,7 @@ function BudgetRow({
         </button>
       </div>
 
-      <BudgetPace category={item.category} pace={pace} current={current} />
+      <BudgetPace category={item.category} pace={pace} monthEnd={monthEnd} />
 
       <BudgetTransactionList transactions={categoryTransactions} />
 

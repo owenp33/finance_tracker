@@ -22,20 +22,27 @@ export const evenExpectation = (row, elapsed) => ({
 // Spending in cents: an outflow as a positive amount; money in counts as none
 const spendingCents = (amountCents) => Math.max(-amountCents, 0);
 
+// The projection's occurrences in the row's category and the month `period`, and their spending
+const occurrencesIn = (row, occurrences, period) =>
+  occurrences.filter(o => o.category === row.category && o.date.startsWith(period));
+const occurrenceSpending = (list) => list.reduce((sum, o) => sum + spendingCents(Math.round(o.amount * 100)), 0);
+
+// The category's bills still due in `period`: its occurrences in the projection, which lists only
+// ones not charged yet (GET /api/recurring/projection)
+export const billsDue = (row, occurrences, period) => occurrenceSpending(occurrencesIn(row, occurrences, period));
+
 // A scheduled pace on `today` in the current month `period`: the category's recurring charges so
 // far (the month's charges in a series, from the user's `transactions`, transfers left out, plus
 // the projection's `occurrences` due by today), and the month's end at what's spent plus the
 // occurrences still to come (GET /api/recurring/projection only lists ones not charged yet)
 export const scheduledExpectation = (row, { transactions, occurrences, period, today }) => {
-  const inCategoryMonth = ({ category, date }) => category === row.category && date.startsWith(period);
   const posted = transactions
-    .filter(t => t.recurring_id != null && !t.is_transfer && inCategoryMonth(t))
+    .filter(t => t.recurring_id != null && !t.is_transfer && t.category === row.category && t.date.startsWith(period))
     .reduce((sum, t) => sum + spendingCents(t.amount_cents), 0);
-  const upcoming = occurrences.filter(inCategoryMonth);
-  const total = (list) => list.reduce((sum, o) => sum + spendingCents(Math.round(o.amount * 100)), 0);
+  const upcoming = occurrencesIn(row, occurrences, period);
   return {
-    expected:  posted + total(upcoming.filter(o => o.date <= today)),
-    projected: row.spent_cents + total(upcoming),
+    expected:  posted + occurrenceSpending(upcoming.filter(o => o.date <= today)),
+    projected: row.spent_cents + occurrenceSpending(upcoming),
     basis:     'scheduled',
   };
 };
@@ -49,17 +56,22 @@ export const paceStatus = (spent, expected, effective) => {
 };
 
 // A budget row's pace, given what was expected of it ({expected, projected, basis}:
-// evenExpectation or scheduledExpectation)
-export const budgetPace = (row, { expected, projected, basis }) => {
+// evenExpectation or scheduledExpectation) and its bills still due (billsDue), with how far past
+// the budget those bills would take it (none once it's already over)
+export const budgetPace = (row, { expected, projected, basis }, due = 0) => {
   const effective = effectiveCents(row);
+  const spent = row.spent_cents;
+  const status = paceStatus(spent, expected, effective);
   return {
     effective,
-    spent:       row.spent_cents,
-    carriedOver: row.carried_over_cents,
+    spent,
+    carriedOver:  row.carried_over_cents,
     expected,
     projected,
     basis,
-    ...paceStatus(row.spent_cents, expected, effective),
+    ...status,
+    due,
+    overAfterDue: status.status === 'over' ? 0 : Math.max(spent + due - effective, 0),
   };
 };
 

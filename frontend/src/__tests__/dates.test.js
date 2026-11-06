@@ -1,4 +1,4 @@
-import { todayISO, daysInMonth, monthElapsed } from '../utils/dates';
+import { todayISO, daysInMonth, monthElapsed, monthEndLabel } from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
 
@@ -12,6 +12,12 @@ test('counts the days in a month, leap years included', () => {
   expect(daysInMonth('2026-11')).toBe(30);
   expect(daysInMonth('2026-02')).toBe(28);
   expect(daysInMonth('2028-02')).toBe(29);
+});
+
+test("names a month's last day", () => {
+  expect(monthEndLabel('2026-10')).toBe('Oct 31');
+  expect(monthEndLabel('2026-11')).toBe('Nov 30');
+  expect(monthEndLabel('2028-02')).toBe('Feb 29');
 });
 
 test("the current month has passed by today's share of its days, today included", () => {

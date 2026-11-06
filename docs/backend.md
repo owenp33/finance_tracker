@@ -190,8 +190,8 @@ transactions: over-budget flags are computed when transactions are read (`Budget
 so they follow every budget change on their own.
 
 **Scheduled pace.** Budget pace (the Budgeting view) expects a category's spending evenly
-through the month unless the user sets the category to a scheduled pace, which expects it on
-its recurring charges' dates. `set_scheduled_pace(user_id, category, scheduled)` stores the
+through the month unless the user sets the category to a scheduled pace (shown as "Pace by
+recurring"), which expects it on its recurring charges' dates. `set_scheduled_pace(user_id, category, scheduled)` stores the
 choice per category in `scheduled_paces`, for every month: the category matches its budgets'
 name exactly, and the setting stays when those budgets are deleted (adding the budget back finds
 it). Setting the pace a category already has changes nothing; a category that isn't text of 1 to
