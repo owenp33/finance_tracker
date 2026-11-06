@@ -72,6 +72,7 @@ class RecurringModel(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            'account_id': self.account_id,  # the account's database id, as in transactions
             'date': self.start_date.isoformat(),
             'vendor': str(self.vendor),
             'category': str(self.category),

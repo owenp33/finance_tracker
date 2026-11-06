@@ -603,8 +603,9 @@ Details worth knowing:
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
   series and `DELETE` on the same path takes it out; both return the updated template, and an
   invalid link or unlink is a 400. `POST /recurring/<id>/dismissals/<transaction_id>` dismisses a
-  suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count`,
-  `needs_attention`, and `dismissed_transaction_ids`.
+  suggestion and `DELETE` undoes it. Templates in every response carry `account_id` (the
+  account's database id, as transactions do), and all but `GET /accounts/<id>/upcoming` also
+  carry `suggestion_count`, `needs_attention`, and `dismissed_transaction_ids`.
 - `GET /recurring/detected` returns `{series: [{account_id, vendor, category, amount, frequency,
   frequency_unit, ongoing, next_date, transactions}]}` (see Finding series): `amount` is the
   latest payment's, `next_date` is null for an ended series, and `transactions` are the payments,
@@ -745,8 +746,6 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.
-- **Template responses don't say which account they're on.** `RecurringModel.to_dict` has no
-  `account_id`; a client only knows it from having asked `GET /accounts/<id>/recurring`.
 - **Analytics' spending by category ignores reimbursements.** `AnalyticsService.generate_report`
   (the `/analytics` routes and the PDF's summary pages) counts a reimbursement as income, as
   intended for the totals, but doesn't subtract it from its category's spending, while budgets

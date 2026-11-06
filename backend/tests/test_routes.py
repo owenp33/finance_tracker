@@ -2,7 +2,7 @@
 HTTP integration tests — hit the actual Flask routes via test client.
 These verify the full request/response cycle including auth middleware.
 """
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -363,6 +363,24 @@ class TestRecurringRoutes:
         client.post(url, headers=auth_headers)
         again = client.post(url, headers=auth_headers)
         assert (again.status_code, again.json['error']) == (400, 'That transaction is already part of a recurring series.')
+
+    def test_templates_say_which_account_they_are_on(self, client, account, auth_headers):
+        """Every template response carries account_id: the account's database id, as transactions do."""
+        savings_id = client.post('/api/accounts', json={'account_id': 'savings-5678', 'account_name': 'Savings'},
+                                 headers=auth_headers).json['account']['id']
+        assert savings_id != account.id
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        created = client.post(f'/api/accounts/{savings_id}/recurring', headers=auth_headers, json={
+            'start_date': tomorrow, 'vendor': 'Rent', 'category': 'Housing', 'amount': -900,
+            'frequency': 1, 'frequency_unit': 'months'}).json['recurring']
+        responses = [
+            created,
+            client.get(f'/api/recurring/{created["id"]}', headers=auth_headers).json['recurring'],
+            client.patch(f'/api/recurring/{created["id"]}', json={'notes': 'Lease'}, headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/recurring', headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/upcoming', headers=auth_headers).json['upcoming'],
+        ]
+        assert [r.get('account_id') for r in responses] == [savings_id] * 5
 
     def test_templates_report_whether_they_need_attention(self, client, account, auth_headers, pin_today):
         rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
