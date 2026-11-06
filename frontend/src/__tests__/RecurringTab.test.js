@@ -42,6 +42,21 @@ test('each template shows its schedule and next date', () => {
   expect(screen.getByText(/Every 30 days · Next: Oct 29$/)).toBeInTheDocument();
 });
 
+test("the header line totals the active series' costs per month", () => {
+  renderTab([
+    template(),
+    template({ id: 2, vendor: 'Gym', amount: -10, frequency: 7, frequency_unit: 'days' }),
+    template({ id: 3, vendor: 'Paycheck', amount: 1700, frequency: 14, frequency_unit: 'days' }),   // income isn't a cost
+    template({ id: 4, vendor: 'Old rent', amount: -900, number: 3, idx: 4 }),                       // finished
+  ]);
+  expect(screen.getByText('Active recurring costs: $63.33/mo across 2 series')).toBeInTheDocument();
+});
+
+test('without active costs, there is no header line', () => {
+  renderTab([template({ number: 3, idx: 4 })]);
+  expect(screen.queryByText(/Active recurring costs/)).not.toBeInTheDocument();
+});
+
 test('a finished template shows its last occurrence', () => {
   renderTab([template({ date: '2025-12-31', number: 3, idx: 4, next_date: '2026-03-31', last_date: '2026-02-28' })]);
   expect(screen.getByText(/Last: Feb 28, 2026$/)).toBeInTheDocument();

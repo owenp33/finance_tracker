@@ -6,6 +6,9 @@ import FrequencySelect from './FrequencySelect';
 import RecurringSuggestions from './RecurringSuggestions';
 import FindRecurring from './FindRecurring';
 import { sortList, dateStrToDate, formatDate, frequencyLabel } from './utils';
+import { todayISO } from '../../utils/dates';
+import { formatCents } from '../../utils/money';
+import { isFinished, recurringCosts } from '../../utils/recurring';
 
 function RecurringTab({
   transactions,
@@ -81,10 +84,12 @@ function RecurringTab({
   };
 
   // Finished templates (limited, every occurrence used) never generate again; they're listed apart
-  const isFinished = (r) => r.number !== -1 && r.idx > r.number;
   const sortedRecurring = sortList(recurringTransactions, recurringSort, 'next_date');
   const active = sortedRecurring.filter(r => !isFinished(r));
   const finished = sortedRecurring.filter(isFinished);
+
+  // What the active series cost per month (Insights → Recurring has the breakdown)
+  const costs = recurringCosts(recurringTransactions, transactions, todayISO());
 
   // The date of a series' latest transaction (undefined when it has none)
   const lastPaymentDate = (recurringId) =>
@@ -352,6 +357,11 @@ function RecurringTab({
           </button>
         </div>
       </div>
+      {costs.activeCount > 0 && (
+        <p className="recurring-summary">
+          {`Active recurring costs: ${formatCents(costs.total)}/mo across ${costs.activeCount} series`}
+        </p>
+      )}
       {showFinder && (
         <FindRecurring accounts={accounts} onAdd={onAddDetectedSeries} onDismiss={onDismissDetectedSeries} />
       )}

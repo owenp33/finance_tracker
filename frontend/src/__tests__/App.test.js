@@ -4,10 +4,10 @@ import App from '../App';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { SESSION_EXPIRED_EVENT } from '../api/client';
 import { login, me } from '../api/auth';
-import { getAccounts } from '../api/accounts';
+import { getAccounts, getUpcoming } from '../api/accounts';
 import { getAllTransactions } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
-import { getProjection } from '../api/recurring';
+import { getProjection, getAccountRecurring } from '../api/recurring';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
@@ -88,6 +88,22 @@ test("the Dashboard's errors show in the banner", async () => {
   getProjection.mockRejectedValue(new Error('Could not load the projection'));
   renderApp();
   expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
+test("Insights' Recurring tab totals every account's recurring costs", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockResolvedValue([{ id: 1, account_name: 'Checking' }, { id: 2, account_name: 'Discover' }]);
+  getUpcoming.mockResolvedValue([]);
+  getAccountRecurring.mockImplementation(async (accountId) => [{
+    id: accountId, account_id: accountId, date: '2026-04-02', vendor: `Bill ${accountId}`, category: 'Bills',
+    amount: accountId === 1 ? -75 : -20, notes: '', next_date: '2026-12-02', last_date: null,
+    frequency: 1, frequency_unit: 'months', number: -1, idx: 1,
+  }]);
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('$95.00/mo')).toBeInTheDocument();
 });
 
 test('a login that expires while you use the app sends you to the login screen, saying why', async () => {

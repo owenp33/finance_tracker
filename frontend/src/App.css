@@ -3171,6 +3171,96 @@ body {
   font-weight: 600;
 }
 
+/* ── Insights → Recurring (Phase V, V3) ───────────────────────────────────── */
+.recurring-costs {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.recurring-costs-headline h3 {
+  margin-bottom: 6px;
+}
+
+.recurring-costs-total {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  font-variant-numeric: tabular-nums;
+}
+
+.recurring-costs-sub {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.recurring-costs-note {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+/* Bars in the chart blue; an ended series a lighter step of it, and its label says so */
+.recurring-cost-bar {
+  fill: var(--chart-blue);
+}
+
+.recurring-cost-bar.ended {
+  fill-opacity: 0.35;
+}
+
+/* A long label may run into the card's padding rather than be cut off */
+.recurring-costs .recharts-surface {
+  overflow: visible;
+}
+
+.recurring-cost-name {
+  fill: #1f2937;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recurring-cost-label {
+  fill: #4b5563;
+  font-size: 12px;
+}
+
+/* A chart's hover and tap details, dark like the budget pace tooltip */
+.chart-tooltip {
+  padding: 8px 10px;
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 0.78rem;
+}
+
+.chart-tooltip dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 14px;
+  margin: 6px 0 0;
+}
+
+.chart-tooltip dt {
+  color: #cbd5e1;
+}
+
+.chart-tooltip dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Transactions → Recurring tab's line under its header */
+.recurring-summary {
+  margin: -8px 0 14px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
 /* ── "View as table" under a chart (Phase V) ──────────────────────────────── */
 .view-as-table {
   margin-top: 14px;

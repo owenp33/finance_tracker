@@ -23,6 +23,23 @@ export const dayRangeLabel = (from, to) => {
   return first === last ? `${name} ${first}` : `${name} ${first}–${last}`;
 };
 
+// The month `months` months after 'YYYY-MM' (negative goes back)
+export const shiftPeriod = (period, months) => {
+  const [year, month] = period.split('-').map(Number);
+  const first = new Date(year, month - 1 + months, 1);
+  return `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// A run of months 'YYYY-MM' through 'YYYY-MM': "Nov 2025–Oct 2026", "Apr–Oct 2026", or "Sep 2026"
+export const monthRangeLabel = (from, to) => {
+  const name = (period, withYear) => {
+    const [year, month] = period.split('-').map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString('en-US', withYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
+  };
+  if (from === to) return name(to, true);
+  return `${name(from, from.slice(0, 4) !== to.slice(0, 4))}–${name(to, true)}`;
+};
+
 // Days in the month 'YYYY-MM'
 export const daysInMonth = (period) => {
   const [year, month] = period.split('-').map(Number);
