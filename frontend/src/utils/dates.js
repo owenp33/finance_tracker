@@ -40,6 +40,13 @@ export const monthRangeLabel = (from, to) => {
   return `${name(from, from.slice(0, 4) !== to.slice(0, 4))}–${name(to, true)}`;
 };
 
+// A day 'YYYY-MM-DD' as a whole number of days since Jan 1, 1970, so subtracting two gives the
+// days between them (calendar days, whatever the time zone)
+export const dayNumber = (day) => {
+  const [year, month, date] = day.split('-').map(Number);
+  return Date.UTC(year, month - 1, date) / 86400000;
+};
+
 // Days in the month 'YYYY-MM'
 export const daysInMonth = (period) => {
   const [year, month] = period.split('-').map(Number);

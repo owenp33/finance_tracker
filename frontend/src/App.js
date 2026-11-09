@@ -421,7 +421,12 @@ function App() {
           />
         )}
         {view === 'insights' && (
-          <InsightsView transactions={transactions} accounts={accounts} recurring={recurringTransactions} />
+          <InsightsView
+            transactions={transactions}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            onError={setError}
+          />
         )}
       </main>
     </div>

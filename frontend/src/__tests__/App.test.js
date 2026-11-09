@@ -106,6 +106,17 @@ test("Insights' Recurring tab totals every account's recurring costs", async () 
   expect(await screen.findByText('$95.00/mo')).toBeInTheDocument();
 });
 
+test("Insights' Recurring tab reports a failed projection in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  await screen.findByText('Could not load the projection');           // the Dashboard's
+  await userEvent.click(screen.getByRole('button', { name: '×' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
 test('a login that expires while you use the app sends you to the login screen, saying why', async () => {
   localStorage.setItem('token', 'good-token');
   renderApp();

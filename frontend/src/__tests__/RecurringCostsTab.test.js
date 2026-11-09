@@ -1,7 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InsightsView from '../components/InsightsView';
 import { CategoryColorProvider } from '../CategoryColorContext';
+import { getProjection } from '../api/recurring';
+
+jest.mock('../api/recurring');
 
 // jsdom has no layout, so the chart gets a fixed size instead of measuring its container
 jest.mock('recharts', () => {
@@ -60,6 +63,15 @@ const TRANSACTIONS = [
   payment(10, '2026-09-02', -652.50),
 ];
 
+// What GET /recurring/projection lists from Nov 5, 2026 through Feb 28, 2027
+const occurrence = (recurringId, date) => ({ recurring_id: recurringId, account_id: 1, date, vendor: 'Vendor', category: 'Bills', amount: -1 });
+const OCCURRENCES = [
+  ...['2026-11-30', '2026-12-31', '2027-01-31', '2027-02-28'].map(d => occurrence(5, d)),
+  occurrence(6, '2026-11-09'),                                                       // Allina's last
+  ...['2026-12-02', '2027-01-02', '2027-02-02'].map(d => occurrence(7, d)),
+  ...['2026-12-01', '2026-12-15', '2026-12-29', '2027-01-12', '2027-01-26', '2027-02-09', '2027-02-23'].map(d => occurrence(13, d)),
+];
+
 const ACCOUNTS = [
   { id: 1, account_id: 'chk', account_name: 'Checking' },
   { id: 2, account_id: 'disc', account_name: 'Discover' },
@@ -70,16 +82,19 @@ let user;
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date(2026, 10, 5, 12));   // Nov 5, 2026
   user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  getProjection.mockResolvedValue(OCCURRENCES);
 });
 afterEach(() => jest.useRealTimers());
 
-const openTab = async ({ recurring = TEMPLATES, transactions = TRANSACTIONS } = {}) => {
+// Opens Insights → Recurring, then lets the projection arrive
+const openTab = async ({ recurring = TEMPLATES, transactions = TRANSACTIONS, onError = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
-      <InsightsView transactions={transactions} accounts={ACCOUNTS} recurring={recurring} />
+      <InsightsView transactions={transactions} accounts={ACCOUNTS} recurring={recurring} onError={onError} />
     </CategoryColorProvider>
   );
   await user.click(screen.getByRole('button', { name: 'Recurring' }));
+  await act(async () => {});
 };
 
 const headline = () => screen.getByRole('heading', { name: 'Recurring costs' }).closest('section');
@@ -106,9 +121,11 @@ test('each series has a bar labelled with its cost per month; ended ones say whe
   expect(within(chart).queryByText(/HLWW/)).not.toBeInTheDocument();       // income isn't a cost
 });
 
+const section = (heading) => screen.getByRole('heading', { name: heading }).closest('section');
+
 test('"View as table" lists every series', async () => {
   await openTab();
-  await user.click(screen.getByText('View as table'));
+  await user.click(within(section('Cost per month, by series')).getByText('View as table'));
   expect(cells(screen.getByRole('table', { name: 'Recurring costs per month' }))).toEqual([
     ['Series', 'Account', 'Charged', 'Per month', 'Status', 'Paid beyond schedule'],
     ['Allina Health', 'Checking', '$87.38 biweekly', '$189.32', 'Active', '—'],
@@ -130,4 +147,66 @@ test('with no recurring series at all, the chart says so', async () => {
   const chart = screen.getByRole('heading', { name: 'Cost per month, by series' }).closest('section');
   expect(within(chart).getByText('No recurring costs yet.')).toBeInTheDocument();
   expect(screen.queryByText('View as table')).not.toBeInTheDocument();
+});
+
+describe('the timeline', () => {
+  const timelineRows = async () => {
+    await user.click(within(section('Timeline')).getByText('View as table'));
+    return cells(screen.getByRole('table', { name: 'Recurring series timeline' }));
+  };
+  const HEADER = ['Series', 'Account', 'First payment', 'Last payment', 'Payments', 'Amount changes', 'Extra payments', 'Still scheduled'];
+
+  test("it asks what's still scheduled through the end of the third month ahead", async () => {
+    await openTab();
+    await waitFor(() => expect(getProjection).toHaveBeenCalledWith(115));     // Nov 5 through Feb 28
+  });
+
+  test('it shows the active series, earliest first, income included', async () => {
+    await openTab();
+    await within(section('Timeline')).findByText('Through Nov 9, 2026');      // the projection has arrived
+    expect(await timelineRows()).toEqual([
+      HEADER,
+      ['ASPIRE', 'Checking', 'Oct 31, 2025', 'Oct 28, 2026', '15', '4', '2', 'Ongoing'],
+      ['Anthropic', 'Discover', 'Apr 2, 2026', 'Nov 2, 2026', '8', '0', '0', 'Ongoing'],
+      ['Allina Health', 'Checking', 'Jul 20, 2026', 'Oct 26, 2026', '7', '0', '0', 'Through Nov 9, 2026'],
+      ['HLWW School District (income)', 'Savings', '—', '—', '0', '0', '0', 'Ongoing'],
+    ]);
+  });
+
+  test('Ended and All switch which series show', async () => {
+    await openTab();
+    await user.click(within(section('Timeline')).getByRole('button', { name: 'Ended' }));
+    expect(within(section('Timeline')).getByRole('button', { name: 'Ended' })).toHaveAttribute('aria-pressed', 'true');
+    expect((await timelineRows()).map(row => [row[0], row[7]])).toEqual([
+      ['Series', 'Still scheduled'],
+      ['Millenium Apartments', 'Ended Sep 2026'],
+      ['Shelby Jackson LLC', 'Ended Jul 2025'],
+    ]);
+    await user.click(within(section('Timeline')).getByRole('button', { name: 'All' }));
+    expect(cells(screen.getByRole('table', { name: 'Recurring series timeline' }))).toHaveLength(7);
+  });
+
+  test("the rows mark amount changes with rings and extra payments with dots, and today's line is labelled", async () => {
+    await openTab();
+    const chart = section('Timeline');
+    expect(chart.querySelectorAll('.timeline-ring')).toHaveLength(4);
+    expect(chart.querySelectorAll('.timeline-dot')).toHaveLength(2);
+    expect(within(chart).getByText('Today')).toBeInTheDocument();
+    expect(within(chart).getByText('HLWW School District · Savings · income')).toBeInTheDocument();
+  });
+
+  test('with no active series, it says so', async () => {
+    await openTab({ recurring: [MILLENIUM] });
+    expect(within(section('Timeline')).getByText('No active series.')).toBeInTheDocument();
+    await user.click(within(section('Timeline')).getByRole('button', { name: 'Ended' }));
+    expect(within(section('Timeline')).getByText('Millenium Apartments · Checking · ended Sep 2026')).toBeInTheDocument();
+  });
+
+  test("a projection that fails is reported, and what's posted still shows", async () => {
+    getProjection.mockRejectedValue(new Error('Could not load the projection'));
+    const onError = jest.fn();
+    await openTab({ onError });
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load the projection'));
+    expect((await timelineRows())[1].slice(0, 5)).toEqual(['ASPIRE', 'Checking', 'Oct 31, 2025', 'Oct 28, 2026', '15']);
+  });
 });

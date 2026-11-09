@@ -1,5 +1,6 @@
 import {
   todayISO, daysInMonth, monthElapsed, monthEndLabel, sameDayLastMonth, dayRangeLabel, shiftPeriod, monthRangeLabel,
+  dayNumber,
 } from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
@@ -46,6 +47,12 @@ test('names a run of months', () => {
   expect(monthRangeLabel('2025-11', '2026-10')).toBe('Nov 2025–Oct 2026');
   expect(monthRangeLabel('2026-04', '2026-10')).toBe('Apr–Oct 2026');
   expect(monthRangeLabel('2026-09', '2026-09')).toBe('Sep 2026');
+});
+
+test('numbers days, so subtracting two gives the days between, across months and leap years', () => {
+  expect(dayNumber('2027-02-28') - dayNumber('2026-11-05')).toBe(115);
+  expect(dayNumber('2028-03-01') - dayNumber('2028-02-28')).toBe(2);
+  expect(dayNumber('1970-01-02')).toBe(1);
 });
 
 test("the current month has passed by today's share of its days, today included", () => {

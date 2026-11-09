@@ -1,0 +1,151 @@
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, ZIndexLayer, DefaultZIndexes, usePlotArea,
+} from 'recharts';
+import { formatDate } from '../../transactions/utils';
+import { dayNumber, shiftPeriod } from '../../../utils/dates';
+
+const ROW_HEIGHT = 44;
+const BAR_SIZE = 8;
+const TOP = 26;          // room for the "Today" label above the first row
+const AXIS_HEIGHT = 24;
+const LABEL_GAP = 9;     // between a row's text and its bar, clear of its marks
+
+// The quarter starts (Jan, Apr, Jul, Oct) from `startPeriod` through `endPeriod`, each named with
+// its year when it's January or the first
+const quarterTicks = (startPeriod, endPeriod) => {
+  const ticks = [];
+  for (let period = startPeriod; period <= endPeriod; period = shiftPeriod(period, 1)) {
+    const [year, month] = period.split('-').map(Number);
+    if ((month - 1) % 3 !== 0) continue;
+    const withYear = month === 1 || ticks.length === 0;
+    const label = new Date(year, month - 1, 1).toLocaleDateString('en-US', withYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
+    ticks.push({ day: `${period}-01`, label });
+  }
+  return ticks;
+};
+
+// A row's spans: posted solid, still scheduled light and dashed; ended rows lighter, income in aqua
+const PostedSpan = ({ x, y, width, height, payload }) => (payload.payments.length === 0 ? null : (
+  <rect x={x} y={y} width={Math.max(width, 3)} height={height} rx={3}
+    className={`timeline-posted ${payload.kind}${payload.active ? '' : ' ended'}`} />
+));
+const ScheduledSpan = ({ x, y, width, height, payload }) => (!payload.scheduled ? null : (
+  <rect x={x} y={y + 0.5} width={Math.max(width, 3)} height={height - 1} rx={3} className={`timeline-scheduled ${payload.kind}`} />
+));
+const Hidden = () => null;
+
+// Each row's text above its bar, and its payments' marks on it: a ring where the amount changed, a
+// dot for an extra payment (both: a dot inside a ring). Drawn in Recharts' scatter layer, above the
+// bars and the "Today" line (SVG has no z-index; Recharts 3 orders its own layers).
+function RowMarks({ data, origin, span }) {
+  const plot = usePlotArea();
+  if (!plot) return null;
+  const band = plot.height / data.length;
+  const x = (day) => plot.x + ((dayNumber(day) - origin) / span) * plot.width;
+  return (
+    <ZIndexLayer zIndex={DefaultZIndexes.scatter}>
+    <g className="timeline-marks">
+      {data.map((row, i) => {
+        const cy = plot.y + band * (i + 0.5);
+        return (
+          <g key={row.template.id}>
+            <text x={plot.x} y={cy - BAR_SIZE / 2 - LABEL_GAP} className="timeline-row-label">{row.name}</text>
+            {row.payments.map((payment, j) => (payment.changed || payment.extra) && (
+              <g key={j}>
+                {payment.changed && <circle cx={x(payment.date)} cy={cy} r={4.5} className="timeline-ring" />}
+                {payment.extra && <circle cx={x(payment.date)} cy={cy} r={payment.changed ? 2 : 3.5} className="timeline-dot" />}
+              </g>
+            ))}
+          </g>
+        );
+      })}
+    </g>
+    </ZIndexLayer>
+  );
+}
+
+// The numbers behind a row on hover or tap
+function SeriesTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="chart-tooltip">
+      <strong>{row.template.vendor}</strong>
+      <dl>
+        <dt>Account</dt><dd>{row.account}</dd>
+        {row.kind === 'income' && <><dt>Type</dt><dd>Income</dd></>}
+        <dt>Payments</dt><dd>{row.payments.length}</dd>
+        {row.posted && (
+          <><dt>First</dt><dd>{formatDate(row.posted.from, true)}</dd><dt>Last</dt><dd>{formatDate(row.posted.to, true)}</dd></>
+        )}
+        <dt>Amount changes</dt><dd>{row.changes}</dd>
+        <dt>Extra payments</dt><dd>{row.extras}</dd>
+        <dt>Still scheduled</dt><dd>{row.scheduledLabel}</dd>
+      </dl>
+    </div>
+  );
+}
+
+// One row per series on a time axis, as a stacked bar: a transparent offset to its first payment,
+// the posted span, a transparent gap to today, and what's still scheduled through `windowEnd`;
+// payment marks drawn over it and a dashed "Today" line. `rows` are RecurringTimeline's:
+// seriesTimeline's rows plus their label (`name`), account, counts and scheduled label.
+function RecurringTimelineChart({ rows, today, windowEnd }) {
+  const starts = rows.map(row => row.posted?.from ?? row.scheduled?.from).filter(Boolean).sort();
+  const startPeriod = (starts[0] ?? today).slice(0, 7);
+  const origin = dayNumber(`${startPeriod}-01`);
+  const at = (day) => dayNumber(day) - origin;
+  const span = at(windowEnd);
+  const ticks = quarterTicks(startPeriod, windowEnd.slice(0, 7));
+  const tickLabels = Object.fromEntries(ticks.map(tick => [at(tick.day), tick.label]));
+
+  const data = rows.map(row => {
+    const postedTo = row.posted ? at(row.posted.to) : null;
+    const scheduledFrom = row.scheduled ? Math.max(at(row.scheduled.from), postedTo ?? 0) : null;
+    return {
+      ...row,
+      offset:    row.posted ? at(row.posted.from) : (scheduledFrom ?? 0),
+      postedSpan: row.posted ? postedTo - at(row.posted.from) : 0,
+      gap:       row.posted && row.scheduled ? scheduledFrom - postedTo : 0,
+      scheduledSpan: row.scheduled ? at(row.scheduled.to) - scheduledFrom : 0,
+    };
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height={data.length * ROW_HEIGHT + TOP + AXIS_HEIGHT}>
+      <BarChart data={data} layout="vertical" margin={{ top: TOP, right: 0, bottom: 0, left: 0 }}>
+        <XAxis
+          type="number" domain={[0, span]} allowDataOverflow ticks={ticks.map(tick => at(tick.day))}
+          tickFormatter={value => tickLabels[value] ?? ''} height={AXIS_HEIGHT} interval="preserveStartEnd"
+          tickLine={false} axisLine={{ stroke: '#d1d5db' }} tick={{ fontSize: 12, fill: '#6b7280' }}
+        />
+        <YAxis type="category" dataKey="name" hide />
+        <Tooltip cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }} content={<SeriesTooltip />} />
+        <Bar dataKey="offset" stackId="life" barSize={BAR_SIZE} isAnimationActive={false} shape={Hidden} />
+        <Bar dataKey="postedSpan" stackId="life" barSize={BAR_SIZE} isAnimationActive={false} shape={PostedSpan} />
+        <Bar dataKey="gap" stackId="life" barSize={BAR_SIZE} isAnimationActive={false} shape={Hidden} />
+        <Bar dataKey="scheduledSpan" stackId="life" barSize={BAR_SIZE} isAnimationActive={false} shape={ScheduledSpan} />
+        <ReferenceLine
+          x={at(today)} stroke="#1a1a2e" strokeDasharray="3 3"
+          label={{ value: 'Today', position: 'top', fill: '#374151', fontSize: 12 }}
+        />
+        <RowMarks data={data} origin={origin} span={span} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// What the timeline's marks mean
+export function TimelineLegend() {
+  return (
+    <ul className="timeline-legend">
+      <li><svg width="22" height="10" aria-hidden="true"><rect y="1" width="22" height="8" rx="3" className="timeline-posted cost" /></svg>Posted</li>
+      <li><svg width="22" height="10" aria-hidden="true"><rect y="1.5" width="22" height="7" rx="3" className="timeline-scheduled cost" /></svg>Still scheduled</li>
+      <li><svg width="22" height="10" aria-hidden="true"><rect y="1" width="22" height="8" rx="3" className="timeline-posted income" /></svg>Income</li>
+      <li><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" className="timeline-key-ring" /></svg>Amount changed</li>
+      <li><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="3.5" className="timeline-key-dot" /></svg>Extra payment</li>
+    </ul>
+  );
+}
+
+export default RecurringTimelineChart;

@@ -1,4 +1,5 @@
 import RecurringCostsChart from './charts/RecurringCostsChart';
+import RecurringTimeline from './RecurringTimeline';
 import ViewAsTable from '../ViewAsTable';
 import { frequencyLabel } from '../transactions/utils';
 import { todayISO, monthRangeLabel } from '../../utils/dates';
@@ -16,8 +17,9 @@ const chargedLabel = ({ amount, frequency, frequency_unit }) =>
 
 // Insights → Recurring (Phase V, V3): what the user's recurring series cost per month. The
 // headline totals the active ones at their scheduled amounts; what a series paid beyond its
-// schedule is noted apart, never added in (Owen, 2026-11-05).
-function RecurringCostsTab({ recurring = [], transactions = [], accounts = [] }) {
+// schedule is noted apart, never added in (Owen, 2026-11-05). Then each series' timeline.
+// `onError` reports a failed request.
+function RecurringCostsTab({ recurring = [], transactions = [], accounts = [], onError }) {
   const { series, total, activeCount, incomeCount } = recurringCosts(recurring, transactions, todayISO());
   const accountName = (id) => accounts.find(a => a.id === id)?.account_name ?? '';
 
@@ -74,6 +76,8 @@ function RecurringCostsTab({ recurring = [], transactions = [], accounts = [] })
           <p className="no-data">No recurring costs yet.</p>
         )}
       </section>
+
+      <RecurringTimeline recurring={recurring} transactions={transactions} accountName={accountName} onError={onError} />
     </div>
   );
 }

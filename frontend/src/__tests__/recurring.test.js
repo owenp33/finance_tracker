@@ -1,5 +1,5 @@
 import {
-  isFinished, monthlyEquivalent, paidBeyondSchedule, recurringCosts,
+  isFinished, monthlyEquivalent, paidBeyondSchedule, recurringCosts, paymentMarks, seriesTimeline,
 } from '../utils/recurring';
 
 const template = (overrides) => ({
@@ -53,6 +53,15 @@ const TRANSACTIONS = [
 ];
 
 const TODAY = '2026-11-05';
+
+// What GET /recurring/projection lists from Nov 5, 2026 through Feb 28, 2027
+const occurrence = (recurringId, date) => ({ recurring_id: recurringId, account_id: 1, date, vendor: 'Vendor', category: 'Bills', amount: -1 });
+const OCCURRENCES = [
+  ...['2026-11-30', '2026-12-31', '2027-01-31', '2027-02-28'].map(d => occurrence(5, d)),
+  occurrence(6, '2026-11-09'),                                                       // Allina's last
+  ...['2026-12-02', '2027-01-02', '2027-02-02'].map(d => occurrence(7, d)),
+  ...['2026-12-01', '2026-12-15', '2026-12-29', '2027-01-12', '2027-01-26', '2027-02-09', '2027-02-23'].map(d => occurrence(13, d)),
+];
 
 describe('a series per month', () => {
   test('weekly × 52/12, biweekly × 26/12, monthly × 1, quarterly ÷ 3, annually ÷ 12, signed like its amount', () => {
@@ -115,6 +124,70 @@ test('recurring costs: active series first, then ended ones, each costliest firs
   ]);
   expect(series.map(s => s.beyond?.extra ?? null)).toEqual([0, 10500, 0, null, null]);
   expect([total, activeCount, incomeCount]).toEqual([28432, 3, 1]);
+});
+
+describe('payment marks', () => {
+  test('a ring where the amount changed from the payment before, a dot for each payment beyond the first in its month', () => {
+    const payments = [
+      payment(5, '2026-04-30', -75),
+      payment(5, '2026-01-31', -75),
+      payment(5, '2026-02-27', -75),
+      payment(5, '2026-03-02', -45),
+      payment(5, '2026-03-31', -45),
+      payment(5, '2026-04-02', -105),
+      payment(99, '2026-02-10', -500),                              // another series
+      { ...payment(5, '2026-02-11', -500), is_transfer: true },      // a transfer
+    ];
+    expect(paymentMarks(ASPIRE, payments).map(p => [p.date, p.changed, p.extra])).toEqual([
+      ['2026-01-31', false, false],
+      ['2026-02-27', false, false],
+      ['2026-03-02', true, false],
+      ['2026-03-31', false, true],
+      ['2026-04-02', true, false],
+      ['2026-04-30', true, true],
+    ]);
+  });
+
+  test("a biweekly series' periods are 14 days from its first payment, so three charges in August aren't extra", () => {
+    const payments = TRANSACTIONS.filter(t => t.recurring_id === 6);
+    expect(paymentMarks(ALLINA, payments).filter(p => p.extra)).toEqual([]);
+    const marks = paymentMarks(ALLINA, [...payments, payment(6, '2026-08-05', -87.38)]);
+    expect(marks.filter(p => p.extra).map(p => p.date)).toEqual(['2026-08-05']);
+  });
+});
+
+describe('the series timeline', () => {
+  const rows = () => seriesTimeline(TEMPLATES, TRANSACTIONS, OCCURRENCES, TODAY, '2027-02-28');
+
+  test('a row per series, income included, earliest first; one with nothing to draw goes last', () => {
+    expect(rows().map(r => [r.template.vendor, r.kind, r.active])).toEqual([
+      ['ASPIRE', 'cost', true],
+      ['Anthropic', 'cost', true],
+      ['Allina Health', 'cost', true],
+      ['Millenium Apartments', 'cost', false],
+      ['HLWW School District', 'income', true],
+      ['Shelby Jackson LLC', 'cost', false],
+    ]);
+  });
+
+  test('posted runs from the first payment to the last; still scheduled from today to the last occurrence, or past the window', () => {
+    const byVendor = Object.fromEntries(rows().map(r => [r.template.vendor, [r.posted, r.scheduled, r.continues]]));
+    expect(byVendor).toEqual({
+      'ASPIRE':               [{ from: '2025-10-31', to: '2026-10-28' }, { from: '2026-11-05', to: '2027-02-28' }, true],
+      'Anthropic':            [{ from: '2026-04-02', to: '2026-11-02' }, { from: '2026-11-05', to: '2027-02-28' }, true],
+      'Allina Health':        [{ from: '2026-07-20', to: '2026-10-26' }, { from: '2026-11-05', to: '2026-11-09' }, false],
+      'Millenium Apartments': [{ from: '2026-08-02', to: '2026-09-02' }, null, false],
+      'HLWW School District': [null, { from: '2026-12-01', to: '2027-02-28' }, true],      // starts Dec 1
+      'Shelby Jackson LLC':   [null, null, false],
+    });
+  });
+
+  test("each row carries its payments' marks", () => {
+    const aspire = rows()[0];
+    expect(aspire.payments).toHaveLength(15);
+    expect(aspire.payments.filter(p => p.changed).map(p => p.date)).toEqual(['2026-02-12', '2026-02-28', '2026-06-03', '2026-06-28']);
+    expect(aspire.payments.filter(p => p.extra).map(p => p.date)).toEqual(['2026-02-28', '2026-06-28']);
+  });
 });
 
 test('no templates, no costs', () => {

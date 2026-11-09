@@ -3254,6 +3254,110 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Insights → Recurring timeline (Phase V, V3b) ─────────────────────────── */
+.recurring-timeline-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 8px;
+}
+
+.recurring-timeline-header h3 {
+  margin: 0;
+}
+
+.timeline-toggle {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.timeline-toggle-btn {
+  padding: 5px 12px;
+  border: none;
+  background: #fff;
+  color: #374151;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.timeline-toggle-btn + .timeline-toggle-btn {
+  border-left: 1px solid #d1d5db;
+}
+
+.timeline-toggle-btn.active {
+  background: #667eea;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Posted solid, still scheduled light with a dashed edge; income in aqua, ended lighter */
+.timeline-posted {
+  fill: var(--chart-blue);
+}
+
+.timeline-posted.income {
+  fill: var(--chart-aqua);
+}
+
+.timeline-posted.ended {
+  fill-opacity: 0.35;
+}
+
+.timeline-scheduled {
+  fill: var(--chart-blue);
+  fill-opacity: 0.12;
+  stroke: var(--chart-blue);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.timeline-scheduled.income {
+  fill: var(--chart-aqua);
+  stroke: var(--chart-aqua);
+}
+
+/* Payment marks: a ring where the amount changed, a dot for an extra payment */
+.timeline-ring,
+.timeline-key-ring {
+  fill: #fff;
+  stroke: #1a1a2e;
+  stroke-width: 1.5;
+}
+
+.timeline-dot,
+.timeline-key-dot {
+  fill: #1a1a2e;
+  stroke: #fff;
+  stroke-width: 1;
+}
+
+.timeline-row-label {
+  fill: #1f2937;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.timeline-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* The Transactions → Recurring tab's line under its header */
 .recurring-summary {
   margin: -8px 0 14px;
