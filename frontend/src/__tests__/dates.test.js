@@ -1,6 +1,6 @@
 import {
   todayISO, daysInMonth, monthElapsed, monthEndLabel, sameDayLastMonth, dayRangeLabel, shiftPeriod, monthRangeLabel,
-  dayNumber,
+  dayNumber, shiftMonths,
 } from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
@@ -28,6 +28,13 @@ test('the same day last month, or its last day when last month is shorter', () =
   expect(sameDayLastMonth('2026-10-31')).toBe('2026-09-30');
   expect(sameDayLastMonth('2026-03-30')).toBe('2026-02-28');
   expect(sameDayLastMonth('2026-01-15')).toBe('2025-12-15');
+});
+
+test('the same day some months away, or that month\'s last day when it is shorter', () => {
+  expect(shiftMonths('2026-11-08', -3)).toBe('2026-08-08');
+  expect(shiftMonths('2026-08-31', -6)).toBe('2026-02-28');
+  expect(shiftMonths('2026-11-08', -12)).toBe('2025-11-08');
+  expect(shiftMonths('2026-01-31', 1)).toBe('2026-02-28');
 });
 
 test('names a run of days in one month', () => {

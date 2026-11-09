@@ -1,4 +1,4 @@
-import { formatDollars, formatWholeDollars, formatCents } from '../utils/money';
+import { formatDollars, formatWholeDollars, formatCents, formatSignedCents } from '../utils/money';
 
 test('formats dollars with a leading sign and thousands separators', () => {
   expect(formatDollars(1234.5)).toBe('$1,234.50');
@@ -22,4 +22,10 @@ test('formats amounts kept in cents', () => {
   expect(formatCents(123450)).toBe('$1,234.50');
   expect(formatCents(-81507)).toBe('-$815.07');
   expect(formatCents(0)).toBe('$0.00');
+});
+
+test('a change in cents, signed: a plus for money in, a minus for money out, none for no change', () => {
+  expect(formatSignedCents(598541)).toBe('+$5,985.41');
+  expect(formatSignedCents(-50000)).toBe('-$500.00');
+  expect(formatSignedCents(0)).toBe('$0.00');
 });

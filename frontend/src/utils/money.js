@@ -12,3 +12,6 @@ export const formatWholeDollars = (amount) => usdWhole.format(amount ?? 0);
 
 // Amounts kept in cents (the API's *_cents fields), as formatDollars shows them
 export const formatCents = (cents) => formatDollars(cents / 100);
+
+// A change in cents, signed: "+$5,985.41", "-$500.00", "$0.00"
+export const formatSignedCents = (cents) => (cents > 0 ? `+${formatCents(cents)}` : formatCents(cents));

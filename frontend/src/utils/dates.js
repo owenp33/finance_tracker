@@ -8,12 +8,16 @@ const isoDate = (date) => {
 // Today as YYYY-MM-DD in the user's time zone
 export const todayISO = () => isoDate(new Date());
 
-// The same day of last month as `day` (YYYY-MM-DD), or last month's last day when it's shorter
-export const sameDayLastMonth = (day) => {
+// The same day `months` months from `day` (YYYY-MM-DD; negative goes back), or that month's last
+// day when it's shorter
+export const shiftMonths = (day, months) => {
   const [year, month, date] = day.split('-').map(Number);
-  const lastMonthDays = new Date(year, month - 1, 0).getDate();
-  return isoDate(new Date(year, month - 2, Math.min(date, lastMonthDays)));
+  const lastDay = new Date(year, month + months, 0).getDate();
+  return isoDate(new Date(year, month - 1 + months, Math.min(date, lastDay)));
 };
+
+// The same day of last month as `day` (YYYY-MM-DD), or last month's last day when it's shorter
+export const sameDayLastMonth = (day) => shiftMonths(day, -1);
 
 // A run of days within one month, `from` through `to` (YYYY-MM-DD): "Oct 1–5", or "Oct 1"
 export const dayRangeLabel = (from, to) => {
