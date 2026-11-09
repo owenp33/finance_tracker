@@ -35,6 +35,15 @@ const TRANSACTIONS = [
   tx('2026-10-26', -500, 'Transfer', 'To savings', { is_transfer: true }),
 ];
 
+// Jun–Oct 2026 full, Nov so far: net $500, -$600, $300, $900, nothing in October, -$200 so far
+const NET_TRANSACTIONS = [
+  ...['06', '07', '08', '09'].map(m => tx(`2026-${m}-01`, 2000, 'Paycheck', 'Employer')),
+  spend('2026-06-15', 'Rent', 1500), spend('2026-07-15', 'Rent', 2600),
+  spend('2026-08-15', 'Rent', 1700), spend('2026-09-15', 'Rent', 1100),
+  spend('2026-11-03', 'Groceries', 200),
+  tx('2026-09-20', -500, 'Transfer', 'To savings', { is_transfer: true }),
+];
+
 let user;
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date(2026, 10, 8, 12));   // Nov 8, 2026
@@ -100,6 +109,43 @@ test('income is one line instead of a pie, and the pies are gone', () => {
   expect(screen.queryByText('Income by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending Breakdown')).not.toBeInTheDocument();
+});
+
+describe('net per month', () => {
+  const net = () => screen.getByRole('heading', { name: 'Net per month' }).closest('section');
+
+  test('a bar per month around $0, colored by which way it went, the partial month lighter, and a 3-month average line', () => {
+    renderOverview(NET_TRANSACTIONS);
+    expect(net().querySelectorAll('.net-bar')).toHaveLength(5);                // October's $0 draws no bar
+    expect(net().querySelectorAll('.net-bar.negative')).toHaveLength(2);       // July, and November so far
+    expect(net().querySelectorAll('.net-bar.partial')).toHaveLength(1);
+    expect(net().querySelector('.net-average .recharts-line-curve')).not.toBeNull();
+    expect(net().querySelector('.net-zero-line')).not.toBeNull();
+    expect(screen.queryByText('Monthly Trends')).not.toBeInTheDocument();
+  });
+
+  test('"View as table" lists each month with its 3-month average', async () => {
+    renderOverview(NET_TRANSACTIONS);
+    await user.click(within(net()).getByText('View as table'));
+    expect(cells(within(net()).getByRole('table'))).toEqual([
+      ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
+      ['Jun 2026', '$2,000.00', '$1,500.00', '+$500.00', '—'],
+      ['Jul 2026', '$2,000.00', '$2,600.00', '-$600.00', '—'],
+      ['Aug 2026', '$2,000.00', '$1,700.00', '+$300.00', '+$66.67'],
+      ['Sep 2026', '$2,000.00', '$1,100.00', '+$900.00', '+$200.00'],
+      ['Oct 2026', '$0.00', '$0.00', '$0.00', '+$400.00'],
+      ['Nov 2026 (partial)', '$0.00', '$200.00', '-$200.00', '—'],
+    ]);
+  });
+});
+
+test('the summary cards show whole cents, and a negative net with its sign first', () => {
+  renderOverview();
+  const card = (title) => screen.getByRole('heading', { name: title }).closest('.summary-card');
+  expect(within(card('Total Income')).getByText('$4,050.00')).toBeInTheDocument();
+  expect(within(card('Total Expenses')).getByText('$4,167.00')).toBeInTheDocument();
+  expect(within(card('Total Expenses')).getByText('Avg: $391.29')).toBeInTheDocument();
+  expect(within(card('Net Amount')).getByText('-$117.00')).toBeInTheDocument();
 });
 
 test('without spending, the section says so', () => {

@@ -4,7 +4,8 @@ import { todayISO, shiftMonths, dayNumber } from '../../utils/dates';
 // Pure analytics helpers for the Overview tab, by the shared money rules (utils/moneyRules.js,
 // decision 2): transfers never count, income is money in (reimbursements included), spending is
 // money out, and a zero amount is neither. Sums are in cents; the results are in dollars, in the
-// shape the backend's AnalyticsService produces.
+// shape the backend's AnalyticsService produces, less its monthly summary (the Overview's months
+// come from monthlyNet since V5c).
 
 const dollars = (cents) => cents / 100;
 const size = (t) => Math.abs(t.amount_cents);
@@ -38,17 +39,6 @@ export function computeAnalytics(transactions) {
   const incomeCents = total(income);
   const expenseCents = total(expenses);
 
-  // By month, newest first, as the backend sorts it (the charts reverse it, oldest on the left)
-  const months = {};
-  for (const t of counted) {
-    const month = (months[t.date.slice(0, 7)] = months[t.date.slice(0, 7)] || { income: 0, expenses: 0 });
-    if (isIncome(t)) month.income += size(t);
-    else month.expenses += size(t);
-  }
-  const monthly_summary = Object.entries(months)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([month, m]) => ({ month, income: dollars(m.income), expenses: dollars(m.expenses), net: dollars(m.income - m.expenses) }));
-
   // Weekly averages over the days from the first counted transaction to the last (at least a week)
   const days = counted.map(t => dayNumber(t.date));
   const weeks = days.length ? Math.max(1, (Math.max(...days) - Math.min(...days)) / 7) : 1;
@@ -63,7 +53,6 @@ export function computeAnalytics(transactions) {
     },
     spending_by_category: byKey(expenses, 'category', expenseCents),
     income_by_category:   byKey(income, 'category', incomeCents),
-    monthly_summary,
     top_vendors: byKey(expenses, 'vendor', expenseCents).slice(0, 10).map(v => ({ vendor: v.vendor, amount: v.total })),
     trends: {
       weekly_avg_income:   dollars(incomeCents) / weeks,

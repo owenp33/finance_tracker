@@ -32,7 +32,7 @@ function CategoryMultiples({ panels, totalExpenses }) {
         <p className="no-data">No spending in this period.</p>
       ) : (
         <>
-          <p className="category-multiples-note">
+          <p className="chart-note">
             Per month, each on its own scale; the dashed line is its monthly average, and a month only partly in the period is lighter.
           </p>
           <div className="category-panels">
@@ -48,7 +48,7 @@ function CategoryMultiples({ panels, totalExpenses }) {
             ))}
           </div>
           {lowered > 0 && (
-            <p className="category-multiples-note">
+            <p className="chart-note">
               {`Reimbursements are taken off their categories, so these add up to ${formatCents(sum)}, `
                 + `${formatCents(lowered)} less than Total Expenses.`}
             </p>

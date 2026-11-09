@@ -3409,13 +3409,14 @@ body {
   color: #4b5563;
 }
 
-.category-multiples-note {
+/* A short line under an Overview chart's heading (or after its panels) */
+.chart-note {
   margin: -12px 0 14px;
   font-size: 0.82rem;
   color: #6b7280;
 }
 
-.category-panels + .category-multiples-note {
+.category-panels + .chart-note {
   margin: 14px 0 0;
 }
 
@@ -3457,6 +3458,35 @@ body {
 
 .category-bar.partial {
   fill-opacity: 0.35;
+}
+
+/* ── Insights → Overview: net per month (Phase V, V5c) ─────────────────────── */
+.net-bar.positive,
+.net-key.positive {
+  fill: var(--chart-aqua);
+  background: var(--chart-aqua);
+}
+
+.net-bar.negative,
+.net-key.negative {
+  fill: var(--chart-orange);
+  background: var(--chart-orange);
+}
+
+.net-bar.partial {
+  fill-opacity: 0.35;
+}
+
+.net-key {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.net-key.average {
+  height: 2px;
+  background: #1a1a2e;
 }
 
 /* The Transactions → Recurring tab's line under its header */

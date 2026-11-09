@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import FilterPanel from '../FilterPanel';
 import { computeAnalytics, PRESETS, presetDates } from './analytics';
 import SummaryCards from './SummaryCards';
-import MonthlyTrendsChart from './charts/MonthlyTrendsChart';
 import TopVendorsChart from './charts/TopVendorsChart';
 import CategoryMultiples from './CategoryMultiples';
+import NetByMonth from './NetByMonth';
 import { periodMonths, categoryPanels } from './categoryPanels';
+import { monthlyNet } from './monthlyNet';
 import { todayISO } from '../../utils/dates';
 import { formatDollars } from '../../utils/money';
 import WeeklyAverages from './WeeklyAverages';
@@ -74,10 +75,11 @@ function OverviewTab({ transactions = [], accounts = [] }) {
 
   const analytics = useMemo(() => computeAnalytics(filtered), [filtered]);
 
-  // Spending by category: one small chart per category over the months the period covers
-  const panels = useMemo(() => {
+  // The monthly charts share the months the period covers: net per month, and one small chart
+  // per spending category
+  const { netRows, panels } = useMemo(() => {
     const { months, partial } = periodMonths(filtered, startDate, endDate, todayISO());
-    return categoryPanels(filtered, months, partial);
+    return { netRows: monthlyNet(filtered, months, partial), panels: categoryPanels(filtered, months, partial) };
   }, [filtered, startDate, endDate]);
 
   // ── Header + filter panel ─────────────────────────────────────────────────
@@ -148,13 +150,6 @@ function OverviewTab({ transactions = [], accounts = [] }) {
       : `Largest income category: ${incomeRows[0].category}, ${formatDollars(incomeRows[0].total)} of `
         + `${formatDollars(analytics.summary.total_income)} (${Math.round((incomeRows[0].total / analytics.summary.total_income) * 100)}%)`;
 
-  const monthlyTrendData = (analytics.monthly_summary?.map(month => ({
-    month: month.month,
-    income:   month.income,
-    expenses: month.expenses,
-    net:      month.net,
-  })) || []).slice().reverse();
-
   const topVendorsData = analytics.top_vendors?.slice(0, 10) || [];
 
   return (
@@ -165,7 +160,7 @@ function OverviewTab({ transactions = [], accounts = [] }) {
       {incomeLine && <p className="income-line">{incomeLine}</p>}
 
       <div className="charts-grid">
-        <MonthlyTrendsChart data={monthlyTrendData} />
+        <NetByMonth rows={netRows} />
         <CategoryMultiples panels={panels} totalExpenses={Math.round(analytics.summary.total_expenses * 100)} />
         <TopVendorsChart data={topVendorsData} />
         <WeeklyAverages trends={analytics.trends} />

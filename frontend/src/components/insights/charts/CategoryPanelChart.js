@@ -1,20 +1,9 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { monthRangeLabel } from '../../../utils/dates';
 import { formatCents, formatCompactDollars } from '../../../utils/money';
+import { monthTick, tickMonths } from './monthTicks';
 
 const HEIGHT = 110;
-const ALL_TICKS_UP_TO = 8;    // months; a longer run labels only its first month, Januaries and Julys
-
-// "Oct", or with the year for a January or the first tick: "Jan 2026"
-const monthTick = (month, index) => {
-  const [year, m] = month.split('-').map(Number);
-  const withYear = m === 1 || index === 0;
-  return new Date(year, m - 1, 1).toLocaleDateString('en-US', withYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
-};
-
-// The months to label: all of a short run; of a long one, the first, Januaries and Julys
-const tickMonths = (months) => (months.length <= ALL_TICKS_UP_TO ? months
-  : months.filter((month, i) => i === 0 || month.endsWith('-01') || month.endsWith('-07')));
 
 // A month's spending on hover or tap
 function MonthTip({ active, payload }) {

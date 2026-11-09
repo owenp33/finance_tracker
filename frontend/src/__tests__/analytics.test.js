@@ -35,11 +35,8 @@ describe('the Overview analytics, by the shared money rules', () => {
     ]);
   });
 
-  test('by month, newest first, and the top vendors by spending', () => {
-    expect(analytics().monthly_summary).toEqual([
-      { month: '2026-02', income: 0, expenses: 100, net: -100 },
-      { month: '2026-01', income: 1030.3, expenses: 70.3, net: 960 },
-    ]);
+  test('the top vendors by spending (the months are monthlyNet\'s, since V5c)', () => {
+    expect(analytics().monthly_summary).toBeUndefined();
     expect(analytics().top_vendors).toEqual([{ vendor: 'Concert', amount: 100 }, { vendor: 'Cub', amount: 70.3 }]);
   });
 
