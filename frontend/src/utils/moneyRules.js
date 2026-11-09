@@ -19,3 +19,17 @@ export const cashFlow = (transactions, from, to) => {
   });
   return { income, expenses, net: income - expenses };
 };
+
+// The same totals for each month with money in or out: {'YYYY-MM': {income, expenses, net}}
+export const cashFlowByMonth = (transactions) => {
+  const months = {};
+  transactions.forEach(t => {
+    if (!isIncome(t) && !isSpending(t)) return;
+    const key = t.date.slice(0, 7);
+    if (!months[key]) months[key] = { income: 0, expenses: 0, net: 0 };
+    if (isIncome(t)) months[key].income += t.amount_cents;
+    else months[key].expenses -= t.amount_cents;
+    months[key].net = months[key].income - months[key].expenses;
+  });
+  return months;
+};

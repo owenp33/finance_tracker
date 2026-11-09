@@ -3320,6 +3320,51 @@ body {
   stroke: var(--chart-aqua);
 }
 
+/* A white tick per payment on its bar, and an invisible hover target over each */
+.timeline-tick,
+.timeline-key-tick {
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.timeline-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* One payment's details, above it */
+.timeline-chart {
+  position: relative;
+}
+
+.timeline-payment-tip {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, calc(-100% - 6px));
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-payment-tip.below {
+  transform: translate(-50%, 6px);
+}
+
+.timeline-payment-tip .tip-amount {
+  margin: 2px 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-payment-tip ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #e5e7eb;
+}
+
 /* Payment marks: a ring where the amount changed, a dot for an extra payment */
 .timeline-ring,
 .timeline-key-ring {

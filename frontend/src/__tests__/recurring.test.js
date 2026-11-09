@@ -1,5 +1,6 @@
 import {
   isFinished, monthlyEquivalent, paidBeyondSchedule, recurringCosts, paymentMarks, seriesTimeline,
+  paymentComparison, paymentComparisonLines,
 } from '../utils/recurring';
 
 const template = (overrides) => ({
@@ -187,6 +188,64 @@ describe('the series timeline', () => {
     expect(aspire.payments).toHaveLength(15);
     expect(aspire.payments.filter(p => p.changed).map(p => p.date)).toEqual(['2026-02-12', '2026-02-28', '2026-06-03', '2026-06-28']);
     expect(aspire.payments.filter(p => p.extra).map(p => p.date)).toEqual(['2026-02-28', '2026-06-28']);
+  });
+});
+
+describe('comparing one payment', () => {
+  // Five ASPIRE payments, typically $45; April 2026's spending was $1,483.73
+  const SERIES = [
+    payment(5, '2026-01-31', -45), payment(5, '2026-02-27', -45), payment(5, '2026-03-31', -75),
+    payment(5, '2026-04-02', -105), payment(5, '2026-05-29', -15),
+  ];
+  const BY_MONTH = {
+    '2026-01': { income: 0, expenses: 90000, net: -90000 },
+    '2026-02': { income: 0, expenses: 4500, net: -4500 },
+    '2026-03': { income: 0, expenses: 120000, net: -120000 },
+    '2026-04': { income: 0, expenses: 148373, net: -148373 },
+    '2026-05': { income: 0, expenses: 3000000, net: -3000000 },
+  };
+  const lines = (index, payments = SERIES, byMonth = BY_MONTH, today = '2026-11-08') =>
+    paymentComparisonLines(paymentComparison(payments[index], payments, byMonth), today);
+
+  test('the numbers: its size, the series typical (median) payment, how many are larger and smaller, and its month', () => {
+    expect(paymentComparison(SERIES[3], SERIES, BY_MONTH)).toEqual({
+      amount: 10500, typical: 4500, count: 5, larger: 0, smaller: 4, month: '2026-04', income: false, monthTotal: 148373,
+    });
+    expect(paymentComparison(SERIES[0], SERIES.slice(0, 4), BY_MONTH).typical).toBe(6000);     // even count: between the middle two
+  });
+
+  test('in words: against its typical payment, its rank in the series, and its share of the month', () => {
+    expect(lines(3)).toEqual([
+      '2.3× its typical payment of $45.00', 'Its largest of 5 payments', '7% of your April 2026 spending ($1,483.73)',
+    ]);
+    expect(lines(2).slice(0, 2)).toEqual(['1.7× its typical payment of $45.00', 'Its 2nd largest of 5 payments']);
+    expect(lines(0).slice(0, 2)).toEqual(['Same as its typical payment of $45.00', 'Tied for its 2nd smallest of 5 payments']);
+    expect(lines(4)).toEqual([
+      '0.3× its typical payment of $45.00', 'Its smallest of 5 payments', 'Under 1% of your May 2026 spending ($30,000.00)',
+    ]);
+  });
+
+  test('ranks read from whichever end is nearer', () => {
+    const sizes = Array.from({ length: 25 }, (_, i) => payment(5, `2026-01-${String(i + 1).padStart(2, '0')}`, -(i + 1)));
+    const rank = (dollars) => lines(dollars - 1, sizes)[1];
+    expect(rank(23)).toBe('Its 3rd largest of 25 payments');
+    expect(rank(15)).toBe('Its 11th largest of 25 payments');
+    expect(rank(4)).toBe('Its 4th smallest of 25 payments');
+  });
+
+  test('a series of one amount, or of one payment, says so', () => {
+    const same = [payment(7, '2026-04-02', -20), payment(7, '2026-05-02', -20), payment(7, '2026-06-02', -20)];
+    expect(lines(1, same)[1]).toBe('All 3 of its payments are this amount');
+    expect(lines(0, same.slice(0, 1))[1]).toBe('Its only payment');
+  });
+
+  test("this month's share is of the spending so far, and an income payment's is of the month's income", () => {
+    const now = [payment(7, '2026-11-02', -20)];
+    expect(lines(0, now, { '2026-11': { income: 0, expenses: 40000, net: -40000 } })[2])
+      .toBe('5% of your November 2026 spending so far ($400.00)');
+    const paycheck = [payment(13, '2026-12-01', 1700)];
+    expect(lines(0, paycheck, { '2026-12': { income: 340000, expenses: 0, net: 340000 } }, '2027-01-04')[2])
+      .toBe('50% of your December 2026 income ($3,400.00)');
   });
 });
 

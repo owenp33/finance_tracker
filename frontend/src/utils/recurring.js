@@ -1,4 +1,5 @@
 import { shiftPeriod, dayNumber } from './dates';
+import { formatCents } from './money';
 
 // Recurring series (Phase V, V3), in cents: templates as the API returns them (`amount` in
 // dollars, a schedule of every `frequency` days or months, `number` and `idx`) and the user's
@@ -82,6 +83,69 @@ export const paymentMarks = (template, transactions) => {
       extra,
     };
   });
+};
+
+// How one payment of a series compares, for the timeline's hover (`payments`: the series'
+// payments; `byMonth`: moneyRules cashFlowByMonth): its size against the series' typical payment
+// (the median), how many of the series' payments are larger and smaller, and its month's spending
+// (its income, for money in), which includes it
+export const paymentComparison = (payment, payments, byMonth) => {
+  const size = (p) => Math.abs(p.amount_cents);
+  const amount = size(payment);
+  const sizes = payments.map(size).sort((a, b) => a - b);
+  const middle = Math.floor(sizes.length / 2);
+  const income = payment.amount_cents > 0;
+  const month = payment.date.slice(0, 7);
+  return {
+    amount,
+    typical:    sizes.length % 2 ? sizes[middle] : Math.round((sizes[middle - 1] + sizes[middle]) / 2),
+    count:      sizes.length,
+    larger:     sizes.filter(s => s > amount).length,
+    smaller:    sizes.filter(s => s < amount).length,
+    month,
+    income,
+    monthTotal: byMonth[month]?.[income ? 'income' : 'expenses'] ?? 0,
+  };
+};
+
+// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st
+const ordinal = (n) => {
+  const lastTwo = n % 100;
+  if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+};
+
+// paymentComparison in words: against the series' typical payment ("2.3× its typical payment of
+// $45.00"), its rank in the series counted from the nearer end ("Tied for its 2nd smallest of 5
+// payments"), and its share of the month ("7% of your April 2026 spending ($1,483.73)", "so far"
+// in `today`'s month). Owen chose these three (2026-11-08).
+export const paymentComparisonLines = (c, today) => {
+  const ratio = c.typical > 0 ? Math.round((c.amount / c.typical) * 10) / 10 : null;
+  const typical = ratio === null ? null : ratio === 1
+    ? `Same as its typical payment of ${formatCents(c.typical)}`
+    : `${ratio.toFixed(1)}× its typical payment of ${formatCents(c.typical)}`;
+
+  let rank;
+  if (c.count === 1) rank = 'Its only payment';
+  else if (c.larger === 0 && c.smaller === 0) rank = `All ${c.count} of its payments are this amount`;
+  else {
+    const place = c.larger === 0 ? 'largest'
+      : c.smaller === 0 ? 'smallest'
+        : c.larger <= c.smaller ? `${ordinal(c.larger + 1)} largest` : `${ordinal(c.smaller + 1)} smallest`;
+    const tied = c.count - c.larger - c.smaller - 1 > 0;
+    rank = `${tied ? 'Tied for its' : 'Its'} ${place} of ${c.count} payments`;
+  }
+
+  let share = null;
+  if (c.monthTotal > 0) {
+    const [year, month] = c.month.split('-').map(Number);
+    const monthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const percent = Math.round((c.amount / c.monthTotal) * 100);
+    const soFar = c.month === today.slice(0, 7) ? ' so far' : '';
+    share = `${percent < 1 ? 'Under 1%' : `${percent}%`} of your ${monthName} ${c.income ? 'income' : 'spending'}${soFar} `
+      + `(${formatCents(c.monthTotal)})`;
+  }
+  return [typical, rank, share].filter(Boolean);
 };
 
 // Where a timeline row starts: its first payment, else its first scheduled day; one with nothing to

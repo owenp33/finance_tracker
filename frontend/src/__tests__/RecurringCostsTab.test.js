@@ -186,6 +186,29 @@ describe('the timeline', () => {
     expect(cells(screen.getByRole('table', { name: 'Recurring series timeline' }))).toHaveLength(7);
   });
 
+  test('every payment has a tick on its bar, and hovering a row shows nothing', async () => {
+    await openTab();
+    const chart = section('Timeline');
+    expect(chart.querySelectorAll('.timeline-tick')).toHaveLength(30);        // ASPIRE 15, Anthropic 8, Allina 7
+    expect(chart.querySelector('.recharts-tooltip-wrapper')).toBeNull();
+  });
+
+  test('hovering a payment compares it with its series and with that month', async () => {
+    await openTab();
+    const target = within(section('Timeline')).getByRole('img', { name: 'ASPIRE, Feb 12, 2026: $60.00' });
+    await user.hover(target);
+    const tip = within(section('Timeline')).getByRole('tooltip');
+    expect([...tip.querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
+      'ASPIRE · Feb 12, 2026',
+      '$60.00',
+      '0.8× its typical payment of $75.00',
+      'Its 2nd smallest of 15 payments',
+      '44% of your February 2026 spending ($135.00)',
+    ]);
+    await user.unhover(target);
+    expect(within(section('Timeline')).queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
   test("the rows mark amount changes with rings and extra payments with dots, and today's line is labelled", async () => {
     await openTab();
     const chart = section('Timeline');

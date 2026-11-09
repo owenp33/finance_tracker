@@ -5,6 +5,7 @@ import { formatDate } from '../transactions/utils';
 import { useProjection } from '../../hooks/useProjection';
 import { todayISO, shiftPeriod, daysInMonth, dayNumber, monthRangeLabel } from '../../utils/dates';
 import { seriesTimeline } from '../../utils/recurring';
+import { cashFlowByMonth } from '../../utils/moneyRules';
 
 // How far ahead the timeline shows what's still scheduled: through the end of the third month after this one
 const MONTHS_AHEAD = 3;
@@ -68,7 +69,7 @@ function RecurringTimeline({ recurring, transactions, accountName, onError = IGN
       </div>
       {rows.length > 0 ? (
         <>
-          <RecurringTimelineChart rows={rows} today={today} windowEnd={windowEnd} />
+          <RecurringTimelineChart rows={rows} today={today} windowEnd={windowEnd} byMonth={cashFlowByMonth(transactions)} />
           <TimelineLegend />
           <ViewAsTable
             caption="Recurring series timeline"
