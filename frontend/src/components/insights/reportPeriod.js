@@ -1,10 +1,8 @@
 // Pure calendar-period date-math for the Reports tab's Monthly/Quarterly/Annual
-// period selector. Kept separate from analytics.js (PRESETS/presetDates), which
-// is shared by Overview and AllTransactions and must not change behavior.
+// period selector, kept separate from analytics.js's presets (the Overview's rolling ranges).
 //
-// Unlike analytics.js's toISO (which round-trips through toISOString() / UTC),
-// every date here is formatted from local Date getters to avoid shifting dates
-// near midnight in negative-UTC-offset timezones.
+// Every date here is formatted from local Date getters, so dates near midnight don't shift in
+// negative-UTC-offset time zones (analytics.js uses utils/dates.js for the same reason).
 
 export const PERIOD_MODES = ['all', 'monthly', 'quarterly', 'annual', 'custom'];
 
