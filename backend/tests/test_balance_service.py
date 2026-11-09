@@ -1,6 +1,7 @@
 """
 Balance core tests: per-account ledgers (opening balance, running balance after each
-transaction, closing balance) used by the exports.
+transaction, closing balance) used by the exports, and the end-of-day balances behind
+GET /api/balances.
 """
 from datetime import date
 
@@ -105,3 +106,44 @@ class TestLedgers:
     def test_rejects_a_start_after_the_end(self, user, account):
         with pytest.raises(ValueError, match='^The start date must be on or before the end date.$'):
             balances.ledgers(user.id, start_date=date(2026, 3, 1), end_date=date(2026, 2, 1))
+
+
+class TestDailyBalances:
+    def test_each_date_ends_at_the_balance_after_its_last_transaction(self, user, account):
+        account_svc.update_account(account.id, {'opening_balance': 250})
+        _tx(account, date(2026, 1, 5), -40)
+        _tx(account, date(2026, 1, 5), 10)
+        _tx(account, date(2026, 2, 1), 1_000)
+        [daily] = balances.daily_balances(user.id)
+        assert daily.account.id == account.id
+        assert daily.opening_cents == 25_000
+        assert daily.days == [(date(2026, 1, 5), 22_000), (date(2026, 2, 1), 122_000)]
+        assert daily.closing_cents == 122_000
+
+    def test_the_last_day_is_the_current_balance(self, user, account, savings):
+        account_svc.update_account(account.id, {'opening_balance': 100})
+        _tx(account, date(2026, 1, 5), -100, is_transfer=True)
+        _tx(account, date(2026, 1, 6), 40, is_reimbursement=True)
+        _tx(savings, date(2026, 1, 7), -300)
+        for daily in balances.daily_balances(user.id):
+            _db.session.refresh(daily.account)
+            assert daily.closing_cents == daily.account.balance_cents
+
+    def test_a_period_opens_with_everything_before_it(self, user, account):
+        account_svc.update_account(account.id, {'opening_balance': 100})
+        _tx(account, date(2026, 1, 15), -20)
+        _tx(account, date(2026, 2, 1), -30)
+        _tx(account, date(2026, 2, 28), 50)
+        _tx(account, date(2026, 3, 1), -5)
+        [daily] = balances.daily_balances(user.id, start_date=date(2026, 2, 1), end_date=date(2026, 2, 28))
+        assert (daily.opening_cents, daily.days) == (8_000, [(date(2026, 2, 1), 5_000), (date(2026, 2, 28), 10_000)])
+
+    def test_an_account_without_activity_has_no_days_and_stays_where_it_was(self, user, account, savings):
+        _tx(account, date(2026, 1, 5), -10)
+        quiet = next(d for d in balances.daily_balances(user.id) if d.account.id == savings.id)
+        assert (quiet.opening_cents, quiet.days, quiet.closing_cents) == (100_000, [], 100_000)
+
+    def test_only_the_requested_accounts_and_the_same_errors_as_ledgers(self, user, account, savings):
+        assert [d.account.id for d in balances.daily_balances(user.id, account_ids=[savings.id])] == [savings.id]
+        with pytest.raises(ValueError, match='^Unknown account: 999999$'):
+            balances.daily_balances(user.id, account_ids=[999_999])

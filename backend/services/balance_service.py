@@ -4,7 +4,7 @@ balance_service.py - Account ledgers: balances over time
 For each account: the balance at the start of a period (its starting balance plus every earlier
 transaction), each transaction in the period with the balance right after it, and the balance at
 the end. Transfers and reimbursements count, since money really moved. Read-only; used by the
-exports (the app itself shows only current balances).
+exports, and (as end-of-day balances) by GET /api/balances for the Insights balance chart.
 """
 from collections import defaultdict
 from dataclasses import dataclass
@@ -31,6 +31,26 @@ class AccountLedger:
     def closing_cents(self):
         """The balance at the end of the period."""
         return self.rows[-1].balance_cents if self.rows else self.opening_cents
+
+
+@dataclass(frozen=True)
+class DailyBalances:
+    account: AccountModel
+    opening_cents: int              # the balance just before the period starts
+    days: list[tuple]               # (date, cents): each date with transactions, and its end-of-day balance
+
+    @property
+    def closing_cents(self):
+        """The balance at the end of the period."""
+        return self.days[-1][1] if self.days else self.opening_cents
+
+
+def end_of_day(rows):
+    """(date, cents) for each date in a ledger's rows: the balance after the date's last transaction."""
+    days = {}
+    for row in rows:
+        days[row.transaction.date] = row.balance_cents
+    return list(days.items())
 
 
 def running_balances(opening_cents, transactions):
@@ -76,3 +96,13 @@ class BalanceService:
             rows = running_balances(opening, sorted(in_period[a.id], key=lambda t: (t.date, t.id)))
             ledgers.append(AccountLedger(a, opening, rows))
         return ledgers
+
+    def daily_balances(self, user_id, account_ids=None, start_date=None, end_date=None):
+        """
+        One DailyBalances per account, selected as ledgers() selects them (and raising the same
+        ValueErrors): the balance just before start_date, then the end-of-day balance of each date
+        with transactions through end_date. Over all time, the last day's balance is the account's
+        stored balance.
+        """
+        return [DailyBalances(ledger.account, ledger.opening_cents, end_of_day(ledger.rows))
+                for ledger in self.ledgers(user_id, account_ids, start_date, end_date)]

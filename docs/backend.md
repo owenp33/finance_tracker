@@ -163,7 +163,8 @@ created through `AccountService.add_transaction`, so balances have one code path
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
 
-**`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports.
+**`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
+Insights balance chart.
 `ledgers(user_id, account_ids=None, start_date=None, end_date=None)` returns one `AccountLedger`
 per account (id order; accounts without activity included): `opening_cents` (starting balance
 plus every transaction before the period), `rows` (each transaction in the period, date then id
@@ -172,7 +173,11 @@ reimbursements count. Both dates are inclusive and optional; an account that isn
 or a start after the end, raises `ValueError`. The arithmetic is the pure function
 `running_balances(opening_cents, transactions)`. Ledgers are computed from the transactions
 themselves, so with no dates `closing_cents` equals the stored `balance_cents` whenever that
-cache is correct.
+cache is correct. `daily_balances(user_id, account_ids=None, start_date=None, end_date=None)`
+selects the same accounts (raising the same errors) and returns one `DailyBalances` per account:
+`opening_cents`, `days` (each date with transactions and its end-of-day balance, the balance
+after the date's last transaction; the pure function `end_of_day(rows)`), and `closing_cents`.
+It serves `GET /api/balances`.
 
 **`BudgetFlagService`** (`budget_flag_service.py`): which expenses are over budget, computed
 when transactions are read. `over_budget_ids(user_id, transactions)` returns the ids among the
@@ -583,6 +588,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
+| `/balances` | `GET ?account_ids=&start_date=&end_date=` |
 
 Details worth knowing:
 - `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
@@ -638,6 +644,13 @@ Details worth knowing:
   malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
   The `Content-Disposition` filename carries the export's period, e.g.
   `transactions_2026-01-01_to_2026-06-30.csv`.
+- `GET /balances` takes the same filters as `/export` (all optional; the same 400s, except that a
+  period without transactions is fine) and returns `{balances: [{id, account_name, opening, days:
+  [{date, balance}], closing}]}`, one entry per account in id order, every amount also as
+  `*_cents`: the balance just before `start_date` (the starting balance when there's none), the
+  end-of-day balance of each date with transactions through `end_date`, and the balance at the
+  end. Transfers and reimbursements count. Over all time, `closing` is the account's current
+  balance.
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---
@@ -688,14 +701,14 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 
 | File | Covers |
 |---|---|
-| `test_routes.py` | HTTP behavior: auth, registration validation, accounts, transactions, recurring |
+| `test_routes.py` | HTTP behavior: auth, registration validation, accounts, transactions, recurring, balances |
 | `test_service.py` | Service logic: account review, transactions and balances, recurring generation and deletion, auth |
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
-| `test_balance_service.py` | Account ledgers: opening, running and closing balances |
+| `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
