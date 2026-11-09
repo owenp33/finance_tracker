@@ -41,7 +41,7 @@ const ScheduledSpan = ({ x, y, width, height, payload }) => (!payload.scheduled 
 const Hidden = () => null;
 
 // Each row's text above its bar, and on the bar a white tick per payment, a ring where the amount
-// changed, a dot for an extra payment (both: a dot inside a ring), and over each payment an
+// changed, and over each payment an
 // invisible hover (or tap) target that reports it through `onHover`. Drawn in Recharts' scatter
 // layer, above the bars and the "Today" line (SVG has no z-index; Recharts 3 orders its own layers).
 function RowMarks({ data, origin, span, onHover }) {
@@ -68,7 +68,6 @@ function RowMarks({ data, origin, span, onHover }) {
                   <g key={j}>
                     <line x1={px} x2={px} y1={cy - BAR_SIZE / 2} y2={cy + BAR_SIZE / 2} className="timeline-tick" />
                     {payment.changed && <circle cx={px} cy={cy} r={4.5} className="timeline-ring" />}
-                    {payment.extra && <circle cx={px} cy={cy} r={payment.changed ? 2 : 3.5} className="timeline-dot" />}
                     <rect
                       x={left} y={cy - HIT_HALF} width={Math.max(right - left, 1)} height={HIT_HALF * 2}
                       className="timeline-hit" role="img"
@@ -175,7 +174,6 @@ export function TimelineLegend() {
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1.5" width="22" height="7" rx="3" className="timeline-scheduled cost" /></svg>Still scheduled</li>
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1" width="22" height="8" rx="3" className="timeline-posted income" /></svg>Income</li>
       <li><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4.5" className="timeline-key-ring" /></svg>Amount changed</li>
-      <li><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="3.5" className="timeline-key-dot" /></svg>Extra payment</li>
     </ul>
   );
 }

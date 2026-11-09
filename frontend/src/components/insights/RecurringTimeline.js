@@ -14,7 +14,7 @@ const SHOW = [['active', 'Active'], ['ended', 'Ended'], ['all', 'All']];
 const EMPTY = { active: 'No active series.', ended: 'No ended series.', all: 'No recurring series yet.' };
 
 const TABLE_COLUMNS = [
-  'Series', 'Account', 'First payment', 'Last payment', 'Payments', 'Amount changes', 'Extra payments', 'Still scheduled',
+  'Series', 'Account', 'First payment', 'Last payment', 'Payments', 'Amount changes', 'Still scheduled',
 ];
 
 // A stable stand-in when no one listens for errors (useProjection refetches when it changes)
@@ -47,7 +47,6 @@ function RecurringTimeline({ recurring, transactions, accountName, onError = IGN
         account,
         name:           [row.template.vendor, account, row.kind === 'income' && 'income', !row.active && ended].filter(Boolean).join(' · '),
         changes:        row.payments.filter(p => p.changed).length,
-        extras:         row.payments.filter(p => p.extra).length,
         scheduledLabel: scheduledLabel(row),
       };
     });
@@ -79,7 +78,7 @@ function RecurringTimeline({ recurring, transactions, accountName, onError = IGN
               row.account,
               row.posted ? formatDate(row.posted.from, true) : '—',
               row.posted ? formatDate(row.posted.to, true) : '—',
-              row.payments.length, row.changes, row.extras, row.scheduledLabel,
+              row.payments.length, row.changes, row.scheduledLabel,
             ])}
           />
         </>

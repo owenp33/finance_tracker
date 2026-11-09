@@ -128,7 +128,7 @@ test('recurring costs: active series first, then ended ones, each costliest firs
 });
 
 describe('payment marks', () => {
-  test('a ring where the amount changed from the payment before, a dot for each payment beyond the first in its month', () => {
+  test('in date order, each marked where its amount changed from the payment before', () => {
     const payments = [
       payment(5, '2026-04-30', -75),
       payment(5, '2026-01-31', -75),
@@ -139,21 +139,15 @@ describe('payment marks', () => {
       payment(99, '2026-02-10', -500),                              // another series
       { ...payment(5, '2026-02-11', -500), is_transfer: true },      // a transfer
     ];
-    expect(paymentMarks(ASPIRE, payments).map(p => [p.date, p.changed, p.extra])).toEqual([
-      ['2026-01-31', false, false],
-      ['2026-02-27', false, false],
-      ['2026-03-02', true, false],
-      ['2026-03-31', false, true],
-      ['2026-04-02', true, false],
-      ['2026-04-30', true, true],
+    // No payment is called extra (Owen, 2026-11-08: an early rent after a late one read as extra)
+    expect(paymentMarks(ASPIRE, payments)).toEqual([
+      { date: '2026-01-31', amount_cents: -7500, changed: false },
+      { date: '2026-02-27', amount_cents: -7500, changed: false },
+      { date: '2026-03-02', amount_cents: -4500, changed: true },
+      { date: '2026-03-31', amount_cents: -4500, changed: false },
+      { date: '2026-04-02', amount_cents: -10500, changed: true },
+      { date: '2026-04-30', amount_cents: -7500, changed: true },
     ]);
-  });
-
-  test("a biweekly series' periods are 14 days from its first payment, so three charges in August aren't extra", () => {
-    const payments = TRANSACTIONS.filter(t => t.recurring_id === 6);
-    expect(paymentMarks(ALLINA, payments).filter(p => p.extra)).toEqual([]);
-    const marks = paymentMarks(ALLINA, [...payments, payment(6, '2026-08-05', -87.38)]);
-    expect(marks.filter(p => p.extra).map(p => p.date)).toEqual(['2026-08-05']);
   });
 });
 
@@ -187,7 +181,6 @@ describe('the series timeline', () => {
     const aspire = rows()[0];
     expect(aspire.payments).toHaveLength(15);
     expect(aspire.payments.filter(p => p.changed).map(p => p.date)).toEqual(['2026-02-12', '2026-02-28', '2026-06-03', '2026-06-28']);
-    expect(aspire.payments.filter(p => p.extra).map(p => p.date)).toEqual(['2026-02-28', '2026-06-28']);
   });
 });
 

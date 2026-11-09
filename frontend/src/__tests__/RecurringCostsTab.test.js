@@ -154,7 +154,7 @@ describe('the timeline', () => {
     await user.click(within(section('Timeline')).getByText('View as table'));
     return cells(screen.getByRole('table', { name: 'Recurring series timeline' }));
   };
-  const HEADER = ['Series', 'Account', 'First payment', 'Last payment', 'Payments', 'Amount changes', 'Extra payments', 'Still scheduled'];
+  const HEADER = ['Series', 'Account', 'First payment', 'Last payment', 'Payments', 'Amount changes', 'Still scheduled'];
 
   test("it asks what's still scheduled through the end of the third month ahead", async () => {
     await openTab();
@@ -166,10 +166,10 @@ describe('the timeline', () => {
     await within(section('Timeline')).findByText('Through Nov 9, 2026');      // the projection has arrived
     expect(await timelineRows()).toEqual([
       HEADER,
-      ['ASPIRE', 'Checking', 'Oct 31, 2025', 'Oct 28, 2026', '15', '4', '2', 'Ongoing'],
-      ['Anthropic', 'Discover', 'Apr 2, 2026', 'Nov 2, 2026', '8', '0', '0', 'Ongoing'],
-      ['Allina Health', 'Checking', 'Jul 20, 2026', 'Oct 26, 2026', '7', '0', '0', 'Through Nov 9, 2026'],
-      ['HLWW School District (income)', 'Savings', '—', '—', '0', '0', '0', 'Ongoing'],
+      ['ASPIRE', 'Checking', 'Oct 31, 2025', 'Oct 28, 2026', '15', '4', 'Ongoing'],
+      ['Anthropic', 'Discover', 'Apr 2, 2026', 'Nov 2, 2026', '8', '0', 'Ongoing'],
+      ['Allina Health', 'Checking', 'Jul 20, 2026', 'Oct 26, 2026', '7', '0', 'Through Nov 9, 2026'],
+      ['HLWW School District (income)', 'Savings', '—', '—', '0', '0', 'Ongoing'],
     ]);
   });
 
@@ -177,7 +177,7 @@ describe('the timeline', () => {
     await openTab();
     await user.click(within(section('Timeline')).getByRole('button', { name: 'Ended' }));
     expect(within(section('Timeline')).getByRole('button', { name: 'Ended' })).toHaveAttribute('aria-pressed', 'true');
-    expect((await timelineRows()).map(row => [row[0], row[7]])).toEqual([
+    expect((await timelineRows()).map(row => [row[0], row[6]])).toEqual([
       ['Series', 'Still scheduled'],
       ['Millenium Apartments', 'Ended Sep 2026'],
       ['Shelby Jackson LLC', 'Ended Jul 2025'],
@@ -209,11 +209,12 @@ describe('the timeline', () => {
     expect(within(section('Timeline')).queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  test("the rows mark amount changes with rings and extra payments with dots, and today's line is labelled", async () => {
+  test("the rows mark amount changes with rings, nothing as an extra payment, and today's line is labelled", async () => {
     await openTab();
     const chart = section('Timeline');
     expect(chart.querySelectorAll('.timeline-ring')).toHaveLength(4);
-    expect(chart.querySelectorAll('.timeline-dot')).toHaveLength(2);
+    expect(chart.querySelector('.timeline-dot, .timeline-key-dot')).toBeNull();
+    expect(within(chart).queryByText(/Extra payment/)).not.toBeInTheDocument();
     expect(within(chart).getByText('Today')).toBeInTheDocument();
     expect(within(chart).getByText('HLWW School District · Savings · income')).toBeInTheDocument();
   });

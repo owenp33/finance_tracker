@@ -1,4 +1,4 @@
-import { shiftPeriod, dayNumber } from './dates';
+import { shiftPeriod } from './dates';
 import { formatCents } from './money';
 
 // Recurring series (Phase V, V3), in cents: templates as the API returns them (`amount` in
@@ -53,36 +53,16 @@ const endedMonth = (template, transactions) => {
   return last ? last.slice(0, 7) : null;
 };
 
-// The period of a series' schedule that `day` falls in, counted from `anchor` (its first payment):
-// blocks of N calendar months for a schedule in months (a monthly series' periods are calendar
-// months), blocks of N days for one in days
-const schedulePeriod = (template, anchor, day) => {
-  if (template.frequency_unit === 'months') {
-    const [anchorYear, anchorMonth] = anchor.split('-').map(Number);
-    const [year, month] = day.split('-').map(Number);
-    return Math.floor(((year - anchorYear) * 12 + (month - anchorMonth)) / template.frequency);
-  }
-  return Math.floor((dayNumber(day) - dayNumber(anchor)) / template.frequency);
-};
-
-// A series' payments in date order, each marked `changed` (its amount differs from the payment
-// before it) and `extra` (it isn't the first in its schedule period: a calendar month for a monthly
-// series, 14 days from the first payment for a biweekly one). These are the plan's timeline
-// markers, as Owen chose them (2026-11-07): a late payment counts as extra in the month it lands in.
+// A series' payments in date order, each marked `changed` when its amount differs from the payment
+// before it (the timeline's rings). No payment is called extra: Owen dropped the plan's extra-payment
+// dot (2026-11-08), since an early rent after a late one read as an extra payment.
 export const paymentMarks = (template, transactions) => {
   const payments = [...paymentsOf(template, transactions)].sort((a, b) => a.date.localeCompare(b.date));
-  const periods = new Set();
-  return payments.map((t, i) => {
-    const period = schedulePeriod(template, payments[0].date, t.date);
-    const extra = periods.has(period);
-    periods.add(period);
-    return {
-      date:         t.date,
-      amount_cents: t.amount_cents,
-      changed:      i > 0 && t.amount_cents !== payments[i - 1].amount_cents,
-      extra,
-    };
-  });
+  return payments.map((t, i) => ({
+    date:         t.date,
+    amount_cents: t.amount_cents,
+    changed:      i > 0 && t.amount_cents !== payments[i - 1].amount_cents,
+  }));
 };
 
 // How one payment of a series compares, for the timeline's hover (`payments`: the series'

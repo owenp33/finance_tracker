@@ -3365,19 +3365,12 @@ body {
   color: #e5e7eb;
 }
 
-/* Payment marks: a ring where the amount changed, a dot for an extra payment */
+/* A ring where a payment's amount changed from the one before */
 .timeline-ring,
 .timeline-key-ring {
   fill: #fff;
   stroke: #1a1a2e;
   stroke-width: 1.5;
-}
-
-.timeline-dot,
-.timeline-key-dot {
-  fill: #1a1a2e;
-  stroke: #fff;
-  stroke-width: 1;
 }
 
 .timeline-row-label {
