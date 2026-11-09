@@ -1,17 +1,10 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, Brush, ResponsiveContainer } from 'recharts';
 import { formatDate } from '../../transactions/utils';
 import { dayNumber, shiftPeriod } from '../../../utils/dates';
-import { formatCents, formatSignedCents } from '../../../utils/money';
+import { formatCents, formatSignedCents, formatCompactDollars } from '../../../utils/money';
 
 const HEIGHT = 300;
 const MAX_LISTED = 6;    // transactions listed in a day's tooltip before "+N more"
-
-// "$7.3k", "-$992", for the y axis
-const compactDollars = (dollars) => {
-  const abs = Math.abs(dollars);
-  const text = abs >= 1000 ? `$${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k` : `$${Math.round(abs)}`;
-  return dollars < 0 ? `-${text}` : text;
-};
 
 // Month starts from `from` through `to` (YYYY-MM-DD): every month over half a year or less, else
 // quarter starts; each named with its year when it's January or the first
@@ -73,7 +66,7 @@ function BalanceChart({ points, transactions, accountIds }) {
           tickLine={false} axisLine={{ stroke: '#d1d5db' }} tick={{ fontSize: 12, fill: '#6b7280' }}
         />
         <YAxis
-          domain={['auto', 'auto']} tickFormatter={compactDollars} width={56}
+          domain={['auto', 'auto']} tickFormatter={formatCompactDollars} width={56}
           tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#6b7280' }}
         />
         <Tooltip

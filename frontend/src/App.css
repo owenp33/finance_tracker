@@ -1511,83 +1511,11 @@ body {
   box-shadow: none;
 }
 
-.pie-chart-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.pie-legend {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  max-height: 220px;
-}
-
-.pie-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.83rem;
-}
-
-.pie-legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.pie-legend-name {
-  flex: 1;
-  color: #495057;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pie-legend-value {
-  color: #212529;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pie-legend-pct {
-  font-weight: 400;
-  color: #868e96;
-}
-
 .chart-container h3 {
   margin: 0 0 20px 0;
   color: #333;
   font-size: 1.1em;
 }
-
-.category-table table,
-.recent-transactions-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.category-table th,
-.recent-transactions-table th {
-  background: #f8f9fa;
-  padding: 12px;
-  text-align: left;
-  font-weight: 600;
-  border-bottom: 2px solid #dee2e6;
-}
-
-.category-table td,
-.recent-transactions-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.category-table tr:hover,
-.recent-transactions-table tr:hover { background: #f8f9fa; }
 
 .positive { color: #00C49F; font-weight: 600; }
 .negative { color: #FF8042; font-weight: 600; }
@@ -3472,6 +3400,63 @@ body {
   margin-top: 2px;
   font-size: 0.75rem;
   color: #cbd5e1;
+}
+
+/* ── Insights → Overview: spending by category (Phase V, V5b) ─────────────── */
+.income-line {
+  margin: -10px 0 20px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.category-multiples-note {
+  margin: -12px 0 14px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.category-panels + .category-multiples-note {
+  margin: 14px 0 0;
+}
+
+.category-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 20px;
+}
+
+.category-panel {
+  margin: 0;
+}
+
+.category-panel figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.category-panel figcaption strong {
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.category-panel-others {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* One colour for every panel; a month only partly in the period lighter */
+.category-bar {
+  fill: var(--chart-blue);
+}
+
+.category-bar.partial {
+  fill-opacity: 0.35;
 }
 
 /* The Transactions → Recurring tab's line under its header */

@@ -1,6 +1,6 @@
 import {
   todayISO, daysInMonth, monthElapsed, monthEndLabel, sameDayLastMonth, dayRangeLabel, shiftPeriod, monthRangeLabel,
-  dayNumber, shiftMonths,
+  dayNumber, shiftMonths, monthsFrom,
 } from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
@@ -35,6 +35,12 @@ test('the same day some months away, or that month\'s last day when it is shorte
   expect(shiftMonths('2026-08-31', -6)).toBe('2026-02-28');
   expect(shiftMonths('2026-11-08', -12)).toBe('2025-11-08');
   expect(shiftMonths('2026-01-31', 1)).toBe('2026-02-28');
+});
+
+test('lists the months from one to another, both included', () => {
+  expect(monthsFrom('2025-11', '2026-02')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+  expect(monthsFrom('2026-10', '2026-10')).toEqual(['2026-10']);
+  expect(monthsFrom('2026-10', '2026-09')).toEqual([]);
 });
 
 test('names a run of days in one month', () => {

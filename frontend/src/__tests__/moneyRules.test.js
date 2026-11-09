@@ -1,4 +1,4 @@
-import { isIncome, isSpending, cashFlow, cashFlowByMonth } from '../utils/moneyRules';
+import { isIncome, isSpending, cashFlow, cashFlowByMonth, categorySpendingByMonth } from '../utils/moneyRules';
 
 const tx = (date, amountCents, overrides) => ({
   date, amount_cents: amountCents, is_transfer: false, is_reimbursement: false, ...overrides,
@@ -46,6 +46,22 @@ test('cash flow by month: the same rules, one entry per month with money in or o
     '2026-10': { income: 100000, expenses: 0, net: 100000 },
     '2026-11': { income: 128000, expenses: 38940, net: 89060 },
     '2026-12': { income: 0, expenses: 1000, net: -1000 },
+  });
+});
+
+test("category spending by month is lowered by that month's reimbursements in the category, never below 0", () => {
+  expect(categorySpendingByMonth([
+    tx('2026-10-10', -40000, { category: 'Groceries' }),
+    tx('2026-10-15', 5000, { category: 'Groceries', is_reimbursement: true }),
+    tx('2026-11-02', -2000, { category: 'Groceries' }),
+    tx('2026-11-03', 3000, { category: 'Groceries', is_reimbursement: true }),   // more back than spent: 0
+    tx('2026-10-01', 200000, { category: 'Paycheck' }),                         // income isn't spending
+    tx('2026-10-05', -50000, { category: 'Transfer', is_transfer: true }),      // never counts
+    tx('2026-10-06', 0, { category: 'Misc' }),                                  // neither
+    tx('2026-10-07', -1250, { category: 'Fun' }),
+  ])).toEqual({
+    Groceries: { '2026-10': 35000, '2026-11': 0 },
+    Fun: { '2026-10': 1250 },
   });
 });
 

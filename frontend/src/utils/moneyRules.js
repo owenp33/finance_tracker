@@ -20,6 +20,23 @@ export const cashFlow = (transactions, from, to) => {
   return { income, expenses, net: income - expenses };
 };
 
+// Each category's spending per month, lowered by that month's reimbursements in the category and
+// never below 0, as budget progress counts it (decision 2): {category: {'YYYY-MM': cents}}
+export const categorySpendingByMonth = (transactions) => {
+  const categories = {};
+  transactions.forEach(t => {
+    const reimbursement = !t.is_transfer && t.is_reimbursement && t.amount_cents > 0;
+    if (!isSpending(t) && !reimbursement) return;
+    const months = (categories[t.category] = categories[t.category] || {});
+    const month = t.date.slice(0, 7);
+    months[month] = (months[month] || 0) - t.amount_cents;
+  });
+  Object.values(categories).forEach(months => {
+    Object.keys(months).forEach(month => { months[month] = Math.max(months[month], 0); });
+  });
+  return categories;
+};
+
 // The same totals for each month with money in or out: {'YYYY-MM': {income, expenses, net}}
 export const cashFlowByMonth = (transactions) => {
   const months = {};

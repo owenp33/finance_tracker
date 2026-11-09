@@ -34,6 +34,13 @@ export const shiftPeriod = (period, months) => {
   return `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}`;
 };
 
+// The months 'YYYY-MM' from `from` through `to`, both included (none when `to` is earlier)
+export const monthsFrom = (from, to) => {
+  const months = [];
+  for (let month = from; month <= to; month = shiftPeriod(month, 1)) months.push(month);
+  return months;
+};
+
 // A run of months 'YYYY-MM' through 'YYYY-MM': "Nov 2025–Oct 2026", "Apr–Oct 2026", or "Sep 2026"
 export const monthRangeLabel = (from, to) => {
   const name = (period, withYear) => {
