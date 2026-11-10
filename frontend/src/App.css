@@ -3489,6 +3489,100 @@ body {
   background: #1a1a2e;
 }
 
+/* ── Insights → Overview: top vendors (Phase V, V5d) ───────────────────────── */
+.top-vendors-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+}
+
+.top-vendors-header h3 {
+  margin: 0;
+}
+
+.vendor-bars {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each vendor is a button: its name, its bar, and its amount in a column at the end */
+.vendor-bar {
+  display: grid;
+  grid-template-columns: minmax(90px, 28%) 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vendor-bar:hover,
+.vendor-bar.selected {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.vendor-bar:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 1px;
+}
+
+.vendor-name {
+  overflow: hidden;
+  font-size: 0.88rem;
+  color: #1f2937;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vendor-track {
+  height: 12px;
+}
+
+.vendor-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 3px 3px 0;
+  background: var(--chart-blue);
+}
+
+.vendor-value {
+  font-size: 0.85rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.vendor-detail {
+  margin: 6px 8px 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--chart-blue);
+  border-radius: 0 6px 6px 0;
+  background: #fff;
+}
+
+.vendor-detail-stats {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.vendor-detail-more {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
 /* The Transactions → Recurring tab's line under its header */
 .recurring-summary {
   margin: -8px 0 14px;

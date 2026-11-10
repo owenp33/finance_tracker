@@ -35,9 +35,9 @@ describe('the Overview analytics, by the shared money rules', () => {
     ]);
   });
 
-  test('the top vendors by spending (the months are monthlyNet\'s, since V5c)', () => {
+  test('months and vendors are left to their charts (monthlyNet since V5c, topVendors since V5d)', () => {
     expect(analytics().monthly_summary).toBeUndefined();
-    expect(analytics().top_vendors).toEqual([{ vendor: 'Concert', amount: 100 }, { vendor: 'Cub', amount: 70.3 }]);
+    expect(analytics().top_vendors).toBeUndefined();
   });
 
   test('weekly averages over the days from the first counted transaction to the last', () => {

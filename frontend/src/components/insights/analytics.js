@@ -4,14 +4,14 @@ import { todayISO, shiftMonths, dayNumber } from '../../utils/dates';
 // Pure analytics helpers for the Overview tab, by the shared money rules (utils/moneyRules.js,
 // decision 2): transfers never count, income is money in (reimbursements included), spending is
 // money out, and a zero amount is neither. Sums are in cents; the results are in dollars, in the
-// shape the backend's AnalyticsService produces, less its monthly summary (the Overview's months
-// come from monthlyNet since V5c).
+// shape the backend's AnalyticsService produces, less its monthly summary and top vendors (the
+// Overview's come from monthlyNet since V5c and topVendors since V5d).
 
 const dollars = (cents) => cents / 100;
 const size = (t) => Math.abs(t.amount_cents);
 const total = (list) => list.reduce((sum, t) => sum + size(t), 0);
 
-// Rows of {category | vendor, total, average, count, percentage (of `whole`, a string)}, largest first
+// Rows of {[key], total, average, count, percentage (of `whole`, a string)}, largest first
 const byKey = (list, key, whole) => {
   const groups = {};
   for (const t of list) (groups[t[key]] = groups[t[key]] || []).push(t);
@@ -53,7 +53,6 @@ export function computeAnalytics(transactions) {
     },
     spending_by_category: byKey(expenses, 'category', expenseCents),
     income_by_category:   byKey(income, 'category', incomeCents),
-    top_vendors: byKey(expenses, 'vendor', expenseCents).slice(0, 10).map(v => ({ vendor: v.vendor, amount: v.total })),
     trends: {
       weekly_avg_income:   dollars(incomeCents) / weeks,
       weekly_avg_expenses: dollars(expenseCents) / weeks,

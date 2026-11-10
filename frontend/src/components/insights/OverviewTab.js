@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import FilterPanel from '../FilterPanel';
 import { computeAnalytics, PRESETS, presetDates } from './analytics';
 import SummaryCards from './SummaryCards';
-import TopVendorsChart from './charts/TopVendorsChart';
 import CategoryMultiples from './CategoryMultiples';
 import NetByMonth from './NetByMonth';
+import TopVendors from './TopVendors';
 import { periodMonths, categoryPanels } from './categoryPanels';
 import { monthlyNet } from './monthlyNet';
 import { todayISO } from '../../utils/dates';
@@ -75,11 +75,15 @@ function OverviewTab({ transactions = [], accounts = [] }) {
 
   const analytics = useMemo(() => computeAnalytics(filtered), [filtered]);
 
-  // The monthly charts share the months the period covers: net per month, and one small chart
-  // per spending category
-  const { netRows, panels } = useMemo(() => {
-    const { months, partial } = periodMonths(filtered, startDate, endDate, todayISO());
-    return { netRows: monthlyNet(filtered, months, partial), panels: categoryPanels(filtered, months, partial) };
+  // The monthly charts share the months the period covers: net per month, one small chart per
+  // spending category, and a vendor's months in the top vendors
+  const { months, partial, netRows, panels } = useMemo(() => {
+    const period = periodMonths(filtered, startDate, endDate, todayISO());
+    return {
+      ...period,
+      netRows: monthlyNet(filtered, period.months, period.partial),
+      panels:  categoryPanels(filtered, period.months, period.partial),
+    };
   }, [filtered, startDate, endDate]);
 
   // ── Header + filter panel ─────────────────────────────────────────────────
@@ -150,8 +154,6 @@ function OverviewTab({ transactions = [], accounts = [] }) {
       : `Largest income category: ${incomeRows[0].category}, ${formatDollars(incomeRows[0].total)} of `
         + `${formatDollars(analytics.summary.total_income)} (${Math.round((incomeRows[0].total / analytics.summary.total_income) * 100)}%)`;
 
-  const topVendorsData = analytics.top_vendors?.slice(0, 10) || [];
-
   return (
     <div className="analytics-dashboard">
       {header}
@@ -162,7 +164,7 @@ function OverviewTab({ transactions = [], accounts = [] }) {
       <div className="charts-grid">
         <NetByMonth rows={netRows} />
         <CategoryMultiples panels={panels} totalExpenses={Math.round(analytics.summary.total_expenses * 100)} />
-        <TopVendorsChart data={topVendorsData} />
+        <TopVendors transactions={filtered} months={months} partial={partial} />
         <WeeklyAverages trends={analytics.trends} />
       </div>
     </div>

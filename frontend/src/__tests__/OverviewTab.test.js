@@ -148,6 +148,57 @@ test('the summary cards show whole cents, and a negative net with its sign first
   expect(within(card('Net Amount')).getByText('-$117.00')).toBeInTheDocument();
 });
 
+describe('top vendors', () => {
+  const vendors = () => screen.getByRole('heading', { name: 'Top vendors' }).closest('section');
+  const rows = () => [...vendors().querySelectorAll('.vendor-bar')].map(row =>
+    [row.querySelector('.vendor-name').textContent, row.querySelector('.vendor-value').textContent]);
+
+  test('horizontal bars, largest first, each name on the left and amount at the end', () => {
+    renderOverview();
+    expect(rows()).toEqual([
+      ['Rent shop', '$2,700.00'], ['Groceries shop', '$800.00'], ['Gas shop', '$240.00'], ['Fun shop', '$130.00'],
+      ['Dining shop', '$100.00'], ['Medical shop', '$87.00'], ['Subscriptions shop', '$40.00'],
+      ['Shopping shop', '$30.00'], ['Gifts shop', '$25.00'], ['Pets shop', '$15.00'],
+    ]);
+    expect(vendors().querySelector('.vendor-fill').style.width).toBe('100%');
+    expect(vendors().querySelectorAll('.vendor-fill')[1].style.width).toMatch(/^29\.6/);      // $800 of $2,700
+    expect(screen.queryByText('Top 10 Vendors by Spending')).not.toBeInTheDocument();
+  });
+
+  test("clicking a vendor shows its charges, average, months and latest transactions; clicking again hides them", async () => {
+    renderOverview();
+    const groceries = within(vendors()).getByRole('button', { name: /^Groceries shop/ });
+    await user.click(groceries);
+    expect(groceries).toHaveAttribute('aria-expanded', 'true');
+    const detail = vendors().querySelector('.vendor-detail');
+    expect(within(detail).getByText('3 charges · average $266.67 · $800.00 in total')).toBeInTheDocument();
+    expect(detail.querySelectorAll('.category-bar')).toHaveLength(3);
+    const items = detail.querySelectorAll('.transaction-item');
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent('Nov 5');
+    await user.click(groceries);
+    expect(vendors().querySelector('.vendor-detail')).toBeNull();
+  });
+
+  test('leaving out recurring charges keeps the loan and rent from dominating', async () => {
+    renderOverview(TRANSACTIONS.map(t => (t.category === 'Rent' ? { ...t, recurring_id: 3 } : t)));
+    expect(rows()[0][0]).toBe('Rent shop');
+    await user.click(within(vendors()).getByLabelText('Leave out recurring charges'));
+    expect(rows()[0]).toEqual(['Groceries shop', '$800.00']);
+    expect(rows().map(r => r[0])).not.toContain('Rent shop');
+  });
+
+  test('"View as table" lists the vendors', async () => {
+    renderOverview();
+    await user.click(within(vendors()).getByText('View as table'));
+    expect(cells(within(vendors()).getByRole('table')).slice(0, 3)).toEqual([
+      ['Vendor', 'Total', 'Charges', 'Average charge'],
+      ['Rent shop', '$2,700.00', '3', '$900.00'],
+      ['Groceries shop', '$800.00', '3', '$266.67'],
+    ]);
+  });
+});
+
 test('without spending, the section says so', () => {
   renderOverview([tx('2026-10-01', 2000, 'Paycheck', 'Employer')]);
   expect(within(spending()).getByText('No spending in this period.')).toBeInTheDocument();
