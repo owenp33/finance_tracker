@@ -40,6 +40,24 @@ export const netPosition = (entries) => {
 export const rangeStart = (range, today, firstDay) =>
   (range in MONTHS_BACK ? shiftMonths(today, -MONTHS_BACK[range]) : firstDay);
 
+// The forecast from `from` (today) through `to` (Phase V, V6b): the balance stepping from
+// `startCents` by each day's scheduled `occurrences` (GET /recurring/projection, already only the
+// shown accounts'), kind 'forecast' with that day's `items`, then `to` itself ('forecast-end')
+// when nothing is scheduled on it. Known recurring items only: everyday spending isn't in it.
+export const forecastPoints = (startCents, occurrences, from, to) => {
+  const byDay = {};
+  occurrences
+    .filter(o => o.date >= from && o.date <= to)
+    .forEach(o => { (byDay[o.date] = byDay[o.date] || []).push(o); });
+  let cents = startCents;
+  const points = Object.keys(byDay).sort().map(date => {
+    cents += byDay[date].reduce((sum, o) => sum + Math.round(o.amount * 100), 0);
+    return { date, cents, kind: 'forecast', items: byDay[date] };
+  });
+  if (!points.length || points[points.length - 1].date < to) points.push({ date: to, cents, kind: 'forecast-end', items: [] });
+  return points;
+};
+
 // A range's points for a step line: the balance carried into `from` (kind 'start'), each date's
 // end-of-day balance from `from` through `to` ('day'), and `to` itself when nothing changed on it
 // ('end'), so the line spans the whole range

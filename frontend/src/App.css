@@ -3428,6 +3428,29 @@ body {
   color: #6b7280;
 }
 
+/* The forecast (V6b): dashed, and labelled as known recurring items only */
+.balance-forecast-line {
+  margin: -6px 0 12px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.balance-forecast .recharts-line-curve {
+  stroke: var(--chart-blue);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+.balance-key {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid var(--chart-blue);
+}
+
+.balance-key.forecast {
+  border-top-style: dashed;
+}
+
 /* The history doesn't end at the current balance: a warning, in the darker orange */
 .balance-mismatch {
   margin: 0 0 12px;

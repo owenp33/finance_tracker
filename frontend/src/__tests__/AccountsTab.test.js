@@ -4,8 +4,10 @@ import InsightsView from '../components/InsightsView';
 import { BalanceTooltip } from '../components/insights/charts/BalanceChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBalances } from '../api/balances';
+import { getProjection } from '../api/recurring';
 
 jest.mock('../api/balances');
+jest.mock('../api/recurring');
 
 // jsdom has no layout, so the chart gets a fixed size instead of measuring its container
 jest.mock('recharts', () => {
@@ -29,6 +31,14 @@ const CHECKING = entry(6, "Owen's Checking", 0, [['2025-01-01', -98541], ['2026-
 const SAVINGS = entry(7, "Owen's Savings", 707429, [['2025-07-11', 49312], ['2026-09-28', 300000]]);
 const BALANCES = [DISCOVER, CHECKING, SAVINGS];
 
+// What GET /recurring/projection lists for the 30 days from Nov 8, 2026
+const occurrence = (accountId, date, vendor, amount) => ({ recurring_id: 1, account_id: accountId, date, vendor, category: 'Bills', amount });
+const SCHEDULED = [
+  occurrence(6, '2026-11-09', 'Allina Health', -87.38),
+  occurrence(6, '2026-11-30', 'ASPIRE', -75),
+  occurrence(7, '2026-12-01', 'HLWW School District', 1700),
+];
+
 // GET /api/accounts: current balances, which the histories end at
 const ACCOUNTS = [
   { id: 5, account_id: 'disc', account_name: "Owen's Discover", balance: -852.45 },
@@ -41,6 +51,7 @@ beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date(2026, 10, 8, 12));   // Nov 8, 2026
   user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   getBalances.mockResolvedValue(BALANCES);
+  getProjection.mockResolvedValue([]);
 });
 afterEach(() => jest.useRealTimers());
 
@@ -124,6 +135,50 @@ test('a failed load is reported, and the tab says there is nothing to show', asy
   await openTab({ onError });
   await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load balances'));
   expect(screen.getByText('No balances to show.')).toBeInTheDocument();
+});
+
+describe('the forecast', () => {
+  const forecastLine = () => tab().querySelector('.balance-forecast-line').textContent;
+
+  test('it continues net position for 30 days by the scheduled recurring items, dashed and labelled', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    await openTab();
+    await waitFor(() => expect(getProjection).toHaveBeenCalledWith(30));
+    await waitFor(() => expect(forecastLine()).toBe('Forecast for Dec 8, 2026: $10,959.30, from known recurring items only'));
+    expect(tab().querySelector('.balance-forecast .recharts-line-curve')).not.toBeNull();
+    expect(within(tab()).getByText('Forecast: known recurring items only')).toBeInTheDocument();
+    expect(summary()).toEqual(['$9,421.68', 'Up $9,913.97 since Nov 8, 2025']);     // the history is unchanged
+  });
+
+  test("an account's forecast counts only its own items, and the table marks forecast days", async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    await openTab();
+    await pick("Owen's Checking");
+    await pick('3M');
+    await waitFor(() => expect(forecastLine()).toBe('Forecast for Dec 8, 2026: $7,111.75, from known recurring items only'));
+    expect((await tableRows()).slice(1)).toEqual([
+      ['Oct 31, 2026', '$7,274.13', '+$2,274.13'],
+      ['Nov 9, 2026 (forecast)', '$7,186.75', '-$87.38'],
+      ['Nov 30, 2026 (forecast)', '$7,111.75', '-$75.00'],
+    ]);
+  });
+
+  test('a failed projection is reported, and the history shows without a forecast', async () => {
+    getProjection.mockRejectedValue(new Error('Could not load the projection'));
+    const onError = jest.fn();
+    await openTab({ onError });
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load the projection'));
+    expect(tab().querySelector('.balance-forecast-line')).toBeNull();
+    expect(summary()).toEqual(['$9,421.68', 'Up $9,913.97 since Nov 8, 2025']);
+  });
+});
+
+test("a forecast day's tooltip lists the items scheduled that day", () => {
+  render(<BalanceTooltip active payload={[{ payload: { date: '2026-12-01', cents: 1095930, kind: 'forecast', items: [SCHEDULED[2]] } }]}
+    transactions={[]} accountIds={[5, 6, 7]} />);
+  expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
+    'Dec 1, 2026, forecast', '$10,959.30', 'HLWW School District+$1,700.00',
+  ]);
 });
 
 test("the tooltip gives the day's balance and its transactions in the accounts shown", () => {

@@ -22,16 +22,20 @@ const monthTicks = (from, to) => {
 };
 
 // A point's details on hover or tap: its date and balance, and for a day with changes, that day's
-// transactions in the accounts shown (`accountIds`)
+// transactions in the accounts shown (`accountIds`), or for a forecast day, the items scheduled
 export function BalanceTooltip({ active, payload, transactions, accountIds }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
+  const forecast = point.kind === 'forecast' || point.kind === 'forecast-end';
   const onDay = point.kind === 'day'
     ? transactions.filter(t => t.date === point.date && accountIds.includes(t.account_id))
-    : [];
+    : forecast
+      ? point.items.map((o, i) => ({ id: `${o.recurring_id}-${i}`, vendor: o.vendor, amount_cents: Math.round(o.amount * 100) }))
+      : [];
   const title = point.kind === 'start' ? `${formatDate(point.date, true)}, start of range`
     : point.kind === 'end' ? `${formatDate(point.date, true)}, today`
-      : formatDate(point.date, true);
+      : forecast ? `${formatDate(point.date, true)}, forecast`
+        : formatDate(point.date, true);
   return (
     <div className="chart-tooltip balance-tip" role="tooltip">
       <strong>{title}</strong>
@@ -49,17 +53,25 @@ export function BalanceTooltip({ active, payload, transactions, accountIds }) {
 }
 
 // A step line of a balance over a range (`points`: utils/balances.js rangePoints), on a time axis,
-// with a $0 line when it crosses zero and a brush underneath to zoom
-function BalanceChart({ points, transactions, accountIds }) {
-  const data = points.map(p => ({ ...p, day: dayNumber(p.date), dollars: p.cents / 100 }));
-  const values = data.map(d => d.dollars);
+// with a $0 line when it crosses zero and a brush underneath to zoom; then, dashed from today's
+// balance, the `forecast` (forecastPoints) with a "Today" line between them
+function BalanceChart({ points, forecast = [], today, transactions, accountIds }) {
+  const last = points.length - 1;
+  const data = [
+    ...points.map((p, i) => ({
+      ...p, day: dayNumber(p.date), dollars: p.cents / 100,
+      ...(i === last && forecast.length > 0 && { forecastDollars: p.cents / 100 }),    // where the forecast starts
+    })),
+    ...forecast.map(p => ({ ...p, day: dayNumber(p.date), forecastDollars: p.cents / 100 })),
+  ];
+  const values = data.map(d => d.dollars ?? d.forecastDollars);
   const crossesZero = Math.min(...values) < 0 && Math.max(...values) > 0;
-  const ticks = monthTicks(points[0].date, points[points.length - 1].date);
+  const ticks = monthTicks(data[0].date, data[data.length - 1].date);
   const tickLabels = Object.fromEntries(ticks.map(tick => [tick.day, tick.label]));
 
   return (
     <ResponsiveContainer width="100%" height={HEIGHT}>
-      <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+      <LineChart data={data} margin={{ top: 16, right: 16, bottom: 0, left: 0 }}>
         <XAxis
           type="number" dataKey="day" domain={['dataMin', 'dataMax']} ticks={ticks.map(tick => tick.day)}
           tickFormatter={value => tickLabels[value] ?? ''} interval="preserveStartEnd"
@@ -79,7 +91,16 @@ function BalanceChart({ points, transactions, accountIds }) {
             label={{ value: '$0', position: 'insideTopRight', fill: '#6b7280', fontSize: 12 }}
           />
         )}
-        <Line type="stepAfter" dataKey="dollars" className="balance-line" dot={false} isAnimationActive={false} />
+        {forecast.length > 0 && (
+          <ReferenceLine x={dayNumber(today)} stroke="#9ca3af" strokeDasharray="2 3" label={{ value: 'Today', position: 'top', fill: '#6b7280', fontSize: 11 }} />
+        )}
+        <Line type="stepAfter" dataKey="dollars" className="balance-line" dot={false} connectNulls={false} isAnimationActive={false} />
+        {forecast.length > 0 && (
+          <Line
+            type="stepAfter" dataKey="forecastDollars" className="balance-forecast" dot={false}
+            connectNulls={false} isAnimationActive={false}
+          />
+        )}
         <Brush dataKey="date" height={24} stroke="#9ca3af" travellerWidth={8} tickFormatter={date => formatDate(date)} />
       </LineChart>
     </ResponsiveContainer>

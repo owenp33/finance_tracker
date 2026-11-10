@@ -1,13 +1,18 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import BalanceChart from './charts/BalanceChart';
 import ViewAsTable from '../ViewAsTable';
 import { formatDate } from '../transactions/utils';
 import { useBalances } from '../../hooks/useBalances';
-import { todayISO } from '../../utils/dates';
+import { useProjection } from '../../hooks/useProjection';
+import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
-import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
+import { RANGES, netPosition, rangeStart, rangePoints, forecastPoints } from '../../utils/balances';
 
 const NET = 'net';
+
+// How far the forecast reaches: as far as the Dashboard's agenda (a forecast of known recurring
+// items only drifts further from reality the longer it runs)
+const FORECAST_DAYS = 30;
 
 // A stable stand-in when no one listens for errors (useBalances refetches when it changes)
 const IGNORE_ERROR = () => {};
@@ -21,12 +26,21 @@ const changeLabel = (change, from) => {
 
 // Insights → Accounts (Phase V, V4): is each account growing or shrinking, and what's the net
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
-// balance and its change over the range, a step line with a brush, and a table. `accounts` (GET
+// balance and its change over the range, a step line with a brush, a 30-day forecast of the known
+// recurring items (V6b), and a table. `accounts` (GET
 // /api/accounts) give the current balances each history should end at (the plan's check).
 function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
   const [range, setRange] = useState('1Y');
+
+  // The recurring items scheduled in the forecast's window; a failed load shows no forecast
+  const [forecastFailed, setForecastFailed] = useState(false);
+  const reportProjectionError = useCallback((message) => {
+    setForecastFailed(true);
+    onError(message);
+  }, [onError]);
+  const occurrences = useProjection(FORECAST_DAYS, reportProjectionError);
 
   if (balances === null) return <p className="no-data">Loading balances…</p>;
   if (balances.length === 0) return <p className="no-data">No balances to show.</p>;
@@ -40,9 +54,17 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
   const from = rangeStart(range, today, series.days[0]?.date ?? today);
   const points = rangePoints(series, from, today);
   const change = points[points.length - 1].cents - points[0].cents;
-  const days = points
-    .map((point, i) => ({ ...point, change: i > 0 ? point.cents - points[i - 1].cents : 0 }))
-    .filter(point => point.kind === 'day');
+
+  // The forecast (V6b): from today's balance, the shown accounts' scheduled recurring items
+  const shownIds = shown.map(b => b.id);
+  const forecastEnd = shiftDays(today, FORECAST_DAYS);
+  const forecast = forecastFailed ? []
+    : forecastPoints(series.closing_cents, occurrences.filter(o => shownIds.includes(o.account_id)), today, forecastEnd);
+
+  const allPoints = [...points, ...forecast];
+  const days = allPoints
+    .map((point, i) => ({ ...point, change: i > 0 ? point.cents - allPoints[i - 1].cents : 0 }))
+    .filter(point => point.kind === 'day' || point.kind === 'forecast');
 
   // The history should end at the current balance; say so if it doesn't
   const current = shown.map(b => accounts.find(a => a.id === b.id)?.balance);
@@ -80,6 +102,12 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
 
       <div className="balance-now">{formatCents(series.closing_cents)}</div>
       <div className="balance-change">{changeLabel(change, from)}</div>
+      {forecast.length > 0 && (
+        <p className="balance-forecast-line">
+          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}, `
+            + 'from known recurring items only'}
+        </p>
+      )}
       {mismatch && (
         <p className="balance-mismatch">
           {`This history ends at ${formatCents(series.closing_cents)}, but `
@@ -87,11 +115,23 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
         </p>
       )}
 
-      <BalanceChart key={`${view}-${range}`} points={points} transactions={transactions} accountIds={shown.map(b => b.id)} />
+      <BalanceChart
+        key={`${view}-${range}`} points={points} forecast={forecast} today={today}
+        transactions={transactions} accountIds={shownIds}
+      />
+      {forecast.length > 0 && (
+        <ul className="timeline-legend">
+          <li><span className="balance-key" aria-hidden="true" />Balance</li>
+          <li><span className="balance-key forecast" aria-hidden="true" />Forecast: known recurring items only</li>
+        </ul>
+      )}
       <ViewAsTable
         caption={`Balance by day, ${label}`}
         columns={['Date', 'End-of-day balance', 'Change that day']}
-        rows={days.map(day => [formatDate(day.date, true), formatCents(day.cents), formatSignedCents(day.change)])}
+        rows={days.map(day => [
+          `${formatDate(day.date, true)}${day.kind === 'forecast' ? ' (forecast)' : ''}`,
+          formatCents(day.cents), formatSignedCents(day.change),
+        ])}
       />
     </section>
   );
