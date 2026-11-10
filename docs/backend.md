@@ -621,7 +621,8 @@ Details worth knowing:
   it was listed, is a 400.
 - `GET /recurring/projection?days=60` returns `{occurrences: [{recurring_id, account_id, date,
   vendor, category, amount}]}` by date (see Projection). `days` defaults to 60; anything but a
-  whole number from 1 to 366 is a 400.
+  whole number from 1 to 366 is a 400. The Dashboard's 30-day agenda reads it (Phase V, V6a), so
+  the older `GET /accounts/<id>/upcoming` (templates due within `days`) has no frontend caller.
 - `GET /budgets/progress?period=YYYY-MM` (default: this month) returns `{period, progress: [...]}`
   sorted by category; each row has `id`, `category`, `period`, `allocated`, `carried_over`,
   `spent`, `remaining` (each also as `*_cents`), `rollover`, `over_budget`, and

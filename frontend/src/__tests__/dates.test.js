@@ -1,6 +1,6 @@
 import {
   todayISO, daysInMonth, monthElapsed, monthEndLabel, sameDayLastMonth, dayRangeLabel, shiftPeriod, monthRangeLabel,
-  dayNumber, shiftMonths, monthsFrom,
+  dayNumber, shiftMonths, monthsFrom, shiftDays, weekStart,
 } from '../utils/dates';
 
 afterEach(() => jest.useRealTimers());
@@ -41,6 +41,17 @@ test('lists the months from one to another, both included', () => {
   expect(monthsFrom('2025-11', '2026-02')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
   expect(monthsFrom('2026-10', '2026-10')).toEqual(['2026-10']);
   expect(monthsFrom('2026-10', '2026-09')).toEqual([]);
+});
+
+test('moves days forward or back, across months and years', () => {
+  expect(shiftDays('2026-11-29', 7)).toBe('2026-12-06');
+  expect(shiftDays('2026-01-01', -1)).toBe('2025-12-31');
+});
+
+test("a week starts on the Sunday on or before the day", () => {
+  expect(weekStart('2026-11-05')).toBe('2026-11-01');      // a Thursday
+  expect(weekStart('2026-11-08')).toBe('2026-11-08');      // a Sunday
+  expect(weekStart('2026-12-02')).toBe('2026-11-29');
 });
 
 test('names a run of days in one month', () => {

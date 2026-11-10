@@ -9,7 +9,6 @@ import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
-import { useUpcoming } from './hooks/useUpcoming';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -35,7 +34,6 @@ function App() {
   const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
-  const { upcoming, loadUpcoming } = useUpcoming({ setError });
   // AUTH HANDLERS =============================================================
 
   // Forgets the login; the caller decides what the login screen says
@@ -194,7 +192,7 @@ function App() {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -203,7 +201,7 @@ function App() {
   const handleEditRecurring = async (id, fields) => {
     try {
       await recurringAPI.updateRecurring(id, fields);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -212,7 +210,7 @@ function App() {
   const handleDeleteRecurring = async (id) => {
     try {
       await recurringAPI.deleteRecurring(id);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await loadAllRecurring(accounts);
     } catch (err) {
       setError(err.message);
     }
@@ -248,12 +246,11 @@ function App() {
     }
   };
 
-  // A found series becomes a template linked to its payments, so templates, the upcoming list
-  // and transactions all reload
+  // A found series becomes a template linked to its payments, so templates and transactions reload
   const handleAddDetectedSeries = async (transactionIds) => {
     try {
       await recurringAPI.addDetectedSeries(transactionIds);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -345,8 +342,7 @@ function App() {
 
   useEffect(() => {
     loadAllRecurring(accounts);
-    loadUpcoming(accounts);
-  }, [accounts, loadAllRecurring, loadUpcoming]);
+  }, [accounts, loadAllRecurring]);
 
   // RENDER ====================================================================
 
@@ -381,7 +377,6 @@ function App() {
           <DashboardView
             transactions={transactions}
             budgetData={budgetData}
-            upcoming={upcoming}
             onNavigate={setView}
             onError={setError}
           />

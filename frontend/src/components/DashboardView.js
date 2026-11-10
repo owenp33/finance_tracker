@@ -1,11 +1,12 @@
 import TransactionList from './TransactionList';
 import BudgetPace from './BudgetPace';
-import UpcomingList from './UpcomingList';
-import { useMonthProjection } from '../hooks/useProjection';
+import Agenda from './Agenda';
+import { useProjection } from '../hooks/useProjection';
 import { todayISO, sameDayLastMonth, dayRangeLabel, monthEndLabel } from '../utils/dates';
 import { formatCents, formatWholeDollars } from '../utils/money';
 import { cashFlow } from '../utils/moneyRules';
 import { rowPace, furthestAheadFirst } from '../utils/budgetPace';
+import { AGENDA_DAYS } from '../utils/agenda';
 
 // As many budgets as recent transactions, so the two columns line up
 const RECENT_LIMIT = 5;
@@ -29,10 +30,12 @@ function StatCard({ title, value, valueClass, sub }) {
 }
 
 // `onError` reports a failed request (this month's projection)
-function DashboardView({ transactions, budgetData = [], upcoming, onNavigate, onError }) {
+function DashboardView({ transactions, budgetData = [], onNavigate, onError }) {
   const today = todayISO();
   const period = today.slice(0, 7);
-  const occurrences = useMonthProjection(today, onError);
+  // The recurring items scheduled in the next 30 days: the agenda's, and (always covering the rest
+  // of this month) the budget pace's bills still due and paces by recurring
+  const occurrences = useProjection(AGENDA_DAYS, onError);
 
   // This month so far, against the same days of last month (a partial month never against a whole one)
   const lastMonthDay = sameDayLastMonth(today);
@@ -122,11 +125,8 @@ function DashboardView({ transactions, budgetData = [], upcoming, onNavigate, on
         </div>
       </div>
 
-      {/* Upcoming recurring transactions */}
-      <div className="upcoming-section">
-        <h3>Due This Week</h3>
-        <UpcomingList items={upcoming} />
-      </div>
+      {/* The recurring items scheduled in the next 30 days */}
+      <Agenda occurrences={occurrences} today={today} />
 
     </div>
   );

@@ -18,5 +18,4 @@ export const updateAccount = (id, fields) =>
 export const deleteAccount = (id) =>
   fetchAPI(`/api/accounts/${id}`, { method: 'DELETE' });
 
-export const getUpcoming = (accountId, days = 30) =>
-  fetchAPI(`/api/accounts/${accountId}/upcoming?days=${days}`).then(d => d.upcoming);
+

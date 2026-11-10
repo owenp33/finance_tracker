@@ -8,6 +8,18 @@ const isoDate = (date) => {
 // Today as YYYY-MM-DD in the user's time zone
 export const todayISO = () => isoDate(new Date());
 
+// The day `days` days from `day` (YYYY-MM-DD; negative goes back)
+export const shiftDays = (day, days) => {
+  const [year, month, date] = day.split('-').map(Number);
+  return isoDate(new Date(year, month - 1, date + days));
+};
+
+// The Sunday on or before `day` (YYYY-MM-DD), where its week starts
+export const weekStart = (day) => {
+  const [year, month, date] = day.split('-').map(Number);
+  return shiftDays(day, -new Date(year, month - 1, date).getDay());
+};
+
 // The same day `months` months from `day` (YYYY-MM-DD; negative goes back), or that month's last
 // day when it's shorter
 export const shiftMonths = (day, months) => {

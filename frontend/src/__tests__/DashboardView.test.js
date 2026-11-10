@@ -60,12 +60,22 @@ const renderDashboard = async ({ transactions = TRANSACTIONS, budgetData = BUDGE
   render(
     <CategoryColorProvider>
       <DashboardView
-        transactions={transactions} budgetData={budgetData} upcoming={[]} onNavigate={jest.fn()} onError={onError}
+        transactions={transactions} budgetData={budgetData} onNavigate={jest.fn()} onError={onError}
       />
     </CategoryColorProvider>
   );
   await act(async () => {});
 };
+
+// What GET /recurring/projection lists for the 30 days from Thursday, Nov 5, 2026
+const occurrence = (recurringId, date, vendor, amount) => ({ recurring_id: recurringId, account_id: 1, date, vendor, category: 'Bills', amount });
+const AGENDA = [
+  occurrence(2, '2026-12-01', 'HLWW School District', 1700),
+  occurrence(6, '2026-11-05', 'Allina Health', -87.38),
+  occurrence(9, '2026-11-09', 'Gym', -30),
+  occurrence(5, '2026-11-30', 'ASPIRE', -75),
+  occurrence(7, '2026-12-02', 'Anthropic', -20),
+];
 
 const card = (title) => {
   const element = screen.getByRole('heading', { name: title }).closest('.stat-card');
@@ -142,7 +152,7 @@ describe('budget pace', () => {
       { recurring_id: 4, account_id: 1, date: '2026-11-20', vendor: 'Costco', category: 'Groceries', amount: -50 },
     ]);
     await renderDashboard({ transactions: [anthropic], budgetData: [subscriptions, budget(2, 'Groceries', 400, 270)] });
-    expect(getProjection).toHaveBeenCalledWith(25);   // Nov 5 through Nov 30
+    expect(getProjection).toHaveBeenCalledWith(30);   // the agenda's 30 days, which cover the rest of November
 
     expect(paceBars()).toEqual([
       'Groceries: $270.00 of $400.00, $50.00 in bills still due, $203 ahead',
@@ -163,5 +173,36 @@ describe('budget pace', () => {
   test('without budgets this month, it says so', async () => {
     await renderDashboard({ budgetData: [] });
     expect(within(paceSection()).getByText('No budgets set for this period.')).toBeInTheDocument();
+  });
+});
+
+describe('the next 30 days', () => {
+  const agenda = () => screen.getByRole('heading', { name: 'Next 30 days' }).closest('section');
+
+  test("the scheduled charges and income by week, each with its amount and the running total, and each week's total", async () => {
+    getProjection.mockResolvedValue(AGENDA);
+    await renderDashboard({ budgetData: [] });
+    const weeks = [...agenda().querySelectorAll('.agenda-week')].map(week => ({
+      heading: [week.querySelector('h4').textContent, week.querySelector('.agenda-week-total').textContent],
+      rows: [...week.querySelectorAll('.agenda-item')].map(row =>
+        [...row.querySelectorAll('.agenda-date, .agenda-vendor, .agenda-amount, .agenda-running')].map(e => e.textContent)),
+    }));
+    expect(weeks).toEqual([
+      { heading: ['This week', '-$87.38'], rows: [['Today', 'Allina Health', '-$87.38', '-$87.38']] },
+      { heading: ['Next week', '-$30.00'], rows: [['Mon, Nov 9', 'Gym', '-$30.00', '-$117.38']] },
+      { heading: ['Week of Nov 29', '+$1,605.00'], rows: [
+        ['Mon, Nov 30', 'ASPIRE', '-$75.00', '-$192.38'],
+        ['Tue, Dec 1', 'HLWW School District', '+$1,700.00', '+$1,507.62'],
+        ['Wed, Dec 2', 'Anthropic', '-$20.00', '+$1,487.62'],
+      ] },
+    ]);
+    expect(agenda().querySelectorAll('.agenda-tag')).toHaveLength(5);
+    expect(within(agenda()).getByText('Running total')).toBeInTheDocument();
+    expect(screen.queryByText('Due This Week')).not.toBeInTheDocument();
+  });
+
+  test('with nothing scheduled, it says so', async () => {
+    await renderDashboard();
+    expect(within(agenda()).getByText('Nothing scheduled in the next 30 days.')).toBeInTheDocument();
   });
 });

@@ -2107,8 +2107,8 @@ body {
   text-decoration: underline;
 }
 
-/* === Upcoming Section ======================================= */
-.upcoming-section {
+/* === Next 30 days (Dashboard; Phase V, V6a) ================= */
+.agenda-section {
   background: white;
   padding: 25px;
   border-radius: 15px;
@@ -2116,44 +2116,116 @@ body {
   margin-bottom: 30px;
 }
 
-.upcoming-section h3 {
+.agenda-section h3 {
   color: #333;
   font-size: 1.3rem;
   margin-bottom: 16px;
 }
 
-.upcoming-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* Date, item, amount, running total (a week's total sits under the amounts it adds up) */
+.agenda-columns,
+.agenda-week-header,
+.agenda-item {
+  display: grid;
+  grid-template-columns: 110px 1fr 110px 120px;
+  gap: 12px;
+  align-items: baseline;
 }
 
-.upcoming-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 0.88rem;
-  white-space: nowrap;
+.agenda-columns {
+  padding: 0 8px 6px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.upcoming-chip { background: #f1f3f5; }
-
-.chip-date {
-  color: #888;
-  font-weight: 500;
-  min-width: 44px;
+.agenda-columns span:nth-child(n + 3),
+.agenda-week-total,
+.agenda-amount,
+.agenda-running {
+  text-align: right;
 }
 
-.chip-vendor {
-  color: #333;
+.agenda-week + .agenda-week {
+  margin-top: 14px;
+}
+
+.agenda-week-header {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.agenda-week-header h4 {
+  grid-column: 1 / 3;
+  margin: 0;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.agenda-week-total {
+  font-size: 0.85rem;
   font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
 }
 
-.chip-amount {
-  font-weight: 700;
+.agenda-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
+.agenda-item {
+  padding: 7px 8px;
+  border-bottom: 1px dashed #eef0f3;
+  font-size: 0.9rem;
+}
+
+.agenda-date {
+  color: #6b7280;
+}
+
+.agenda-vendor {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Projections are labelled, never drawn like what has posted (Phase V ground rule) */
+.agenda-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px dashed #9ca3af;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.agenda-amount {
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-amount.in {
+  color: #15803d;
+}
+
+.agenda-running {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .agenda-columns,
+  .agenda-week-header,
+  .agenda-item {
+    grid-template-columns: 72px 1fr 78px 86px;
+    gap: 8px;
+    font-size: 0.82rem;
+  }
+}
+
 /* ── Accounts tab ──────────────────────────────────────────────────────────── */
 .accounts-view {
   padding: 30px;
