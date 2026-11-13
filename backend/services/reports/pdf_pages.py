@@ -14,7 +14,8 @@ from matplotlib.colors import to_rgba
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.table import Table
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+from services.reports.summary_data import round_half_up
 
 # Pages with a chart over a table (portrait): the first holds the chart and the start of the table
 FIRST_PAGE_ROWS = 20          # table rows under the chart
@@ -38,14 +39,19 @@ INK_MUTED = '#898781'
 GRIDLINE = '#e1e0d9'
 BASELINE = '#c3c2b7'
 HEADER_FILL = '#f3f2ee'
-BALANCE_LINE = '#2a78d6'
-NET_IN = '#1baf7a'            # aqua: more in than out
-NET_OUT = '#eb6834'           # orange: more out than in
+CHART_BLUE = '#2a78d6'        # balances, spending by category
+CHART_AQUA = '#1baf7a'        # more in than out
+CHART_ORANGE = '#eb6834'      # more out than in
 PARTIAL_ALPHA = 0.35          # a month only partly in the period
 OVER_BUDGET_WASH = '#f9e1e1'
 
 
-def render_summary_page(pdf, analytics, period_label, generated_label):
+def render_summary_page(pdf, analytics, period_label, generated_label, income=None):
+    """
+    The totals and averages (AnalyticsService.generate_report), with income by category as one
+    line under them, as on the app's Insights Overview (`income`: summary_data.largest_income;
+    no line without income).
+    """
     summary = analytics['summary']
     trends = analytics['trends']
 
@@ -60,6 +66,7 @@ def render_summary_page(pdf, analytics, period_label, generated_label):
         (f"Total Income: ${summary['total_income']:,.2f}", 14, 'normal'),
         (f"Total Expenses: ${summary['total_expenses']:,.2f}", 14, 'normal'),
         (f"Net Amount: ${summary['net_amount']:,.2f}", 14, 'normal'),
+        *([(_income_line(income), 12, 'normal')] if income else []),
         (f"Transactions: {summary['transaction_count']}", 12, 'normal'),
         (f"Average Transaction: ${summary['avg_transaction']:,.2f}", 12, 'normal'),
         ('', 12, 'normal'),
@@ -69,11 +76,21 @@ def render_summary_page(pdf, analytics, period_label, generated_label):
 
     y = 0.95
     for text, size, weight in lines:
-        ax.text(0.05, y, text, fontsize=size, fontweight=weight, transform=ax.transAxes)
+        ax.text(0.05, y, text, fontsize=size, fontweight=weight, transform=ax.transAxes, parse_math=False)
         y -= 0.05 if size <= 12 else 0.07
 
     pdf.savefig(fig)
     plt.close(fig)
+
+
+def _income_line(income):
+    """'Largest income category: Paycheck, $4,000.00 of $4,050.00 (99%)', or the one category."""
+    category = _shorten(income['category'], PANEL_CATEGORY_CHARS)
+    if income['categories'] == 1:
+        return f"All income is in one category: {category} ({_money(income['total'])})"
+    share = round_half_up(income['cents'] / income['total'] * 100)
+    return (f"Largest income category: {category}, {_money(income['cents'])} of "
+            f"{_money(income['total'])} ({share}%)")
 
 
 # NET PER MONTH =================================================================
@@ -114,23 +131,22 @@ def _net_chart(fig, rows):
     """The bars on a $0 line, the average line, month ticks, and a legend under them."""
     x = list(range(len(rows)))
     ax = fig.add_axes([0.10, 0.60, 0.80, 0.27])
-    colors = [to_rgba(NET_OUT if row['net'] < 0 else NET_IN, PARTIAL_ALPHA if row['partial'] else 1)
+    colors = [to_rgba(CHART_ORANGE if row['net'] < 0 else CHART_AQUA, PARTIAL_ALPHA if row['partial'] else 1)
               for row in rows]
     ax.bar(x, [row['net'] / 100 for row in rows], width=0.7, color=colors, zorder=2)
     ax.axhline(0, color=BASELINE, linewidth=1, zorder=1)
     ax.plot(x, [nan if row['average'] is None else row['average'] / 100 for row in rows],
             color=INK, linewidth=2, marker='o', markersize=3, label=AVERAGE_LABEL, zorder=3)
 
-    pad = max(0.6, (MIN_MONTH_SLOTS - len(rows)) / 2 + 0.6)
-    ax.set_xlim(-pad, len(rows) - 1 + pad)
+    _month_xlim(ax, len(rows))
     positions, labels = _month_ticks([row['month'] for row in rows])
     ax.set_xticks(positions, labels=labels)
     _style_axes(ax)
     ax.spines['bottom'].set_visible(False)   # the $0 line is the baseline
     ax.tick_params(axis='x', length=0)
     ax.legend(handles=[
-        Patch(color=NET_IN, label='More in than out'),
-        Patch(color=NET_OUT, label='More out than in'),
+        Patch(color=CHART_AQUA, label='More in than out'),
+        Patch(color=CHART_ORANGE, label='More out than in'),
         Line2D([], [], color=INK, linewidth=2, marker='o', markersize=3, label=AVERAGE_LABEL),
     ], loc='upper left', bbox_to_anchor=(0, -0.08), ncol=3, frameon=False, fontsize=8,
         labelcolor=INK_SECONDARY)
@@ -151,30 +167,127 @@ def _month_label(month, with_year=True):
     return date(year, number, 1).strftime('%b %Y' if with_year else '%b')
 
 
-def _month_ticks(months):
+def _month_ticks(months, year_below=False):
     """
     Where and how to label a run of months ('YYYY-MM'): every month of a short run; of a long
-    one, the first, Januaries and Julys. The year shows on January and the first.
+    one, the first, Januaries and Julys. The year shows on January and the first, on a line of
+    its own under the month for a narrow chart.
     """
     shown = [i for i, month in enumerate(months)
              if len(months) <= ALL_TICKS_UP_TO or i == 0 or month.endswith(('-01', '-07'))]
-    return shown, [_month_label(months[i], with_year=i == 0 or months[i].endswith('-01')) for i in shown]
+    labels = [_month_label(months[i], with_year=i == 0 or months[i].endswith('-01')) for i in shown]
+    return shown, [label.replace(' ', '\n') for label in labels] if year_below else labels
 
 
-def render_category_pie_page(pdf, rows, title):
-    fig, ax = plt.subplots(figsize=(8.5, 8.5))
-    if rows:
-        labels = [r['category'] for r in rows]
-        values = [r['total'] for r in rows]
-        colors = plt.get_cmap('tab20').colors
-        ax.pie(values, labels=labels, autopct='%1.1f%%', colors=colors)
+def _month_xlim(ax, count):
+    """Room for `count` months, centred: a few months still get bars no wider than MIN_MONTH_SLOTS allow."""
+    pad = max(0.6, (MIN_MONTH_SLOTS - count) / 2 + 0.6)
+    ax.set_xlim(-pad, count - 1 + pad)
+
+
+# SPENDING BY CATEGORY ==========================================================
+# As on the app's Insights Overview (Phase V, V5b): small multiples, three to a row
+
+SPENDING_TITLE = 'Spending by category'
+SPENDING_NOTE = ('Per month, each on its own scale; the dashed line is its monthly average, '
+                 'and a month only partly in the period is lighter.')
+NO_SPENDING = 'No spending in this period.'
+AVERAGE_LINE_LABEL = 'Monthly average'
+PANELS_PER_ROW = 3            # summary_data.PANEL_LIMIT (8) plus Other fill three rows
+PANEL_WIDTH = 0.26            # as fractions of the page
+PANEL_GAP = 0.05
+PANEL_AXIS_ROOM = 0.045       # for the dollar ticks, left of each chart
+PANEL_TOP = 0.87              # the first row's caption
+PANEL_ROW_HEIGHT = 0.165      # a caption, its chart and month ticks
+PANEL_CAPTION_LINE = 0.015
+PANEL_CHART_HEIGHT = 0.08     # under the caption's three lines
+SPENDING_TABLE_TOP = 0.36
+PANEL_CATEGORY_CHARS = 30     # longer text is cut short with an ellipsis
+OTHERS_CHARS = 40
+
+
+def render_spending_by_category_page(pdf, panels, period_label):
+    """
+    Spending by category: a small chart per panel (summary_data.category_panels: the top 8, then
+    Other), each a bar per month on its own scale (a month only partly in the period lighter)
+    with its monthly average dashed and its last full month against that average above it, then
+    the numbers as a table.
+    """
+    fig = plt.figure(figsize=(8.5, 11))
+    _page_header(fig, SPENDING_TITLE, period_label, SPENDING_NOTE)
+    if panels:
+        for i, panel in enumerate(panels):
+            _category_panel(fig, panel, *divmod(i, PANELS_PER_ROW))
+        last_month = next((panel['last']['month'] for panel in panels if panel['last']), None)
+        _table(fig, _spending_columns(last_month), [(_spending_cells(panel), False) for panel in panels],
+               SPENDING_TABLE_TOP)
     else:
-        ax.text(0.5, 0.5, 'No data available', ha='center', va='center', transform=ax.transAxes)
-        ax.axis('off')
-    ax.set_title(title)
-    fig.tight_layout()
+        fig.text(0.06, PANEL_TOP, NO_SPENDING, fontsize=10, color=INK_SECONDARY, va='top')
     pdf.savefig(fig)
     plt.close(fig)
+
+
+def _category_panel(fig, panel, row, column):
+    """One panel: its category, its label and (for Other) the categories in it, over its chart."""
+    left = 0.06 + column * (PANEL_WIDTH + PANEL_GAP)
+    top = PANEL_TOP - row * PANEL_ROW_HEIGHT
+    chart_top = top - 3 * PANEL_CAPTION_LINE - 0.005
+    ax = fig.add_axes([left + PANEL_AXIS_ROOM, chart_top - PANEL_CHART_HEIGHT,
+                       PANEL_WIDTH - PANEL_AXIS_ROOM, PANEL_CHART_HEIGHT])
+
+    caption = [(_shorten(panel['category'], PANEL_CATEGORY_CHARS), 9, 'bold', INK),
+               (_panel_label(panel), 7.5, 'normal', INK_SECONDARY)]
+    if 'others' in panel:
+        caption.append((_shorten(', '.join(panel['others']), OTHERS_CHARS), 7, 'normal', INK_MUTED))
+    for line, (text, size, weight, color) in enumerate(caption):
+        ax.text(left, top - line * PANEL_CAPTION_LINE, text, transform=fig.transFigure, va='top',
+                fontsize=size, fontweight=weight, color=color, parse_math=False)
+
+    months = panel['months']
+    ax.bar(range(len(months)), [m['cents'] / 100 for m in months], width=0.8, zorder=2,
+           color=[to_rgba(CHART_BLUE, PARTIAL_ALPHA if m['partial'] else 1) for m in months])
+    if panel['average'] is not None:
+        ax.axhline(panel['average'] / 100, color=INK, linewidth=1, dashes=(4, 3), zorder=3,
+                   label=AVERAGE_LINE_LABEL)
+    _month_xlim(ax, len(months))
+    positions, labels = _month_ticks([m['month'] for m in months], year_below=True)
+    ax.set_xticks(positions, labels=labels)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=2))
+    _style_axes(ax)
+    ax.tick_params(axis='x', length=0)
+    ax.tick_params(labelsize=7)
+
+
+def _panel_label(panel):
+    """Its last full month against its average, in whole dollars: 'Oct: $350, 8% above its $325 average'."""
+    average, last = panel['average'], panel['last']
+    if last is None or average is None:
+        return 'No full month yet'
+    month, amount = _month_label(last['month'], with_year=False), _whole_dollars(last['cents'])
+    if average == 0:
+        return f'{month}: {amount}'
+    typical = _whole_dollars(average)
+    percent = round_half_up((last['cents'] - average) / average * 100)
+    if abs(percent) < 5:
+        return f'{month}: {amount}, about its {typical} average'
+    return f"{month}: {amount}, {abs(percent)}% {'above' if percent > 0 else 'below'} its {typical} average"
+
+
+def _spending_columns(last_month):
+    """The table's columns, naming the last full month when there is one."""
+    last = f'Last full month ({_month_label(last_month)})' if last_month else 'Last full month'
+    return [('Category', 0.28, 'left'), ('Total', 0.15, 'right'), ('Monthly average', 0.17, 'right'),
+            (last, 0.27, 'right'), ('Transactions', 0.13, 'right')]
+
+
+def _spending_cells(panel):
+    """A table row: category, total, monthly average, last full month, transactions."""
+    return [
+        _shorten(panel['category'], PANEL_CATEGORY_CHARS), _money(panel['total']),
+        '—' if panel['average'] is None else _money(panel['average']),
+        '—' if panel['last'] is None else _money(panel['last']['cents']),
+        str(panel['count']),
+    ]
 
 
 def render_top_vendors_page(pdf, vendors):
@@ -193,29 +306,6 @@ def render_top_vendors_page(pdf, vendors):
     plt.close(fig)
 
 
-def render_breakdown_table_page(pdf, rows):
-    fig, ax = plt.subplots(figsize=(8.5, 11))
-    ax.axis('off')
-    ax.set_title('Spending Breakdown', pad=20)
-
-    if rows:
-        table_data = [[r['category'], f"${r['total']:.2f}", f"${r['average']:.2f}", r['count'], f"{r['percentage']}%"] for r in rows]
-        table = ax.table(
-            cellText=table_data,
-            colLabels=['Category', 'Total', 'Average', 'Count', 'Percentage'],
-            loc='center',
-            cellLoc='center',
-        )
-        table.auto_set_font_size(False)
-        table.set_fontsize(9)
-        table.scale(1, 1.5)
-    else:
-        ax.text(0.5, 0.5, 'No data available', ha='center', va='center', transform=ax.transAxes)
-
-    pdf.savefig(fig)
-    plt.close(fig)
-
-
 # SHARED PIECES =================================================================
 
 def _money(cents):
@@ -226,6 +316,11 @@ def _money(cents):
 def _signed_money(cents):
     """+$1,234.50 / -$1,234.50 / $0.00"""
     return f"{'+' if cents > 0 else ''}{_money(cents)}"
+
+
+def _whole_dollars(cents):
+    """$1,235: an estimate, rounded half away from zero as the app's formatWholeDollars does."""
+    return f"{'-' if cents < 0 else ''}${(abs(cents) + 50) // 100:,}"
 
 
 def _compact_dollars(value, _position=None):
@@ -362,7 +457,7 @@ def _balance_chart(fig, ledger, start, end):
     balances = [c / 100 for c in cents]
 
     ax = fig.add_axes([0.10, 0.58, 0.76, 0.28])
-    ax.step(dates, balances, where='post', color=BALANCE_LINE, linewidth=2,
+    ax.step(dates, balances, where='post', color=CHART_BLUE, linewidth=2,
             solid_joinstyle='round', solid_capstyle='round')
     if min(balances) < 0 < max(balances):
         ax.axhline(0, color=BASELINE, linewidth=1)

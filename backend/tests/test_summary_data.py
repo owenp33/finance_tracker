@@ -11,8 +11,33 @@ from services.reports import summary_data
 TODAY = date(2026, 11, 12)
 
 
-def tx(day, cents, transfer=False, reimbursement=False):
-    return SimpleNamespace(date=day, amount_cents=cents, is_transfer=transfer, is_reimbursement=reimbursement)
+def tx(day, cents, transfer=False, reimbursement=False, category='Misc'):
+    return SimpleNamespace(date=day, amount_cents=cents, is_transfer=transfer, is_reimbursement=reimbursement,
+                           category=category)
+
+
+def spend(day, category, dollars):
+    return tx(day, -dollars * 100, category=category)
+
+
+# Sep and Oct 2026 and November so far: ten spending categories, two paychecks, a Groceries
+# reimbursement and a transfer (as in the app's categoryPanels tests)
+SPENDING = [
+    tx(date(2026, 9, 1), 200000, category='Paycheck'), tx(date(2026, 10, 1), 200000, category='Paycheck'),
+    spend(date(2026, 9, 3), 'Rent', 900), spend(date(2026, 10, 3), 'Rent', 900), spend(date(2026, 11, 3), 'Rent', 900),
+    spend(date(2026, 9, 10), 'Groceries', 300), spend(date(2026, 10, 10), 'Groceries', 400),
+    spend(date(2026, 11, 5), 'Groceries', 100),
+    tx(date(2026, 10, 15), 5000, reimbursement=True, category='Groceries'),
+    spend(date(2026, 9, 12), 'Gas', 100), spend(date(2026, 10, 12), 'Gas', 140),
+    spend(date(2026, 9, 14), 'Dining', 60), spend(date(2026, 10, 14), 'Dining', 40),
+    spend(date(2026, 9, 20), 'Fun', 50), spend(date(2026, 10, 20), 'Fun', 80),
+    spend(date(2026, 9, 21), 'Subscriptions', 20), spend(date(2026, 10, 21), 'Subscriptions', 20),
+    spend(date(2026, 9, 22), 'Medical', 87),
+    spend(date(2026, 10, 23), 'Shopping', 30),
+    spend(date(2026, 10, 24), 'Gifts', 25),
+    spend(date(2026, 9, 25), 'Pets', 15),
+    tx(date(2026, 10, 26), -50000, transfer=True, category='Transfer'),
+]
 
 
 class TestPeriodMonths:
@@ -78,3 +103,65 @@ class TestMonthlyNet:
             (90000, False, 20000), (0, False, 40000),
             (-20000, True, None),
         ]
+
+
+class TestCategoryPanels:
+    """Spending by category as the app's small multiples: the top 8, then Other."""
+
+    def panels(self):
+        return summary_data.category_panels(SPENDING, ['2026-09', '2026-10', '2026-11'], ['2026-11'])
+
+    def test_the_top_8_categories_by_plain_spending_then_the_rest_as_other(self):
+        assert [(p['category'], p['total'], p['count']) for p in self.panels()] == [
+            ('Rent', 270000, 3), ('Groceries', 80000, 3), ('Gas', 24000, 2), ('Fun', 13000, 2),
+            ('Dining', 10000, 2), ('Medical', 8700, 1), ('Subscriptions', 4000, 2), ('Shopping', 3000, 1),
+            ('Other', 4000, 2),
+        ]
+
+    def test_each_panel_has_every_month_its_average_over_the_full_months_and_its_last_full_month(self):
+        panels = self.panels()
+        groceries, medical = panels[1], panels[5]
+        assert groceries['months'] == [
+            {'month': '2026-09', 'cents': 30000, 'partial': False},
+            {'month': '2026-10', 'cents': 40000, 'partial': False},
+            {'month': '2026-11', 'cents': 10000, 'partial': True},
+        ]
+        assert (groceries['average'], groceries['last']) == (35000, {'month': '2026-10', 'cents': 40000})
+        assert ([m['cents'] for m in medical['months']], medical['average']) == ([8700, 0, 0], 4350)
+
+    def test_other_adds_up_the_rest_month_by_month_and_names_them(self):
+        other = self.panels()[8]
+        assert (other['others'], [m['cents'] for m in other['months']]) == (['Gifts', 'Pets'], [1500, 2500, 0])
+        assert 'others' not in self.panels()[0]
+
+    def test_without_a_full_month_there_is_no_average_or_last_month(self):
+        (rent,) = summary_data.category_panels([spend(date(2026, 11, 3), 'Rent', 900)], ['2026-11'], ['2026-11'])
+        assert (rent['average'], rent['last']) == (None, None)
+
+    def test_an_average_on_a_half_cent_rounds_up_as_the_app_does(self):
+        txs = [tx(date(2026, 9, 1), -30000, category='Rent'), tx(date(2026, 10, 1), -30001, category='Rent')]
+        (rent,) = summary_data.category_panels(txs, ['2026-09', '2026-10'], [])
+        assert rent['average'] == 30001
+
+    def test_no_spending_no_panels(self):
+        txs = [tx(date(2026, 10, 1), 200000, category='Paycheck'),
+               tx(date(2026, 10, 2), -500, transfer=True, category='Transfer')]
+        assert summary_data.category_panels(txs, ['2026-10'], []) == []
+
+
+class TestLargestIncome:
+    """Income by category as one line: its largest category, against all money in."""
+
+    def test_the_largest_income_category_and_all_money_in(self):
+        txs = [
+            tx(date(2026, 10, 1), 400000, category='Paycheck'),
+            tx(date(2026, 10, 15), 5000, reimbursement=True, category='Groceries'),   # money in like any other
+            tx(date(2026, 10, 20), 50000, transfer=True, category='Transfer'),        # never counts
+            tx(date(2026, 10, 21), -1000, category='Fun'),
+        ]
+        assert summary_data.largest_income(txs) == {
+            'category': 'Paycheck', 'cents': 400000, 'total': 405000, 'categories': 2}
+
+    def test_no_money_in_nothing_to_say(self):
+        assert summary_data.largest_income([tx(date(2026, 10, 21), -1000, category='Fun')]) is None
+

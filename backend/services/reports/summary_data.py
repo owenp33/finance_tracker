@@ -7,6 +7,14 @@ money out is spending, and a zero amount is neither. Pure functions over transac
 are 'YYYY-MM' strings.
 """
 import calendar
+import math
+
+PANEL_LIMIT = 8   # categories with a chart of their own; the rest add up as Other
+
+
+def round_half_up(value):
+    """Rounds as JavaScript's Math.round does (halves up), so the numbers match the app's."""
+    return math.floor(value + 0.5)
 
 
 def _is_income(t):
@@ -81,5 +89,69 @@ def monthly_net(transactions, months, partial):
     } for month in months]
     full = [row for row in rows if not row['partial']]
     for i in range(2, len(full)):
-        full[i]['average'] = round((full[i]['net'] + full[i - 1]['net'] + full[i - 2]['net']) / 3)
+        full[i]['average'] = round_half_up((full[i]['net'] + full[i - 1]['net'] + full[i - 2]['net']) / 3)
     return rows
+
+
+def category_panels(transactions, months, partial, limit=PANEL_LIMIT):
+    """
+    Spending by category as the app's Insights Overview draws it (small multiples): a panel per
+    category with spending in `months`, the top `limit` by total, then the rest added up as Other
+    (which names them in `others`). Each: {category, total, count (spending transactions), months:
+    [{month, cents, partial}], average (over the full months; None without one), last (the last
+    full month's {month, cents}, or None)}. Plain spending: reimbursements aren't taken off, since
+    only budgets do that.
+    """
+    in_period = set(months)
+    categories = {}
+    for t in transactions:
+        month = _month(t.date)
+        if not _is_spending(t) or month not in in_period:
+            continue
+        category = categories.setdefault(t.category, {'by_month': {}, 'count': 0})
+        category['by_month'][month] = category['by_month'].get(month, 0) - t.amount_cents
+        category['count'] += 1
+
+    ranked = sorted(
+        ({'category': name, 'total': sum(c['by_month'].values()), **c} for name, c in categories.items()),
+        key=lambda c: (-c['total'], c['category'].casefold()))
+    groups = [(c['category'], [c], None) for c in ranked[:limit]]
+    rest = ranked[limit:]
+    if rest:
+        groups.append(('Other', rest, sorted(c['category'] for c in rest)))
+
+    part_only = set(partial)
+    panels = []
+    for name, members, others in groups:
+        panel_months = [{
+            'month': month,
+            'cents': sum(c['by_month'].get(month, 0) for c in members),
+            'partial': month in part_only,
+        } for month in months]
+        full = [m for m in panel_months if not m['partial']]
+        panel = {'category': name, **({'others': others} if others else {})}
+        panel.update({
+            'total': sum(c['total'] for c in members),
+            'count': sum(c['count'] for c in members),
+            'months': panel_months,
+            'average': round_half_up(sum(m['cents'] for m in full) / len(full)) if full else None,
+            'last': {'month': full[-1]['month'], 'cents': full[-1]['cents']} if full else None,
+        })
+        panels.append(panel)
+    return panels
+
+
+def largest_income(transactions):
+    """
+    Income by category, as the one line the app's Insights Overview gives it: the largest income
+    category's `category` and `cents`, all money in (`total`), and how many `categories` it came
+    from. None without money in.
+    """
+    categories = {}
+    for t in transactions:
+        if _is_income(t):
+            categories[t.category] = categories.get(t.category, 0) + t.amount_cents
+    if not categories:
+        return None
+    category, cents = min(categories.items(), key=lambda item: (-item[1], item[0].casefold()))
+    return {'category': category, 'cents': cents, 'total': sum(categories.values()), 'categories': len(categories)}

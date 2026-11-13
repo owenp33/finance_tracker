@@ -196,22 +196,22 @@ class TestPdfReport:
     def test_requires_login(self, client):
         assert client.get(PDF_URL).status_code == 401
 
-    def test_six_summary_pages_then_a_page_per_account(self, client, auth_headers, ledger):
+    def test_four_summary_pages_then_a_page_per_account(self, client, auth_headers, ledger):
         resp = client.get(PDF_URL, headers=auth_headers)
         assert resp.status_code == 200
         assert resp.mimetype == 'application/pdf'
         assert resp.headers['Content-Disposition'] == 'attachment; filename=report_2026-01-05_to_2026-02-20.pdf'
         assert resp.data.startswith(b'%PDF')
-        assert _pdf_pages(resp) == 6 + 2
+        assert _pdf_pages(resp) == 4 + 2
 
     def test_a_long_account_continues_on_more_pages(self, client, auth_headers, account):
         for i in range(pdf_pages.FIRST_PAGE_ROWS + 1):   # every third day, so January to March
             account_svc.add_transaction(account.id, date(2026, 1, 1) + timedelta(days=3 * i), f'Shop {i}', 'Misc', -1.0)
-        assert _pdf_pages(client.get(PDF_URL, headers=auth_headers)) == 6 + 2
+        assert _pdf_pages(client.get(PDF_URL, headers=auth_headers)) == 4 + 2
 
     @pytest.mark.parametrize('query, pages', [
-        ('start_date=2026-01-01&end_date=2026-01-31', 5 + 2),
-        ('start_date=2026-01-15&end_date=2026-02-25', 6 + 2),
+        ('start_date=2026-01-01&end_date=2026-01-31', 3 + 2),
+        ('start_date=2026-01-15&end_date=2026-02-25', 4 + 2),
     ], ids=['one-month', 'two-part-months'])
     def test_net_per_month_only_with_two_months(self, client, auth_headers, ledger, query, pages):
         assert _pdf_pages(client.get(f'{PDF_URL}?{query}', headers=auth_headers)) == pages
@@ -230,7 +230,29 @@ class TestPdfReport:
 
     def test_a_long_period_continues_net_per_month_on_more_pages(self, client, auth_headers, ledger):
         resp = client.get(f'{PDF_URL}?start_date=2024-01-01&end_date=2026-02-28', headers=auth_headers)
-        assert _pdf_pages(resp) == 7 + 2   # 26 months: FIRST_PAGE_ROWS under the chart, the rest on a page
+        assert _pdf_pages(resp) == 5 + 2   # 26 months: FIRST_PAGE_ROWS under the chart, the rest on a page
+
+    def test_spending_by_category_and_the_income_line_count_the_reports_transactions(self, client, auth_headers,
+                                                                                    ledger, monkeypatch):
+        seen = {}
+        real_summary, real_spending = pdf_pages.render_summary_page, pdf_pages.render_spending_by_category_page
+
+        def summary(pdf, analytics, period_label, generated_label, income):
+            seen['income'] = income
+            return real_summary(pdf, analytics, period_label, generated_label, income)
+
+        def spending(pdf, panels, period_label):
+            seen['panels'] = [(p['category'], p['total'], p['count'], [m['cents'] for m in p['months']])
+                              for p in panels]
+            return real_spending(pdf, panels, period_label)
+
+        monkeypatch.setattr(pdf_pages, 'render_summary_page', summary)
+        monkeypatch.setattr(pdf_pages, 'render_spending_by_category_page', spending)
+        client.get(PDF_URL, headers=auth_headers)
+        assert seen == {
+            'income': {'category': 'Groceries', 'cents': 1000, 'total': 1325, 'categories': 2},   # the refund
+            'panels': [('Groceries', 4210, 1, [4210, 0])],   # plain spending; the transfer never counts
+        }
 
     def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
         client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)
@@ -310,6 +332,119 @@ def _table_cells(ax):
     cells = ax.tables[0].get_celld()
     rows, columns = max(r for r, _ in cells) + 1, max(c for _, c in cells) + 1
     return [[cells[r, c].get_text().get_text() for c in range(columns)] for r in range(rows)]
+
+
+class TestSummaryPage:
+    """The totals, with income by category as one line under them."""
+
+    ANALYTICS = {   # AnalyticsService.generate_report's summary and trends
+        'summary': {'total_income': 4050.0, 'total_expenses': 1200.0, 'net_amount': 2850.0,
+                    'transaction_count': 12, 'avg_transaction': 437.5},
+        'trends': {'weekly_avg_income': 500.0, 'weekly_avg_expenses': 150.0},
+    }
+
+    def lines(self, income):
+        pages = _Pages()
+        pdf_pages.render_summary_page(pages, self.ANALYTICS, '2026-09-01 to 2026-10-31', '2026-11-12 09:30', income)
+        return [t.get_text() for t in pages.figures[0].axes[0].texts]
+
+    def test_income_is_one_line_naming_its_largest_category(self):
+        lines = self.lines({'category': 'Paycheck', 'cents': 400000, 'total': 405000, 'categories': 2})
+        assert lines[lines.index('Net Amount: $2,850.00') + 1] == (
+            'Largest income category: Paycheck, $4,000.00 of $4,050.00 (99%)')
+
+    def test_with_one_income_category_it_says_so(self):
+        lines = self.lines({'category': 'Paycheck', 'cents': 405000, 'total': 405000, 'categories': 1})
+        assert lines[lines.index('Net Amount: $2,850.00') + 1] == 'All income is in one category: Paycheck ($4,050.00)'
+
+    def test_without_income_there_is_no_line(self):
+        assert [line for line in self.lines(None) if 'income category' in line] == []
+
+
+def _panel(category, cents, average, last, count, others=None):
+    """A summary_data.category_panels panel over Sep–Nov 2026, November so far; `last` is October's cents."""
+    months = ['2026-09', '2026-10', '2026-11']
+    return {
+        'category': category, **({'others': others} if others else {}), 'total': sum(cents), 'count': count,
+        'months': [{'month': m, 'cents': c, 'partial': m == '2026-11'} for m, c in zip(months, cents)],
+        'average': average, 'last': None if last is None else {'month': '2026-10', 'cents': last},
+    }
+
+
+class TestSpendingByCategoryPage:
+    """Spending by category as the app's Insights Overview draws it: small multiples and a table."""
+
+    PANELS = [
+        _panel('Rent', [90000, 90000, 90000], 90000, 90000, 3),
+        _panel('Groceries', [30000, 40000, 10000], 35000, 40000, 3),
+        _panel('Medical', [8700, 0, 0], 4350, 0, 1),
+        _panel('Other', [1500, 2500, 0], 2000, 2500, 2, others=['Gifts', 'Pets']),
+    ]
+
+    def render(self, panels):
+        pages = _Pages()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            pdf_pages.render_spending_by_category_page(pages, panels, '2026-09-01 to 2026-11-12')
+        assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == []
+        (page,) = pages.figures
+        return page
+
+    def test_a_small_chart_per_category_with_its_last_full_month_against_its_average(self):
+        page = self.render(self.PANELS)
+        assert [[t.get_text() for t in chart.texts] for chart in page.axes[:-1]] == [
+            ['Rent', 'Oct: $900, about its $900 average'],
+            ['Groceries', 'Oct: $400, 14% above its $350 average'],
+            ['Medical', 'Oct: $0, 100% below its $44 average'],
+            ['Other', 'Oct: $25, 25% above its $20 average', 'Gifts, Pets'],
+        ]
+
+    def test_each_chart_has_a_bar_per_month_the_partial_month_lighter_and_its_average_dashed(self):
+        groceries = self.render(self.PANELS).axes[1]
+        assert [t.get_text() for t in groceries.get_xticklabels()] == ['Sep\n2026', 'Oct', 'Nov']   # narrow: year below
+        assert [(p.get_height(), to_hex(p.get_facecolor()), round(p.get_facecolor()[3], 2))
+                for p in groceries.patches] == [
+            (300.0, '#2a78d6', 1.0), (400.0, '#2a78d6', 1.0), (100.0, '#2a78d6', 0.35)]
+        (average,) = [line for line in groceries.lines if line.get_label() == 'Monthly average']
+        assert (list(average.get_ydata()), average.get_linestyle()) == ([350.0, 350.0], '--')
+
+    def test_a_heading_a_note_and_the_numbers_as_a_table(self):
+        page = self.render(self.PANELS)
+        assert [t.get_text() for t in page.texts] == [
+            'Spending by category', '2026-09-01 to 2026-11-12',
+            'Per month, each on its own scale; the dashed line is its monthly average, '
+            'and a month only partly in the period is lighter.',
+        ]
+        assert _table_cells(page.axes[-1]) == [
+            ['Category', 'Total', 'Monthly average', 'Last full month (Oct 2026)', 'Transactions'],
+            ['Rent', '$2,700.00', '$900.00', '$900.00', '3'],
+            ['Groceries', '$800.00', '$350.00', '$400.00', '3'],
+            ['Medical', '$87.00', '$43.50', '$0.00', '1'],
+            ['Other', '$40.00', '$20.00', '$25.00', '2'],
+        ]
+
+    def test_without_a_full_month_the_label_and_the_table_say_so(self):
+        page = self.render([_panel('Rent', [0, 0, 90000], None, None, 1)])
+        assert page.axes[0].texts[1].get_text() == 'No full month yet'
+        assert _table_cells(page.axes[-1]) == [
+            ['Category', 'Total', 'Monthly average', 'Last full month', 'Transactions'],
+            ['Rent', '$900.00', '—', '—', '1'],
+        ]
+
+    def test_long_names_are_shortened(self):
+        page = self.render([
+            _panel('C' * 50, [100, 100, 100], 100, 100, 3),
+            _panel('Other', [100, 100, 100], 100, 100, 12, others=[f'Category {i}' for i in range(12)]),
+        ])
+        category, others = page.axes[0].texts[0].get_text(), page.axes[1].texts[2].get_text()
+        assert (len(category), category[-1]) == (pdf_pages.PANEL_CATEGORY_CHARS, '…')
+        assert (len(others), others[-1]) == (pdf_pages.OTHERS_CHARS, '…')
+        assert _table_cells(page.axes[-1])[1][0] == category
+
+    def test_no_spending_says_so(self):
+        page = self.render([])
+        assert [t.get_text() for t in page.texts][-1] == 'No spending in this period.'
+        assert page.axes == []
 
 
 class TestNetPerMonthPages:

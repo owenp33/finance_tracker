@@ -214,8 +214,9 @@ it). Setting the pace a category already has changes nothing; a category that is
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
 builds the summary (totals, monthly trends, category and vendor breakdowns) behind
-`/api/analytics` and the PDF report (whose net per month comes from `summary_data` instead, so
-its monthly trends serve only `/api/analytics`). The frontend no longer calls `/api/analytics`: since Phase
+`/api/analytics` and the PDF report. The PDF uses only its totals and top vendors (net per
+month, spending by category and the income line come from `summary_data`), so its monthly
+trends and category breakdowns serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
 the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
 taken off its category, by design (only budgets do that; Owen, 2026-11-10).
@@ -252,15 +253,31 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   month and any after it. `monthly_net(transactions, months, partial)` → per month `{month,
   income, expenses, net, partial, average}`, `average` being the 3-month moving average of net
   over full months only (each full month with the two before it; else None).
+  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → the top 8 categories by
+  plain spending, then the rest as Other (`others` names them), each `{category, total, count,
+  months: [{month, cents, partial}], average (full months; None without one), last (the last
+  full month's `{month, cents}`, or None)}`. `largest_income(transactions)` → `{category, cents,
+  total, categories}` (the largest income category, all money in, how many categories), or
+  None. `round_half_up` rounds halves up like JavaScript's `Math.round`, so averages and shares
+  match the app's to the cent.
 - `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
-  out: the summary, net per month, the category pies, top vendors and the spending breakdown.
+  out: the summary (with income by category as one line, "Largest income category: Paycheck,
+  $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category and
+  top vendors.
   `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
   Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
   month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
   (Month, Money in, Money out, Net, 3-month average), continued on more pages like an account's.
   `ReportService` adds it only when the period covers at least `MIN_NET_MONTHS` (2) months: one
-  month would repeat the summary page's totals. The other summary pages still draw
-  `AnalyticsService.generate_report` data. Then `render_account_pages(pdf, ledger,
+  month would repeat the summary page's totals. `render_spending_by_category_page(pdf, panels,
+  period_label)` draws `category_panels` as the app's small multiples, three to a row: each
+  panel's category, its last full month against its average in whole dollars ("Oct: $350, 8%
+  above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
+  small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
+  year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
+  2026)", Transactions); no spending says "No spending in this period.". The summary's totals
+  and the top vendors page still draw `AnalyticsService.generate_report` data. Then
+  `render_account_pages(pdf, ledger,
   over_budget_ids, period_label, start_date, end_date)` per account: a first page with the
   opening and closing balance, the balance over the period as a step line, and the first
   `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor, Category, Amount, Balance,
@@ -729,8 +746,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
-| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, net per month and account pages |
-| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too) and net per month |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category and account pages |
+| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 

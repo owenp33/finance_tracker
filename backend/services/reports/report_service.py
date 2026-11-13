@@ -52,8 +52,9 @@ class ReportService:
 
     def pdf(self, user_id, filters, generated_at=None):
         """
-        The PDF report: the summary pages (summary, net per month when the period covers at
-        least MIN_NET_MONTHS months, pies, top vendors, breakdown), then each account's pages
+        The PDF report: the summary pages (the summary with income as one line, net per month
+        when the period covers at least MIN_NET_MONTHS months, spending by category, top vendors),
+        then each account's pages
         (balance chart over the period, transaction table with running balances, over-budget
         transactions marked). `generated_at` (default now) is printed, and its date is today.
         """
@@ -70,14 +71,14 @@ class ReportService:
 
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
-            pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label)
+            pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label,
+                                          summary_data.largest_income(transactions))
             if len(months) >= MIN_NET_MONTHS:
                 pdf_pages.render_net_per_month_pages(
                     pdf, summary_data.monthly_net(transactions, months, partial), period_label)
-            pdf_pages.render_category_pie_page(pdf, analytics['spending_by_category'], 'Spending by Category')
-            pdf_pages.render_category_pie_page(pdf, analytics['income_by_category'], 'Income by Category')
+            pdf_pages.render_spending_by_category_page(
+                pdf, summary_data.category_panels(transactions, months, partial), period_label)
             pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
-            pdf_pages.render_breakdown_table_page(pdf, analytics['spending_by_category'])
             for ledger in ledgers:
                 pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label, start, end)
         return ExportFile(buf.getvalue(), 'application/pdf', f'report_{start}_to_{end}.pdf')
