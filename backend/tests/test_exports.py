@@ -19,6 +19,7 @@ from services.account_service import AccountService
 from services.analytics_service import AnalyticsService
 from services.balance_service import LedgerRow
 from services.budget_service import BudgetService
+from services.recurring_service import RecurringService
 from services.reports import ExportFilters, ReportService, pdf_pages
 
 account_svc = AccountService()
@@ -262,6 +263,35 @@ class TestPdfReport:
         client.get(PDF_URL, headers=auth_headers)
         assert seen == [[{'vendor': 'Grocer', 'total': 4210, 'count': 1, 'average': 4210}]]   # no transfer, no refund
 
+    def test_recurring_costs_are_todays_series_on_the_chosen_accounts_with_all_their_payments(
+            self, user, account, savings, monkeypatch):
+        recurring = RecurringService()
+        gym = recurring.add_recurring(account.id, date(2025, 12, 3), 'Gym', 'Fun', -30.0,
+                                      next_date=date(2026, 12, 3), frequency=1, frequency_unit='months')
+        recurring.add_recurring(account.id, date(2026, 1, 1), 'Employer', 'Paycheck', 2000.0,
+                                next_date=date(2026, 12, 1), frequency=1, frequency_unit='months')
+        recurring.add_recurring(savings.id, date(2026, 1, 1), 'Savings fee', 'Fees', -2.0,   # another account
+                                next_date=date(2026, 12, 1), frequency=1, frequency_unit='months')
+        for day in (date(2025, 12, 3), date(2026, 1, 3), date(2026, 2, 3)):
+            account_svc.add_transaction(account.id, day, 'Gym', 'Fun', -30.0).recurring_id = gym.id
+        _db.session.commit()
+        seen = []
+        real = pdf_pages.render_recurring_costs_page
+        monkeypatch.setattr(pdf_pages, 'render_recurring_costs_page',
+                            lambda pdf, *args: seen.append(args) or real(pdf, *args))
+        report = ReportService().pdf(user.id, ExportFilters(account_ids=[account.id], start_date=date(2026, 2, 1)),
+                                     generated_at=datetime(2026, 11, 12, 9, 30))
+        ((costs, names, as_of),) = seen
+        assert [(s['template'].vendor, s['monthly'], s['beyond']['paid']) for s in costs['series']] == [
+            ('Gym', 3000, 9000)]   # December's and January's payments too, though the report starts in February
+        assert (costs['income_count'], names, as_of) == (1, {account.id: 'Test Checking'}, date(2026, 11, 12))
+        # summary, spending, vendors (one month, so no net per month), recurring costs, the account
+        assert len(re.findall(rb'/Type\s*/Page[^s]', report.content)) == 3 + 1 + 1
+
+    def test_without_recurring_costs_there_is_no_page(self, client, auth_headers, ledger, monkeypatch):
+        monkeypatch.setattr(pdf_pages, 'render_recurring_costs_page', lambda *args: pytest.fail('drawn'))
+        assert client.get(PDF_URL, headers=auth_headers).status_code == 200
+
     def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
         client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)
         assert account_sections == [
@@ -453,6 +483,99 @@ class TestSpendingByCategoryPage:
         page = self.render([])
         assert [t.get_text() for t in page.texts][-1] == 'No spending in this period.'
         assert page.axes == []
+
+
+def _template(id, vendor, cents, account_id=6, frequency=1, unit='months'):
+    return SimpleNamespace(id=id, vendor=vendor, amount_cents=cents, account_id=account_id, frequency=frequency,
+                           frequency_unit=unit)
+
+
+def _series(tpl, active, monthly, ended=None, extra=None):
+    """A summary_data.recurring_costs series; `extra` paid beyond its schedule in Nov 2025–Oct 2026."""
+    beyond = None if extra is None else {'from': '2025-11', 'to': '2026-10', 'months': 12, 'paid': 0, 'scheduled': 0,
+                                         'extra': extra}
+    return {'template': tpl, 'active': active, 'monthly': monthly, 'ended': ended, 'beyond': beyond}
+
+
+class TestRecurringCostsPage:
+    """Recurring costs as the app's Insights → Recurring shows them: the total, notes, bars, a table."""
+
+    COSTS = {   # summary_data.recurring_costs'
+        'series': [
+            _series(_template(6, 'Allina Health', -8738, frequency=14, unit='days'), True, 18932, extra=0),
+            _series(_template(5, 'ASPIRE', -7500), True, 7500, extra=6000),
+            _series(_template(10, 'Millenium Apartments', -65250), False, 65250, ended='2026-08'),
+            _series(_template(7, 'Anthropic', -2000, account_id=5), False, 2000, ended='2026-10'),
+        ],
+        'total': 26432, 'active_count': 2, 'income_count': 1,
+    }
+    NAMES = {5: "Owen's Discover", 6: "Owen's Checking"}
+
+    def render(self, costs):
+        pages = _Pages()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            pdf_pages.render_recurring_costs_page(pages, costs, self.NAMES, date(2026, 11, 12))
+        assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == []
+        return pages.figures
+
+    def test_the_active_series_cost_per_month_and_what_they_paid_beyond_it_noted_apart(self):
+        (page,) = self.render(self.COSTS)
+        assert [t.get_text() for t in page.texts] == [
+            'Recurring costs', "As of 2026-11-12 (not limited to the report's period)",
+            'Each series at its scheduled amount per month (weekly and biweekly ones converted to a month); '
+            'ended series are lighter.',
+            '$264.32/mo', "2 active series at their scheduled amounts; income isn't counted",
+            'Not included: $60 paid to ASPIRE beyond its $75.00/mo schedule in Nov 2025–Oct 2026',
+            'Cost per month, by series',
+        ]
+
+    def test_a_bar_per_series_ended_ones_lighter_and_labelled(self):
+        chart = self.render(self.COSTS)[0].axes[0]
+        assert [t.get_text() for t in chart.get_yticklabels()] == [
+            'Allina Health', 'ASPIRE', 'Millenium Apartments', 'Anthropic']
+        assert [(p.get_width(), to_hex(p.get_facecolor()), round(p.get_facecolor()[3], 2)) for p in chart.patches] == [
+            (189.32, '#2a78d6', 1.0), (75.0, '#2a78d6', 1.0), (652.5, '#2a78d6', 0.35), (20.0, '#2a78d6', 0.35)]
+        assert [t.get_text() for t in chart.texts] == [
+            '$189.32/mo', '$75.00/mo', '$652.50/mo · ended Aug 2026', '$20.00/mo · ended Oct 2026']
+
+    def test_the_numbers_as_a_table(self):
+        (page,) = self.render(self.COSTS)
+        assert _table_cells(page.axes[-1]) == [
+            ['Series', 'Account', 'Charged', 'Per month', 'Status', 'Paid beyond schedule'],
+            ['Allina Health', "Owen's Checking", '$87.38 biweekly', '$189.32', 'Active', '—'],
+            ['ASPIRE', "Owen's Checking", '$75.00 monthly', '$75.00', 'Active', '$60 in Nov 2025–Oct 2026'],
+            ['Millenium Apartments', "Owen's Checking", '$652.50 monthly', '$652.50', 'Ended Aug 2026', '—'],
+            ['Anthropic', "Owen's Discover", '$20.00 monthly', '$20.00', 'Ended Oct 2026', '—'],
+        ]
+
+    def test_under_a_dollar_beyond_its_schedule_is_no_note(self):
+        costs = {**self.COSTS, 'series': [_series(_template(5, 'ASPIRE', -7500), True, 7500, extra=99)]}
+        (page,) = self.render(costs)
+        assert not [t for t in page.texts if t.get_text().startswith('Not included')]
+        assert _table_cells(page.axes[-1])[1][-1] == '—'
+
+    def test_with_only_ended_series_there_is_no_total(self):
+        costs = {'series': self.COSTS['series'][2:], 'total': 0, 'active_count': 0, 'income_count': 0}
+        texts = [t.get_text() for t in self.render(costs)[0].texts]
+        assert 'No active recurring costs' in texts and not [t for t in texts if t.endswith('/mo')]
+
+    def test_schedules_are_named_as_in_the_app(self):
+        costs = {'series': [_series(_template(i, f'S{i}', -1000, frequency=f, unit=u), True, 1000)
+                            for i, (f, u) in enumerate(((7, 'days'), (30, 'days'), (3, 'months'), (12, 'months'),
+                                                        (2, 'months'), (1, 'days')))],
+                 'total': 6000, 'active_count': 6, 'income_count': 0}
+        assert [row[2] for row in _table_cells(self.render(costs)[0].axes[-1])[1:]] == [
+            '$10.00 weekly', '$10.00 every 30 days', '$10.00 quarterly', '$10.00 annually',
+            '$10.00 every 2 months', '$10.00 every 1 day']
+
+    def test_a_long_table_continues_on_more_pages(self):
+        costs = {'series': [_series(_template(i, f'Series {i:02d}', -1000), True, 1000) for i in range(40)],
+                 'total': 40000, 'active_count': 40, 'income_count': 0}
+        first, *rest = self.render(costs)
+        assert rest and rest[0].texts[0].get_text() == 'Recurring costs (continued)'
+        rows = len(_table_cells(first.axes[-1])) - 1 + sum(len(_table_cells(page.axes[0])) - 1 for page in rest)
+        assert rows == 40
 
 
 class TestTopVendorsPage:

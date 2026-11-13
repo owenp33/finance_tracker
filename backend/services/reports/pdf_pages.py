@@ -301,10 +301,7 @@ VENDOR_COLUMNS = [            # (header, share of the table width, alignment)
     ('Average charge', 0.23, 'right'),
 ]
 VENDOR_CHART_TOP = 0.87       # as fractions of the page
-VENDOR_ROW_HEIGHT = 0.03      # one vendor's bar
-VENDOR_NAMES_RIGHT = 0.36     # the names end here, the bars start
 VENDOR_BARS_RIGHT = 0.80      # the largest bar ends here; the totals end at the page margin
-VENDOR_TABLE_GAP = 0.05
 
 
 def render_top_vendors_page(pdf, vendors, period_label):
@@ -315,38 +312,127 @@ def render_top_vendors_page(pdf, vendors, period_label):
     fig = plt.figure(figsize=(8.5, 11))
     _page_header(fig, VENDORS_TITLE, period_label, VENDORS_NOTE)
     if vendors:
-        chart_bottom = VENDOR_CHART_TOP - VENDOR_ROW_HEIGHT * len(vendors)
-        _vendor_bars(fig, vendors, chart_bottom)
+        bars = [(_shorten(v['vendor'], VENDOR_CHARS), v['total'], _money(v['total']), False) for v in vendors]
+        chart_bottom = _labelled_bars(fig, bars, VENDOR_CHART_TOP, VENDOR_BARS_RIGHT)
         _table(fig, VENDOR_COLUMNS, [(_vendor_cells(vendor), False) for vendor in vendors],
-               chart_bottom - VENDOR_TABLE_GAP)
+               chart_bottom - BAR_TABLE_GAP)
     else:
         fig.text(0.06, VENDOR_CHART_TOP, NO_SPENDING, fontsize=10, color=INK_SECONDARY, va='top')
     pdf.savefig(fig)
     plt.close(fig)
 
 
-def _vendor_bars(fig, vendors, bottom):
-    """The bars, the first on top, scaled so the largest fills the width; no axes but the names."""
-    ax = fig.add_axes([VENDOR_NAMES_RIGHT, bottom, VENDOR_BARS_RIGHT - VENDOR_NAMES_RIGHT, VENDOR_CHART_TOP - bottom])
-    rows = range(len(vendors))
-    ax.barh(rows, [vendor['total'] / 100 for vendor in vendors], height=0.6, color=CHART_BLUE)
-    ax.set_yticks(rows, labels=[_shorten(vendor['vendor'], VENDOR_CHARS) for vendor in vendors], parse_math=False)
-    ax.set_ylim(len(vendors) - 0.5, -0.5)
-    ax.set_xlim(0, vendors[0]['total'] / 100)
-    at_page_margin = blended_transform_factory(fig.transFigure, ax.transData)
-    for row, vendor in zip(rows, vendors):
-        ax.text(0.94, row, _money(vendor['total']), transform=at_page_margin, ha='right', va='center',
-                fontsize=8.5, color=INK, parse_math=False)
-    ax.xaxis.set_visible(False)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-    ax.tick_params(axis='y', length=0, labelsize=8.5, labelcolor=INK)
-
-
 def _vendor_cells(vendor):
     """A table row: vendor, total, charges, average charge."""
     return [_shorten(vendor['vendor'], VENDOR_CHARS), _money(vendor['total']), str(vendor['count']),
             _money(vendor['average'])]
+
+
+# RECURRING COSTS ===============================================================
+# As on the app's Insights → Recurring (Phase V, V3a): the series as they stand today
+
+RECURRING_TITLE = 'Recurring costs'
+RECURRING_NOTE = ('Each series at its scheduled amount per month (weekly and biweekly ones converted to a month); '
+                  'ended series are lighter.')
+RECURRING_BARS_HEADING = 'Cost per month, by series'
+BEYOND_MIN_CENTS = 100        # paying beyond a schedule is worth a note from a dollar up
+FREQUENCY_LABELS = {          # the app's five schedules; others read "every N days / months"
+    (7, 'days'): 'Weekly', (14, 'days'): 'Biweekly', (1, 'months'): 'Monthly',
+    (3, 'months'): 'Quarterly', (12, 'months'): 'Annually',
+}
+RECURRING_COLUMNS = [         # (header, share of the table width, alignment)
+    ('Series', 0.21, 'left'), ('Account', 0.16, 'left'), ('Charged', 0.17, 'left'),
+    ('Per month', 0.11, 'right'), ('Status', 0.14, 'left'), ('Paid beyond schedule', 0.21, 'right'),
+]
+RECURRING_BARS_RIGHT = 0.66   # room for "$652.50/mo · ended Aug 2026" at the page margin
+SERIES_CHARS = 24             # longer text is cut short with an ellipsis
+ACCOUNT_CHARS = 18
+
+
+def render_recurring_costs_page(pdf, costs, account_names, as_of):
+    """
+    Recurring costs as of `as_of` (today, whatever the report's period): the active series' cost
+    per month, a note for each that paid beyond its schedule (never added in), a bar per series
+    (active first, ended lighter and labelled), then the table, continued on more pages when long.
+    `costs` is summary_data.recurring_costs' and has series; `account_names` maps account ids to
+    names.
+    """
+    rows = [_recurring_row(series, account_names) for series in costs['series']]
+    fig = plt.figure(figsize=(8.5, 11))
+    _page_header(fig, RECURRING_TITLE, f"As of {as_of.isoformat()} (not limited to the report's period)",
+                 RECURRING_NOTE)
+    top = _recurring_headline(fig, costs, rows)
+    fig.text(0.06, top, RECURRING_BARS_HEADING, fontsize=11, fontweight='bold', color=INK, va='top')
+    bars = [(row['name'], row['monthly'], row['bar_label'], not row['active']) for row in rows]
+    table_top = _labelled_bars(fig, bars, top - 0.03, RECURRING_BARS_RIGHT) - BAR_TABLE_GAP
+    first_rows = max(1, int((table_top - PAGE_BOTTOM) / ROW_HEIGHT) - 1)   # the header takes a row
+    for number, chunk in enumerate(page_chunks([(row['cells'], False) for row in rows], first=first_rows)):
+        if number > 0:
+            pdf.savefig(fig)
+            plt.close(fig)
+            fig = plt.figure(figsize=(8.5, 11))
+            _continued_header(fig, RECURRING_TITLE)
+            table_top = CONTINUED_TABLE_TOP
+        _table(fig, RECURRING_COLUMNS, chunk, table_top)
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def _recurring_headline(fig, costs, rows):
+    """The active series' total per month and the notes on it; returns where the page goes on."""
+    y = 0.875
+    if costs['active_count']:
+        fig.text(0.06, y, f"{_money(costs['total'])}/mo", fontsize=20, fontweight='bold', color=INK, va='top',
+                 parse_math=False)
+        y -= 0.035
+        income = "; income isn't counted" if costs['income_count'] else ''
+        fig.text(0.06, y, f"{costs['active_count']} active series at their scheduled amounts{income}",
+                 fontsize=10, color=INK_SECONDARY, va='top')
+    else:
+        fig.text(0.06, y, 'No active recurring costs', fontsize=10, color=INK_SECONDARY, va='top')
+    y -= 0.022
+    for row in rows:
+        if row['note']:
+            fig.text(0.06, y, row['note'], fontsize=9, color=INK_SECONDARY, va='top', parse_math=False)
+            y -= 0.016
+    return y - 0.025
+
+
+def _recurring_row(series, account_names):
+    """One series' bar, note and table cells, worded as the app words them."""
+    template = series['template']
+    beyond = series['beyond'] if series['beyond'] and series['beyond']['extra'] >= BEYOND_MIN_CENTS else None
+    ended = f" {_month_label(series['ended'])}" if series['ended'] else ''
+    monthly = _money(series['monthly'])
+    charged = f"{_money(abs(template.amount_cents))} {_frequency_label(template.frequency, template.frequency_unit).lower()}"
+    beyond_range = beyond and _month_range_label(beyond['from'], beyond['to'])
+    return {
+        'name': _shorten(template.vendor, VENDOR_CHARS),
+        'monthly': series['monthly'],
+        'active': series['active'],
+        'bar_label': f'{monthly}/mo' + ('' if series['active'] else f' · ended{ended}'),
+        'note': beyond and (f"Not included: {_whole_dollars(beyond['extra'])} paid to {template.vendor} beyond its "
+                            f'{monthly}/mo schedule in {beyond_range}'),
+        'cells': [
+            _shorten(template.vendor, SERIES_CHARS), _shorten(account_names.get(template.account_id, ''), ACCOUNT_CHARS),
+            charged, monthly, 'Active' if series['active'] else f'Ended{ended}',
+            f"{_whole_dollars(beyond['extra'])} in {beyond_range}" if beyond else '—',
+        ],
+    }
+
+
+def _frequency_label(frequency, unit):
+    """'Biweekly', or 'Every 30 days' for a schedule that isn't one of the app's five."""
+    if (frequency, unit) in FREQUENCY_LABELS:
+        return FREQUENCY_LABELS[frequency, unit]
+    return f"Every {frequency} {'month' if unit == 'months' else 'day'}{'' if frequency == 1 else 's'}"
+
+
+def _month_range_label(start, end):
+    """'Nov 2025–Oct 2026', 'Apr–Oct 2026', or 'Sep 2026' for one month."""
+    if start == end:
+        return _month_label(end)
+    return f'{_month_label(start, with_year=start[:4] != end[:4])}–{_month_label(end)}'
 
 
 # SHARED PIECES =================================================================
@@ -380,10 +466,10 @@ def _shorten(text, limit):
     return text if len(text) <= limit else text[:limit - 1] + '…'
 
 
-def page_chunks(rows):
-    """A table's rows split into pages: FIRST_PAGE_ROWS under the page's chart, then CONTINUED_ROWS a page."""
-    rest = range(FIRST_PAGE_ROWS, len(rows), CONTINUED_ROWS)
-    return [rows[:FIRST_PAGE_ROWS]] + [rows[i:i + CONTINUED_ROWS] for i in rest]
+def page_chunks(rows, first=FIRST_PAGE_ROWS):
+    """A table's rows split into pages: `first` under the page's chart, then CONTINUED_ROWS a page."""
+    rest = range(first, len(rows), CONTINUED_ROWS)
+    return [rows[:first]] + [rows[i:i + CONTINUED_ROWS] for i in rest]
 
 
 def _page_header(fig, title, subtitle, note):
@@ -438,6 +524,38 @@ def _table(fig, columns, rows, top):
     table.set_fontsize(8)
     table.set_zorder(1)
     ax.add_table(table)
+
+
+BAR_ROW_HEIGHT = 0.03         # one bar's row, as a fraction of the page
+BARS_MAX_HEIGHT = 0.36        # more bars than fit get thinner rows
+BAR_NAMES_RIGHT = 0.36        # the names end here, the bars start
+BAR_TABLE_GAP = 0.05          # between the bars and a table under them
+PAGE_BOTTOM = 0.06            # tables stop above this
+
+
+def _labelled_bars(fig, bars, top, bars_right):
+    """
+    Horizontal bars hanging down from `top`, the first on top: `bars` are (name, cents, label,
+    lighter?). The largest reaches `bars_right`; names sit on the left and labels in an aligned
+    column at the page margin, with no axes. Returns where the bars end.
+    """
+    bottom = top - min(BAR_ROW_HEIGHT, BARS_MAX_HEIGHT / len(bars)) * len(bars)
+    ax = fig.add_axes([BAR_NAMES_RIGHT, bottom, bars_right - BAR_NAMES_RIGHT, top - bottom])
+    rows = range(len(bars))
+    ax.barh(rows, [cents / 100 for _, cents, _, _ in bars], height=0.6,
+            color=[to_rgba(CHART_BLUE, PARTIAL_ALPHA if lighter else 1) for *_, lighter in bars])
+    ax.set_yticks(rows, labels=[name for name, *_ in bars], parse_math=False)
+    ax.set_ylim(len(bars) - 0.5, -0.5)
+    ax.set_xlim(0, max(cents for _, cents, _, _ in bars) / 100 or 1)
+    at_page_margin = blended_transform_factory(fig.transFigure, ax.transData)
+    for row, (_, _, label, _) in zip(rows, bars):
+        ax.text(0.94, row, label, transform=at_page_margin, ha='right', va='center', fontsize=8.5, color=INK,
+                parse_math=False)
+    ax.xaxis.set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(axis='y', length=0, labelsize=8.5, labelcolor=INK)
+    return bottom
 
 
 # ACCOUNT PAGES =================================================================

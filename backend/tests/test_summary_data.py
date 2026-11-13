@@ -197,3 +197,73 @@ class TestTopVendors:
     def test_no_spending_no_vendors(self):
         assert summary_data.top_vendors([tx(date(2026, 10, 1), 200000, vendor='Employer')]) == []
 
+
+def template(id, vendor, cents, frequency=1, unit='months', number=-1, idx=1, next_date=date(2026, 11, 30)):
+    return SimpleNamespace(id=id, vendor=vendor, amount_cents=cents, frequency=frequency, frequency_unit=unit,
+                           number=number, idx=idx, next_date=next_date, day_of_month=next_date.day)
+
+
+def payment(recurring_id, day, cents, transfer=False):
+    return SimpleNamespace(recurring_id=recurring_id, date=day, amount_cents=cents, is_transfer=transfer)
+
+
+ASPIRE = template(5, 'ASPIRE', -7500)
+ALLINA = template(6, 'Allina Health', -8738, frequency=14, unit='days', number=8, idx=8,
+                  next_date=date(2026, 11, 9))
+ANTHROPIC = template(7, 'Anthropic', -2000, number=8, idx=9, next_date=date(2026, 11, 2))    # finished
+MILLENIUM = template(10, 'Millenium Apartments', -65250, number=12, idx=13, next_date=date(2026, 9, 1))
+PAYCHECK = template(12, 'HLWW School District', 170000)
+PAYMENTS = [
+    payment(5, date(2025, 10, 31), -7500),                                     # before the year looked at
+    *[payment(5, day, -7500) for day in (
+        date(2025, 11, 30), date(2025, 12, 31), date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31),
+        date(2026, 4, 30), date(2026, 5, 31), date(2026, 6, 30), date(2026, 7, 31), date(2026, 8, 31),
+        date(2026, 9, 30), date(2026, 10, 31))],
+    payment(5, date(2026, 4, 2), -6000),                                       # an extra payment
+    payment(5, date(2026, 5, 2), -500, transfer=True),                         # never counts
+    *[payment(6, day, -8738) for day in (
+        date(2026, 7, 20), date(2026, 8, 3), date(2026, 8, 17), date(2026, 8, 31), date(2026, 9, 14),
+        date(2026, 9, 28), date(2026, 10, 12))],
+    payment(7, date(2026, 9, 2), -2000), payment(7, date(2026, 10, 2), -2000),
+]
+
+
+class TestRecurringCosts:
+    """What the recurring series cost per month, as the app's Insights → Recurring counts it."""
+
+    def costs(self):
+        return summary_data.recurring_costs([ASPIRE, ALLINA, ANTHROPIC, MILLENIUM, PAYCHECK], PAYMENTS, TODAY)
+
+    def test_each_cost_series_per_month_active_first_then_ended_each_costliest_first(self):
+        costs = self.costs()
+        assert [(s['template'].vendor, s['active'], s['monthly'], s['ended']) for s in costs['series']] == [
+            ('Allina Health', True, 18932, None),           # $87.38 biweekly: × 26 / 12
+            ('ASPIRE', True, 7500, None),
+            ('Millenium Apartments', False, 65250, '2026-08'),   # no payments: its schedule's last date
+            ('Anthropic', False, 2000, '2026-10'),               # its last payment
+        ]
+        assert (costs['total'], costs['active_count'], costs['income_count']) == (26432, 2, 1)
+
+    def test_an_active_series_paid_beyond_its_schedule_over_the_12_full_months_before_this_one(self):
+        aspire, allina = self.costs()['series'][1], self.costs()['series'][0]
+        assert aspire['beyond'] == {'from': '2025-11', 'to': '2026-10', 'months': 12,
+                                    'paid': 96000, 'scheduled': 90000, 'extra': 6000}
+        assert allina['beyond'] == {'from': '2026-07', 'to': '2026-10', 'months': 4,   # from its first payment
+                                    'paid': 61166, 'scheduled': 75728, 'extra': 0}
+        assert [s['beyond'] for s in self.costs()['series'][2:]] == [None, None]     # ended ones aren't asked
+
+    def test_nothing_to_compare_without_a_payment_before_this_month(self):
+        gym = template(20, 'Gym', -3000)
+        (series,) = summary_data.recurring_costs([gym], [payment(20, date(2026, 11, 3), -3000)], TODAY)['series']
+        assert series['beyond'] is None
+
+    def test_a_schedule_per_month_like_the_app(self):
+        assert [summary_data.monthly_equivalent(template(1, 'X', -1000, frequency=f, unit=u)) for f, u in (
+            (7, 'days'), (14, 'days'), (30, 'days'), (1, 'months'), (3, 'months'), (12, 'months'),
+        )] == [-4333, -2167, -1011, -1000, -333, -83]
+        assert summary_data.monthly_equivalent(PAYCHECK) == 170000
+
+    def test_no_cost_series(self):
+        assert summary_data.recurring_costs([PAYCHECK], [], TODAY) == {
+            'series': [], 'total': 0, 'active_count': 0, 'income_count': 1}
+

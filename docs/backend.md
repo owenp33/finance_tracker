@@ -260,12 +260,21 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   total, categories}` (the largest income category, all money in, how many categories), or
   None. `top_vendors(transactions, limit=VENDOR_LIMIT)` → the 10 vendors spent with most,
   `{vendor, total, count, average (per charge)}`, ties by name, every charge counted (the app's
-  "leave out recurring charges" toggle has no paper form). `round_half_up` rounds halves up like
+  "leave out recurring charges" toggle has no paper form). `recurring_costs(templates, payments,
+  today)` → `{series, total, active_count, income_count}`: cost templates only (income isn't a
+  cost), each `{template, active, monthly (positive), ended ('YYYY-MM': the last payment's, else
+  the schedule's last occurrence's), beyond}`, active first then ended, each costliest first;
+  `total` is the active series' cost per month. `monthly_equivalent(template)` (signed; every N
+  days repeats 364/N times a year, every N months 12/N) and `paid_beyond_schedule(template,
+  payments, today)` (over the 12 full months before today's, from the first payment's month if
+  later: payments as spending, transfers left out, against the cost per month; `{from, to,
+  months, paid, scheduled, extra}`, or None without a payment before this month). A template is
+  finished when `number != -1` and `idx > number`. `round_half_up` rounds halves up like
   JavaScript's `Math.round`, so averages and shares match the app's to the cent.
 - `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
   out: the summary (with income by category as one line, "Largest income category: Paycheck,
-  $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category and
-  top vendors.
+  $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category,
+  top vendors, and recurring costs.
   `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
   Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
   month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
@@ -281,23 +290,36 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   `render_top_vendors_page(pdf, vendors, period_label)` draws `top_vendors` as the app does: a
   bar per vendor, largest on top and filling the width, its name on the left and its total in an
   aligned column at the page margin, then the table (Vendor, Total, Charges, Average charge).
-  Only the summary's totals still draw `AnalyticsService.generate_report` data. Then
+  `render_recurring_costs_page(pdf, costs, account_names, as_of)` draws `recurring_costs` as the
+  app's Insights → Recurring does, as of the day the report is made ("not limited to the
+  report's period"): the active series' total ("$75.00/mo", "N active series at their scheduled
+  amounts; income isn't counted", or "No active recurring costs"), a "Not included: $240 paid to
+  ASPIRE beyond its $75.00/mo schedule in Nov 2025–Oct 2026" note per active series at least
+  `BEYOND_MIN_CENTS` ($1) beyond, a bar per series (ended ones lighter and labelled "$652.50/mo ·
+  ended Aug 2026"), then the table (Series, Account, Charged "$87.38 biweekly", Per month,
+  Status, Paid beyond schedule), continued on more pages when long. Both bar pages draw with
+  `_labelled_bars` (names on the left, labels in a column at the page margin, rows thinner when
+  many). Only the summary's totals still draw `AnalyticsService.generate_report` data. Then
   `render_account_pages(pdf, ledger,
   over_budget_ids, period_label, start_date, end_date)` per account: a first page with the
   opening and closing balance, the balance over the period as a step line, and the first
   `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor, Category, Amount, Balance,
   Budget), then `CONTINUED_ROWS` rows a page. Account pages include transfers (the page says so);
   over-budget rows get a light red band and "Over" in the Budget column. Pages with a chart over
-  a table share `page_chunks` (tested directly), `_table`, the headers and `_style_axes`;
+  a table share `page_chunks(rows, first=FIRST_PAGE_ROWS)` (tested directly), `_table`, the headers and `_style_axes`;
   `account_table_rows` is tested directly too. Text that can hold a `$` is drawn with
   `parse_math=False` (matplotlib would read `$…$` as math).
 - `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters,
-  generated_at=None)` (printed on the summary page; its date is "today" for the partial months) build
+  generated_at=None)` (printed on the summary page; its date is "today" for the partial months
+  and the recurring costs) build
   the files from the `BalanceService` ledgers of the chosen accounts, leaving out accounts with
   no transactions in the period. Transactions are listed by date, then account id, then id. When
   no account has any, or an account isn't the user's, they raise `ValueError`
   ("No transactions in this period." / "Unknown account: …"). The PDF's over-budget marks come
-  from `BudgetFlagService.over_budget_ids` over every exported transaction. Each returns an
+  from `BudgetFlagService.over_budget_ids` over every exported transaction. The recurring costs
+  page covers the chosen accounts' templates (`DbService.get_user_recurring`) with every payment
+  in their series (`generated_transactions`), not just the period's, and is left out when there's
+  no cost series. Each returns an
   `ExportFile` (content, mimetype, filename). The export's period is the chosen dates, with an
   open side filled from its first or last transaction (`_period`); it names the files
   (`transactions_<start>_to_<end>.csv`, `report_<start>_to_<end>.pdf`), is the PDF's period
@@ -751,8 +773,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
-| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors and account pages |
-| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors, recurring costs and account pages |
+| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors, recurring costs |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 

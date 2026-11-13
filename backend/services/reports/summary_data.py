@@ -8,6 +8,8 @@ are 'YYYY-MM' strings.
 """
 import calendar
 import math
+from datetime import date
+from models.recurring import shift_date
 
 PANEL_LIMIT = 8    # categories with a chart of their own; the rest add up as Other
 VENDOR_LIMIT = 10  # vendors on the top vendors page
@@ -28,6 +30,13 @@ def _is_spending(t):
 
 def _month(day):
     return day.strftime('%Y-%m')
+
+
+def _shift_month(month, months):
+    """The month `months` after 'YYYY-MM' (negative goes back)."""
+    year, number = map(int, month.split('-'))
+    total = year * 12 + number - 1 + months
+    return f'{total // 12}-{total % 12 + 1:02d}'
 
 
 def _months_from(first, last):
@@ -172,3 +181,87 @@ def top_vendors(transactions, limit=VENDOR_LIMIT):
             vendor['count'] += 1
     ranked = sorted(vendors.values(), key=lambda v: (-v['total'], v['vendor'].casefold()))[:limit]
     return [{**v, 'average': round_half_up(v['total'] / v['count'])} for v in ranked]
+
+
+def monthly_equivalent(template):
+    """
+    A recurring template's amount per month in cents, signed like it, as the app counts it: every
+    N days repeats 364/N times a year and every N months 12/N, so weekly × 52/12, biweekly × 26/12,
+    monthly × 1, quarterly ÷ 3, annually ÷ 12.
+    """
+    per_year = 12 / template.frequency if template.frequency_unit == 'months' else 364 / template.frequency
+    cents = template.amount_cents
+    return (1 if cents > 0 else -1 if cents < 0 else 0) * round_half_up(abs(cents) * per_year / 12)
+
+
+def _is_finished(template):
+    """A limited template is finished once every occurrence is used: it never charges again."""
+    return template.number != -1 and template.idx > template.number
+
+
+def _ended_month(template, payments):
+    """The month a finished series ended: its last payment's, else its schedule's last occurrence's."""
+    if payments:
+        return _month(max(t.date for t in payments))
+    if template.idx > 1:
+        return _month(shift_date(template.next_date, template.frequency, template.frequency_unit, -1,
+                                 template.day_of_month))
+    return None
+
+
+def paid_beyond_schedule(template, payments, today):
+    """
+    What a cost series paid beyond its schedule over the 12 full months before today's (from the
+    month of its first payment, if later): its `payments` (transfers left out) as spending, against
+    its cost per month for each of those months. Late, split or extra payments all simply count.
+    {from, to, months, paid, scheduled, extra (never below 0)}, or None until it has a payment
+    before this month.
+    """
+    payments = [t for t in payments if not t.is_transfer]
+    if not payments:
+        return None
+    this_month = _month(today)
+    start = max(min(_month(t.date) for t in payments), _shift_month(this_month, -12))
+    end = _shift_month(this_month, -1)
+    if start > end:
+        return None
+    months = len(_months_from(date.fromisoformat(f'{start}-01'), date.fromisoformat(f'{end}-01')))
+    paid = sum(max(-t.amount_cents, 0) for t in payments if start <= _month(t.date) <= end)
+    scheduled = -monthly_equivalent(template) * months
+    return {'from': start, 'to': end, 'months': months, 'paid': paid, 'scheduled': scheduled,
+            'extra': max(paid - scheduled, 0)}
+
+
+def recurring_costs(templates, payments, today):
+    """
+    What the recurring series cost per month, as the app's Insights → Recurring shows it, as of
+    `today`. Cost series only (income isn't a cost): each {template, active, monthly (positive),
+    ended (an ended series' 'YYYY-MM'), beyond (an active one's paid_beyond_schedule)}, active
+    first, then ended, each costliest first. `total` is the active series' cost per month, never
+    with what they paid beyond it. `payments` are the templates' transactions, all of them.
+    """
+    by_series = {}
+    for t in payments:
+        by_series.setdefault(t.recurring_id, []).append(t)
+    series = []
+    for template in templates:
+        if template.amount_cents >= 0:
+            continue
+        own = by_series.get(template.id, [])
+        active = not _is_finished(template)
+        series.append({
+            'template': template,
+            'active': active,
+            'monthly': -monthly_equivalent(template),
+            'ended': None if active else _ended_month(template, [t for t in own if not t.is_transfer]),
+            'beyond': paid_beyond_schedule(template, own, today) if active else None,
+        })
+    series.sort(key=lambda s: (not s['active'], -s['monthly']))
+    active = [s for s in series if s['active']]
+    return {
+        'series': series,
+        'total': sum(s['monthly'] for s in active),
+        'active_count': len(active),
+        'income_count': sum(1 for template in templates if template.amount_cents > 0),
+    }
+
