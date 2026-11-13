@@ -3,12 +3,14 @@ Export tests: what an export covers, the CSV download, and the PDF report.
 """
 import csv
 import io
+import math
 import re
 import warnings
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from matplotlib.colors import to_hex
 
 from extensions import db as _db
 from models.account import AccountModel
@@ -17,7 +19,7 @@ from services.account_service import AccountService
 from services.analytics_service import AnalyticsService
 from services.balance_service import LedgerRow
 from services.budget_service import BudgetService
-from services.reports import pdf_pages
+from services.reports import ExportFilters, ReportService, pdf_pages
 
 account_svc = AccountService()
 
@@ -90,6 +92,20 @@ def account_sections(monkeypatch):
         return real(pdf, ledger, over_budget_ids, *args)
 
     monkeypatch.setattr(pdf_pages, 'render_account_pages', spy)
+    return seen
+
+
+@pytest.fixture
+def net_pages(monkeypatch):
+    """Each PDF's net per month rows: (month, money in, money out, net, partial?)."""
+    seen = []
+    real = pdf_pages.render_net_per_month_pages
+
+    def spy(pdf, rows, *args):
+        seen.append([(r['month'], r['income'], r['expenses'], r['net'], r['partial']) for r in rows])
+        return real(pdf, rows, *args)
+
+    monkeypatch.setattr(pdf_pages, 'render_net_per_month_pages', spy)
     return seen
 
 
@@ -197,8 +213,24 @@ class TestPdfReport:
         ('start_date=2026-01-01&end_date=2026-01-31', 5 + 2),
         ('start_date=2026-01-15&end_date=2026-02-25', 6 + 2),
     ], ids=['one-month', 'two-part-months'])
-    def test_monthly_trends_only_with_two_months_of_data(self, client, auth_headers, ledger, query, pages):
+    def test_net_per_month_only_with_two_months(self, client, auth_headers, ledger, query, pages):
         assert _pdf_pages(client.get(f'{PDF_URL}?{query}', headers=auth_headers)) == pages
+
+    def test_net_per_month_counts_the_reports_transactions_as_insights_does(self, client, auth_headers, ledger,
+                                                                            net_pages):
+        client.get(PDF_URL, headers=auth_headers)
+        assert net_pages == [[
+            ('2026-01', 325, 4210, -3885, False),
+            ('2026-02', 1000, 0, 1000, False),   # the reimbursement is money in; the transfer never counts
+        ]]
+
+    def test_the_month_the_report_is_made_in_is_partial(self, user, ledger, net_pages):
+        ReportService().pdf(user.id, ExportFilters(), generated_at=datetime(2026, 2, 21, 9, 30))
+        assert [month[-1] for month in net_pages[0]] == [False, True]
+
+    def test_a_long_period_continues_net_per_month_on_more_pages(self, client, auth_headers, ledger):
+        resp = client.get(f'{PDF_URL}?start_date=2024-01-01&end_date=2026-02-28', headers=auth_headers)
+        assert _pdf_pages(resp) == 7 + 2   # 26 months: FIRST_PAGE_ROWS under the chart, the rest on a page
 
     def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
         client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)
@@ -262,29 +294,82 @@ class TestPeriod:
         ]
 
 
-class _PageRecorder:
-    """Stands in for PdfPages: draws each page and keeps its x tick labels (text, rotation, alignment)."""
+class _Pages:
+    """Stands in for PdfPages: draws each page and keeps its figure to look at."""
 
     def __init__(self):
-        self.x_labels = []
+        self.figures = []
 
     def savefig(self, fig):
         fig.canvas.draw()
-        self.x_labels.append([(t.get_text(), t.get_rotation(), t.get_ha()) for t in fig.axes[0].get_xticklabels()])
+        self.figures.append(fig)
 
 
-class TestSummaryPages:
-    def test_monthly_trends_label_each_month_without_warnings(self):
-        analytics = {'monthly_summary': [   # newest first, as AnalyticsService returns it
-            {'month': '2026-02', 'income': 10.0, 'expenses': 5.0, 'net': 5.0},
-            {'month': '2026-01', 'income': 3.0, 'expenses': 8.0, 'net': -5.0},
-        ]}
-        pages = _PageRecorder()
+def _table_cells(ax):
+    """A page table's text, row by row."""
+    cells = ax.tables[0].get_celld()
+    rows, columns = max(r for r, _ in cells) + 1, max(c for _, c in cells) + 1
+    return [[cells[r, c].get_text().get_text() for c in range(columns)] for r in range(rows)]
+
+
+class TestNetPerMonthPages:
+    """Net per month as the app's Insights Overview draws it: bars around $0, the average, a table."""
+
+    ROWS = [   # summary_data.monthly_net's: three full months, then this month so far
+        {'month': '2025-12', 'income': 300000, 'expenses': 120000, 'net': 180000, 'partial': False, 'average': None},
+        {'month': '2026-01', 'income': 100000, 'expenses': 150050, 'net': -50050, 'partial': False, 'average': None},
+        {'month': '2026-02', 'income': 80000, 'expenses': 50000, 'net': 30000, 'partial': False, 'average': 53317},
+        {'month': '2026-03', 'income': 0, 'expenses': 2500, 'net': -2500, 'partial': True, 'average': None},
+    ]
+
+    def render(self, rows):
+        pages = _Pages()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')
-            pdf_pages.render_monthly_trends_page(pages, analytics)
+            pdf_pages.render_net_per_month_pages(pages, rows, '2025-12-01 to 2026-03-12')
         assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == []
-        assert pages.x_labels == [[('2026-01', 45.0, 'right'), ('2026-02', 45.0, 'right')]]
+        return pages.figures
+
+    def test_a_bar_per_month_around_0_coloured_by_sign_the_partial_month_lighter(self):
+        (page,) = self.render(self.ROWS)
+        chart = page.axes[0]
+        assert [t.get_text() for t in chart.get_xticklabels()] == ['Dec 2025', 'Jan 2026', 'Feb', 'Mar']
+        assert [(p.get_height(), to_hex(p.get_facecolor()), round(p.get_facecolor()[3], 2))
+                for p in chart.patches] == [
+            (1800.0, '#1baf7a', 1.0), (-500.5, '#eb6834', 1.0), (300.0, '#1baf7a', 1.0), (-25.0, '#eb6834', 0.35),
+        ]
+
+    def test_the_3_month_average_is_a_line_with_gaps_where_there_is_none(self):
+        chart = self.render(self.ROWS)[0].axes[0]
+        (line,) = [line for line in chart.lines if line.get_label() == '3-month average of full months']
+        assert [None if math.isnan(y) else y for y in line.get_ydata()] == [None, None, 533.17, None]
+
+    def test_a_heading_a_note_and_a_legend(self):
+        (page,) = self.render(self.ROWS)
+        assert [t.get_text() for t in page.texts] == [
+            'Net per month', '2025-12-01 to 2026-03-12',
+            'Money in minus money out each month, transfers left out; a month only partly in the period is lighter.',
+        ]
+        assert [t.get_text() for t in page.axes[0].get_legend().get_texts()] == [
+            'More in than out', 'More out than in', '3-month average of full months']
+
+    def test_the_numbers_as_a_table_under_the_chart(self):
+        (page,) = self.render(self.ROWS)
+        assert _table_cells(page.axes[1]) == [
+            ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
+            ['Dec 2025', '$3,000.00', '$1,200.00', '+$1,800.00', '—'],
+            ['Jan 2026', '$1,000.00', '$1,500.50', '-$500.50', '—'],
+            ['Feb 2026', '$800.00', '$500.00', '+$300.00', '+$533.17'],
+            ['Mar 2026 (partial)', '$0.00', '$25.00', '-$25.00', '—'],
+        ]
+
+    def test_a_long_run_labels_its_first_month_januaries_and_julys_and_continues_the_table(self):
+        months = [f'{2024 + i // 12}-{i % 12 + 1:02d}' for i in range(pdf_pages.FIRST_PAGE_ROWS + 1)]
+        rows = [{'month': m, 'income': 0, 'expenses': 0, 'net': 0, 'partial': False, 'average': None} for m in months]
+        first, second = self.render(rows)
+        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == ['Jan 2024', 'Jul', 'Jan 2025', 'Jul']
+        assert second.texts[0].get_text() == 'Net per month (continued)'
+        assert _table_cells(second.axes[0])[1:] == [['Sep 2025', '$0.00', '$0.00', '$0.00', '—']]
 
 
 class TestAccountPageLayout:
@@ -296,7 +381,7 @@ class TestAccountPageLayout:
         (1, [1]), (F, [F]), (F + 1, [F, 1]), (F + C, [F, C]), (F + C + 1, [F, C, 1]),
     ])
     def test_rows_split_into_pages(self, count, sizes):
-        assert [len(chunk) for chunk in pdf_pages.account_page_chunks(list(range(count)))] == sizes
+        assert [len(chunk) for chunk in pdf_pages.page_chunks(list(range(count)))] == sizes
 
     def test_table_rows(self):
         grocer = SimpleNamespace(id=1, date=date(2026, 1, 5), vendor='Grocer', category='Groceries', amount_cents=-4210)

@@ -214,7 +214,8 @@ it). Setting the pace a category already has changes nothing; a category that is
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
 builds the summary (totals, monthly trends, category and vendor breakdowns) behind
-`/api/analytics` and the PDF report. The frontend no longer calls `/api/analytics`: since Phase
+`/api/analytics` and the PDF report (whose net per month comes from `summary_data` instead, so
+its monthly trends serve only `/api/analytics`). The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
 the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
 taken off its category, by design (only budgets do that; Owen, 2026-11-10).
@@ -241,20 +242,35 @@ with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as pl
 `unguard(text)` removes exactly that apostrophe, and `import_parser` applies it to the vendor,
 category, notes and account columns, so an export imports back exactly. Text without the
 pattern (e.g. `'Til Midnight`) is left alone both ways.
-- `pdf_pages.py`: the matplotlib pages. Up to six summary pages (summary, monthly trends,
-  category pies, top vendors, spending breakdown), one function each, drawn from
-  `AnalyticsService.generate_report` data; they leave transfers out. `ReportService` adds the
-  monthly trends page only when there are at least `MIN_TREND_MONTHS` (2) months of data: one
-  month would be three lone points repeating the summary page's totals. Then
-  `render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date, end_date)` per
-  account: a first page with the opening and closing balance, the balance over the period as a
-  step line, and the first `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor,
-  Category, Amount, Balance, Budget), then `CONTINUED_ROWS` rows a page. Account pages include
-  transfers (the page says so); over-budget rows get a light red band and "Over" in the Budget
-  column. The pure pieces `account_page_chunks` and `account_table_rows` are tested directly.
-  Text that can hold a `$` is drawn with `parse_math=False` (matplotlib would read `$…$` as
-  math).
-- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` build
+- `summary_data.py` (pure functions, cents): the numbers behind the summary pages, counted as
+  the app's Insights counts them (transfers never count; money in is income, reimbursements
+  included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
+  chosen_end, today)` → `(months, partial)` ('YYYY-MM'): from the chosen start (else the first
+  transaction) to the chosen end (else the last), stopping at today's month or a later
+  transaction's, since a month still to come holds nothing yet ("this year" ends Dec 31);
+  partial are a chosen start after its 1st, a chosen end before its month's last day, and today's
+  month and any after it. `monthly_net(transactions, months, partial)` → per month `{month,
+  income, expenses, net, partial, average}`, `average` being the 3-month moving average of net
+  over full months only (each full month with the two before it; else None).
+- `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
+  out: the summary, net per month, the category pies, top vendors and the spending breakdown.
+  `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
+  Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
+  month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
+  (Month, Money in, Money out, Net, 3-month average), continued on more pages like an account's.
+  `ReportService` adds it only when the period covers at least `MIN_NET_MONTHS` (2) months: one
+  month would repeat the summary page's totals. The other summary pages still draw
+  `AnalyticsService.generate_report` data. Then `render_account_pages(pdf, ledger,
+  over_budget_ids, period_label, start_date, end_date)` per account: a first page with the
+  opening and closing balance, the balance over the period as a step line, and the first
+  `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor, Category, Amount, Balance,
+  Budget), then `CONTINUED_ROWS` rows a page. Account pages include transfers (the page says so);
+  over-budget rows get a light red band and "Over" in the Budget column. Pages with a chart over
+  a table share `page_chunks` (tested directly), `_table`, the headers and `_style_axes`;
+  `account_table_rows` is tested directly too. Text that can hold a `$` is drawn with
+  `parse_math=False` (matplotlib would read `$…$` as math).
+- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters,
+  generated_at=None)` (printed on the summary page; its date is "today" for the partial months) build
   the files from the `BalanceService` ledgers of the chosen accounts, leaving out accounts with
   no transactions in the period. Transactions are listed by date, then account id, then id. When
   no account has any, or an account isn't the user's, they raise `ValueError`
@@ -713,7 +729,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
-| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, net per month and account pages |
+| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too) and net per month |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 
