@@ -20,7 +20,7 @@ export const periodMonths = (transactions, startDate, endDate, today) => {
   return { months, partial };
 };
 
-// One panel per category with spending in `months` (reimbursements taken off, moneyRules
+// One panel per category with spending in `months` (plain money out, moneyRules
 // categorySpendingByMonth): the top `limit` by total, then the rest added up as Other (which
 // names them in `others`). Each: {category, total, count (spending transactions), months:
 // [{month, cents, partial}], average (over the full months; null without one), last (the last
@@ -33,7 +33,6 @@ export const categoryPanels = (transactions, months, partial, limit = PANEL_LIMI
 
   const ranked = Object.entries(categorySpendingByMonth(transactions.filter(t => inPeriod.has(t.date.slice(0, 7)))))
     .map(([category, byMonth]) => ({ category, byMonth, total: months.reduce((sum, m) => sum + (byMonth[m] || 0), 0) }))
-    .filter(c => c.total > 0)
     .sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
   const rest = ranked.slice(limit);
   const groups = ranked.slice(0, limit).map(c => ({ category: c.category, members: [c] }));

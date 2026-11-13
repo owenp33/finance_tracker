@@ -18,11 +18,8 @@ const panelLabel = ({ average, last }) => {
 };
 
 // Insights → Overview's spending by category (Phase V, V5b): small multiples, one per category in
-// `panels` (categoryPanels), each on its own scale, with how far reimbursements put their total
-// below `totalExpenses` (cents) and the numbers as a table
-function CategoryMultiples({ panels, totalExpenses }) {
-  const sum = panels.reduce((total, p) => total + p.total, 0);
-  const lowered = totalExpenses - sum;
+// `panels` (categoryPanels), each on its own scale, and the numbers as a table
+function CategoryMultiples({ panels }) {
   const lastMonth = panels.find(p => p.last)?.last.month;
 
   return (
@@ -47,12 +44,6 @@ function CategoryMultiples({ panels, totalExpenses }) {
               </figure>
             ))}
           </div>
-          {lowered > 0 && (
-            <p className="chart-note">
-              {`Reimbursements are taken off their categories, so these add up to ${formatCents(sum)}, `
-                + `${formatCents(lowered)} less than Total Expenses.`}
-            </p>
-          )}
           <ViewAsTable
             caption="Spending by category"
             columns={['Category', 'Total', 'Monthly average', lastMonth ? `Last full month (${monthRangeLabel(lastMonth, lastMonth)})` : 'Last full month', 'Transactions']}

@@ -216,7 +216,8 @@ it). Setting the pace a category already has changes nothing; a category that is
 builds the summary (totals, monthly trends, category and vendor breakdowns) behind
 `/api/analytics` and the PDF report. The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
-the app.
+the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
+taken off its category, by design (only budgets do that; Owen, 2026-11-10).
 
 **Reports** (`services/reports/`, the export files):
 - `filters.py`: `ExportFilters` (account ids, start and end dates; no account ids means all of
@@ -760,9 +761,5 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.
-- **Analytics' spending by category ignores reimbursements.** `AnalyticsService.generate_report`
-  (the `/analytics` routes and the PDF's summary pages) counts a reimbursement as income, as
-  intended for the totals, but doesn't subtract it from its category's spending, while budgets
-  and over-budget flags do.
 - **`authenticate` answers faster for an unknown username** (no hash check), which leaks whether
   a username exists to someone timing requests.

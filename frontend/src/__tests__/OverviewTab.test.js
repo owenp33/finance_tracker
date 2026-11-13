@@ -66,7 +66,7 @@ test('a small chart per category: the top 8, then Other, each with its last full
   renderOverview();
   expect(panelText()).toEqual([
     ['Rent', 'Oct: $900, about its $900 average'],
-    ['Groceries', 'Oct: $350, 8% above its $325 average'],
+    ['Groceries', 'Oct: $400, 14% above its $350 average'],
     ['Gas', 'Oct: $140, 17% above its $120 average'],
     ['Fun', 'Oct: $80, 23% above its $65 average'],
     ['Dining', 'Oct: $40, 20% below its $50 average'],
@@ -78,11 +78,9 @@ test('a small chart per category: the top 8, then Other, each with its last full
   expect(within(spending()).getByText('Gifts, Pets')).toBeInTheDocument();
 });
 
-test("the panels take reimbursements off, and say how far that puts them below Total Expenses", () => {
+test("the panels don't take reimbursements off (only budgets do), so no note explains a difference", () => {
   renderOverview();
-  expect(within(spending()).getByText(
-    'Reimbursements are taken off their categories, so these add up to $4,117.00, $50.00 less than Total Expenses.',
-  )).toBeInTheDocument();
+  expect(within(spending()).queryByText(/Reimbursements/)).not.toBeInTheDocument();
 });
 
 test('each panel draws a bar per month, the partial month lighter, and a dashed average line', () => {
@@ -99,7 +97,7 @@ test('"View as table" lists every panel', async () => {
   expect(cells(within(spending()).getByRole('table')).slice(0, 3)).toEqual([
     ['Category', 'Total', 'Monthly average', 'Last full month (Oct 2026)', 'Transactions'],
     ['Rent', '$2,700.00', '$900.00', '$900.00', '3'],
-    ['Groceries', '$750.00', '$325.00', '$350.00', '3'],
+    ['Groceries', '$800.00', '$350.00', '$400.00', '3'],
   ]);
 });
 

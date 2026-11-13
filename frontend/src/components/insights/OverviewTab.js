@@ -163,7 +163,7 @@ function OverviewTab({ transactions = [], accounts = [] }) {
 
       <div className="charts-grid">
         <NetByMonth rows={netRows} />
-        <CategoryMultiples panels={panels} totalExpenses={Math.round(analytics.summary.total_expenses * 100)} />
+        <CategoryMultiples panels={panels} />
         <TopVendors transactions={filtered} months={months} partial={partial} />
         <WeeklyAverages trends={analytics.trends} />
       </div>

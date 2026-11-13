@@ -1,7 +1,8 @@
 // The money rules every Phase V chart and card agrees on (decision 2), in cents. Transfers move
 // money between the user's own accounts, so they're never income or spending. Income is money in,
 // reimbursements included (totals show plain money in and out, so net matches the bank);
-// spending is money out; a zero amount is neither.
+// spending is money out, never lowered by reimbursements (only budgets do that, on the server);
+// a zero amount is neither.
 
 export const isIncome = (t) => !t.is_transfer && t.amount_cents > 0;
 
@@ -20,19 +21,16 @@ export const cashFlow = (transactions, from, to) => {
   return { income, expenses, net: income - expenses };
 };
 
-// Each category's spending per month, lowered by that month's reimbursements in the category and
-// never below 0, as budget progress counts it (decision 2): {category: {'YYYY-MM': cents}}
+// Each category's spending per month, as plain money out: {category: {'YYYY-MM': cents}}.
+// Reimbursements aren't taken off: they're income here, and lower spending only in budgets
+// (Owen, 2026-11-10, narrowing decision 2).
 export const categorySpendingByMonth = (transactions) => {
   const categories = {};
   transactions.forEach(t => {
-    const reimbursement = !t.is_transfer && t.is_reimbursement && t.amount_cents > 0;
-    if (!isSpending(t) && !reimbursement) return;
+    if (!isSpending(t)) return;
     const months = (categories[t.category] = categories[t.category] || {});
     const month = t.date.slice(0, 7);
     months[month] = (months[month] || 0) - t.amount_cents;
-  });
-  Object.values(categories).forEach(months => {
-    Object.keys(months).forEach(month => { months[month] = Math.max(months[month], 0); });
   });
   return categories;
 };

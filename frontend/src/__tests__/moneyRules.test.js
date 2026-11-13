@@ -49,18 +49,18 @@ test('cash flow by month: the same rules, one entry per month with money in or o
   });
 });
 
-test("category spending by month is lowered by that month's reimbursements in the category, never below 0", () => {
+test("category spending by month is plain money out: reimbursements aren't taken off (only budgets do that)", () => {
   expect(categorySpendingByMonth([
     tx('2026-10-10', -40000, { category: 'Groceries' }),
-    tx('2026-10-15', 5000, { category: 'Groceries', is_reimbursement: true }),
+    tx('2026-10-15', 5000, { category: 'Groceries', is_reimbursement: true }),   // income, not less spending
     tx('2026-11-02', -2000, { category: 'Groceries' }),
-    tx('2026-11-03', 3000, { category: 'Groceries', is_reimbursement: true }),   // more back than spent: 0
+    tx('2026-11-03', 3000, { category: 'Groceries', is_reimbursement: true }),
     tx('2026-10-01', 200000, { category: 'Paycheck' }),                         // income isn't spending
     tx('2026-10-05', -50000, { category: 'Transfer', is_transfer: true }),      // never counts
     tx('2026-10-06', 0, { category: 'Misc' }),                                  // neither
     tx('2026-10-07', -1250, { category: 'Fun' }),
   ])).toEqual({
-    Groceries: { '2026-10': 35000, '2026-11': 0 },
+    Groceries: { '2026-10': 40000, '2026-11': 2000 },
     Fun: { '2026-10': 1250 },
   });
 });

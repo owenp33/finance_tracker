@@ -52,9 +52,9 @@ describe('the months a period covers', () => {
 describe('the small multiples', () => {
   const panels = () => categoryPanels(TRANSACTIONS, ['2026-09', '2026-10', '2026-11'], ['2026-11']);
 
-  test('the top 8 categories by spending, reimbursements taken off, then the rest as Other', () => {
+  test("the top 8 categories by spending (reimbursements aren't taken off), then the rest as Other", () => {
     expect(panels().map(p => [p.category, p.total, p.count])).toEqual([
-      ['Rent', 270000, 3], ['Groceries', 75000, 3], ['Gas', 24000, 2], ['Fun', 13000, 2],
+      ['Rent', 270000, 3], ['Groceries', 80000, 3], ['Gas', 24000, 2], ['Fun', 13000, 2],
       ['Dining', 10000, 2], ['Medical', 8700, 1], ['Subscriptions', 4000, 2], ['Shopping', 3000, 1],
       ['Other', 4000, 2],
     ]);
@@ -65,11 +65,11 @@ describe('the small multiples', () => {
     expect(groceries).toMatchObject({
       months: [
         { month: '2026-09', cents: 30000, partial: false },
-        { month: '2026-10', cents: 35000, partial: false },
+        { month: '2026-10', cents: 40000, partial: false },
         { month: '2026-11', cents: 10000, partial: true },
       ],
-      average: 32500,
-      last: { month: '2026-10', cents: 35000 },
+      average: 35000,
+      last: { month: '2026-10', cents: 40000 },
     });
     expect(medical.months.map(m => m.cents)).toEqual([8700, 0, 0]);
     expect(medical.average).toBe(4350);
@@ -86,9 +86,9 @@ describe('the small multiples', () => {
     expect([rent.average, rent.last]).toEqual([null, null]);
   });
 
-  test('a category its reimbursements cancel out, or no spending at all, makes no panel', () => {
+  test("a reimbursement doesn't cancel its category's spending; no spending at all makes no panel", () => {
     const refunded = [spend('2026-10-01', 'Gifts', 25), tx('2026-10-02', 25, 'Gifts', 'Refund', { is_reimbursement: true })];
-    expect(categoryPanels(refunded, ['2026-10'], [])).toEqual([]);
+    expect(categoryPanels(refunded, ['2026-10'], []).map(p => [p.category, p.total])).toEqual([['Gifts', 2500]]);
     expect(categoryPanels([], ['2026-10'], [])).toEqual([]);
   });
 });
