@@ -254,6 +254,14 @@ class TestPdfReport:
             'panels': [('Groceries', 4210, 1, [4210, 0])],   # plain spending; the transfer never counts
         }
 
+    def test_top_vendors_count_the_reports_spending(self, client, auth_headers, ledger, monkeypatch):
+        seen = []
+        real = pdf_pages.render_top_vendors_page
+        monkeypatch.setattr(pdf_pages, 'render_top_vendors_page',
+                            lambda pdf, vendors, *args: seen.append(vendors) or real(pdf, vendors, *args))
+        client.get(PDF_URL, headers=auth_headers)
+        assert seen == [[{'vendor': 'Grocer', 'total': 4210, 'count': 1, 'average': 4210}]]   # no transfer, no refund
+
     def test_each_account_with_activity_gets_a_section(self, client, auth_headers, ledger, account_sections):
         client.get(f'{PDF_URL}?start_date=2026-01-10', headers=auth_headers)
         assert account_sections == [
@@ -440,6 +448,58 @@ class TestSpendingByCategoryPage:
         assert (len(category), category[-1]) == (pdf_pages.PANEL_CATEGORY_CHARS, '…')
         assert (len(others), others[-1]) == (pdf_pages.OTHERS_CHARS, '…')
         assert _table_cells(page.axes[-1])[1][0] == category
+
+    def test_no_spending_says_so(self):
+        page = self.render([])
+        assert [t.get_text() for t in page.texts][-1] == 'No spending in this period.'
+        assert page.axes == []
+
+
+class TestTopVendorsPage:
+    """Top vendors as the app's Insights Overview lists them: bars, their totals at the end, a table."""
+
+    VENDORS = [   # summary_data.top_vendors'
+        {'vendor': 'Millenium Apartments', 'total': 782988, 'count': 12, 'average': 65249},
+        {'vendor': 'Target', 'total': 618198, 'count': 205, 'average': 3016},
+        {'vendor': 'ASPIRE', 'total': 189000, 'count': 35, 'average': 5400},
+    ]
+
+    def render(self, vendors):
+        pages = _Pages()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            pdf_pages.render_top_vendors_page(pages, vendors, '2025-01-01 to 2026-11-05')
+        assert [str(w.message) for w in caught if issubclass(w.category, UserWarning)] == []
+        (page,) = pages.figures
+        return page
+
+    def test_a_bar_per_vendor_largest_first_with_its_total_at_the_end(self):
+        chart = self.render(self.VENDORS).axes[0]
+        assert [t.get_text() for t in chart.get_yticklabels()] == ['Millenium Apartments', 'Target', 'ASPIRE']
+        assert not any(t.get_parse_math() for t in chart.get_yticklabels())   # a '$' in a name stays text
+        assert chart.yaxis_inverted()   # the first vendor on top
+        assert [(p.get_width(), to_hex(p.get_facecolor())) for p in chart.patches] == [
+            (7829.88, '#2a78d6'), (6181.98, '#2a78d6'), (1890.0, '#2a78d6')]
+        assert [t.get_text() for t in chart.texts] == ['$7,829.88', '$6,181.98', '$1,890.00']
+
+    def test_a_heading_a_note_and_the_numbers_as_a_table(self):
+        page = self.render(self.VENDORS)
+        assert [t.get_text() for t in page.texts] == [
+            'Top vendors', '2025-01-01 to 2026-11-05',
+            'The vendors you spent the most with (up to 10), transfers left out.',
+        ]
+        assert _table_cells(page.axes[-1]) == [
+            ['Vendor', 'Total', 'Charges', 'Average charge'],
+            ['Millenium Apartments', '$7,829.88', '12', '$652.49'],
+            ['Target', '$6,181.98', '205', '$30.16'],
+            ['ASPIRE', '$1,890.00', '35', '$54.00'],
+        ]
+
+    def test_long_names_are_shortened(self):
+        page = self.render([{'vendor': 'V' * 80, 'total': 100, 'count': 1, 'average': 100}])
+        name = page.axes[0].get_yticklabels()[0].get_text()
+        assert (len(name), name[-1]) == (pdf_pages.VENDOR_CHARS, '…')
+        assert _table_cells(page.axes[-1])[1][0] == name
 
     def test_no_spending_says_so(self):
         page = self.render([])

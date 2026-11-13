@@ -9,7 +9,8 @@ are 'YYYY-MM' strings.
 import calendar
 import math
 
-PANEL_LIMIT = 8   # categories with a chart of their own; the rest add up as Other
+PANEL_LIMIT = 8    # categories with a chart of their own; the rest add up as Other
+VENDOR_LIMIT = 10  # vendors on the top vendors page
 
 
 def round_half_up(value):
@@ -155,3 +156,19 @@ def largest_income(transactions):
         return None
     category, cents = min(categories.items(), key=lambda item: (-item[1], item[0].casefold()))
     return {'category': category, 'cents': cents, 'total': sum(categories.values()), 'categories': len(categories)}
+
+
+def top_vendors(transactions, limit=VENDOR_LIMIT):
+    """
+    The vendors spent with most, as the app's Insights Overview lists them with every charge (its
+    "leave out recurring charges" toggle has no paper form): {vendor, total, count, average (per
+    charge)}, largest first, ties by name, the top `limit`.
+    """
+    vendors = {}
+    for t in transactions:
+        if _is_spending(t):
+            vendor = vendors.setdefault(t.vendor, {'vendor': t.vendor, 'total': 0, 'count': 0})
+            vendor['total'] -= t.amount_cents
+            vendor['count'] += 1
+    ranked = sorted(vendors.values(), key=lambda v: (-v['total'], v['vendor'].casefold()))[:limit]
+    return [{**v, 'average': round_half_up(v['total'] / v['count'])} for v in ranked]

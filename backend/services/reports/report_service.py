@@ -78,7 +78,7 @@ class ReportService:
                     pdf, summary_data.monthly_net(transactions, months, partial), period_label)
             pdf_pages.render_spending_by_category_page(
                 pdf, summary_data.category_panels(transactions, months, partial), period_label)
-            pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
+            pdf_pages.render_top_vendors_page(pdf, summary_data.top_vendors(transactions), period_label)
             for ledger in ledgers:
                 pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label, start, end)
         return ExportFile(buf.getvalue(), 'application/pdf', f'report_{start}_to_{end}.pdf')

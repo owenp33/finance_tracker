@@ -214,9 +214,9 @@ it). Setting the pace a category already has changes nothing; a category that is
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
 builds the summary (totals, monthly trends, category and vendor breakdowns) behind
-`/api/analytics` and the PDF report. The PDF uses only its totals and top vendors (net per
-month, spending by category and the income line come from `summary_data`), so its monthly
-trends and category breakdowns serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
+`/api/analytics` and the PDF report. The PDF uses only its totals and weekly averages (the
+summary page; everything else comes from `summary_data`), so its monthly trends, category
+breakdowns and top vendors serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
 the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
 taken off its category, by design (only budgets do that; Owen, 2026-11-10).
@@ -258,8 +258,10 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   months: [{month, cents, partial}], average (full months; None without one), last (the last
   full month's `{month, cents}`, or None)}`. `largest_income(transactions)` → `{category, cents,
   total, categories}` (the largest income category, all money in, how many categories), or
-  None. `round_half_up` rounds halves up like JavaScript's `Math.round`, so averages and shares
-  match the app's to the cent.
+  None. `top_vendors(transactions, limit=VENDOR_LIMIT)` → the 10 vendors spent with most,
+  `{vendor, total, count, average (per charge)}`, ties by name, every charge counted (the app's
+  "leave out recurring charges" toggle has no paper form). `round_half_up` rounds halves up like
+  JavaScript's `Math.round`, so averages and shares match the app's to the cent.
 - `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
   out: the summary (with income by category as one line, "Largest income category: Paycheck,
   $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category and
@@ -275,8 +277,11 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
   small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
   year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
-  2026)", Transactions); no spending says "No spending in this period.". The summary's totals
-  and the top vendors page still draw `AnalyticsService.generate_report` data. Then
+  2026)", Transactions); no spending says "No spending in this period.".
+  `render_top_vendors_page(pdf, vendors, period_label)` draws `top_vendors` as the app does: a
+  bar per vendor, largest on top and filling the width, its name on the left and its total in an
+  aligned column at the page margin, then the table (Vendor, Total, Charges, Average charge).
+  Only the summary's totals still draw `AnalyticsService.generate_report` data. Then
   `render_account_pages(pdf, ledger,
   over_budget_ids, period_label, start_date, end_date)` per account: a first page with the
   opening and closing balance, the balance over the period as a step line, and the first
@@ -746,8 +751,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
-| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category and account pages |
-| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors and account pages |
+| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 

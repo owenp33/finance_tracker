@@ -11,9 +11,9 @@ from services.reports import summary_data
 TODAY = date(2026, 11, 12)
 
 
-def tx(day, cents, transfer=False, reimbursement=False, category='Misc'):
+def tx(day, cents, transfer=False, reimbursement=False, category='Misc', vendor='Shop'):
     return SimpleNamespace(date=day, amount_cents=cents, is_transfer=transfer, is_reimbursement=reimbursement,
-                           category=category)
+                           category=category, vendor=vendor)
 
 
 def spend(day, category, dollars):
@@ -164,4 +164,36 @@ class TestLargestIncome:
 
     def test_no_money_in_nothing_to_say(self):
         assert summary_data.largest_income([tx(date(2026, 10, 21), -1000, category='Fun')]) is None
+
+
+class TestTopVendors:
+    """The vendors spent with most, as the app's Insights Overview lists them."""
+
+    def test_the_vendors_spent_with_most_with_their_charges_and_average_charge(self):
+        txs = [
+            tx(date(2026, 10, 3), -90000, vendor='Rent Co'),
+            tx(date(2026, 10, 4), -1000, vendor='Target'), tx(date(2026, 10, 9), -2000, vendor='Target'),
+            tx(date(2026, 10, 20), -3001, vendor='Target'),
+            tx(date(2026, 10, 21), 500, reimbursement=True, vendor='Target'),   # money in isn't spending
+            tx(date(2026, 10, 22), -50000, transfer=True, vendor='To savings'),  # never counts
+            tx(date(2026, 10, 23), -1000, vendor='Zinc'), tx(date(2026, 10, 24), -1000, vendor='apple'),
+        ]
+        assert summary_data.top_vendors(txs) == [
+            {'vendor': 'Rent Co', 'total': 90000, 'count': 1, 'average': 90000},
+            {'vendor': 'Target', 'total': 6001, 'count': 3, 'average': 2000},
+            {'vendor': 'apple', 'total': 1000, 'count': 1, 'average': 1000},   # ties by name
+            {'vendor': 'Zinc', 'total': 1000, 'count': 1, 'average': 1000},
+        ]
+
+    def test_only_the_top_10(self):
+        txs = [tx(date(2026, 10, 1), -100 * (i + 1), vendor=f'Vendor {i:02d}') for i in range(12)]
+        vendors = summary_data.top_vendors(txs)
+        assert (len(vendors), vendors[0]['vendor'], vendors[-1]['vendor']) == (10, 'Vendor 11', 'Vendor 02')
+
+    def test_an_average_charge_on_a_half_cent_rounds_up_as_the_app_does(self):
+        txs = [tx(date(2026, 10, 1), -1, vendor='Gum'), tx(date(2026, 10, 2), -2, vendor='Gum')]
+        assert summary_data.top_vendors(txs)[0]['average'] == 2
+
+    def test_no_spending_no_vendors(self):
+        assert summary_data.top_vendors([tx(date(2026, 10, 1), 200000, vendor='Employer')]) == []
 

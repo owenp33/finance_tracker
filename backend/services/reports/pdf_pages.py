@@ -15,7 +15,8 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.table import Table
 from matplotlib.ticker import FuncFormatter, MaxNLocator
-from services.reports.summary_data import round_half_up
+from matplotlib.transforms import blended_transform_factory
+from services.reports.summary_data import VENDOR_LIMIT, round_half_up
 
 # Pages with a chart over a table (portrait): the first holds the chart and the start of the table
 FIRST_PAGE_ROWS = 20          # table rows under the chart
@@ -290,20 +291,62 @@ def _spending_cells(panel):
     ]
 
 
-def render_top_vendors_page(pdf, vendors):
-    fig, ax = plt.subplots(figsize=(11, 8.5))
+# TOP VENDORS ===================================================================
+# As on the app's Insights Overview (Phase V, V5d)
+
+VENDORS_TITLE = 'Top vendors'
+VENDORS_NOTE = f'The vendors you spent the most with (up to {VENDOR_LIMIT}), transfers left out.'
+VENDOR_COLUMNS = [            # (header, share of the table width, alignment)
+    ('Vendor', 0.43, 'left'), ('Total', 0.19, 'right'), ('Charges', 0.15, 'right'),
+    ('Average charge', 0.23, 'right'),
+]
+VENDOR_CHART_TOP = 0.87       # as fractions of the page
+VENDOR_ROW_HEIGHT = 0.03      # one vendor's bar
+VENDOR_NAMES_RIGHT = 0.36     # the names end here, the bars start
+VENDOR_BARS_RIGHT = 0.80      # the largest bar ends here; the totals end at the page margin
+VENDOR_TABLE_GAP = 0.05
+
+
+def render_top_vendors_page(pdf, vendors, period_label):
+    """
+    Top vendors: a bar per vendor (summary_data.top_vendors), largest first, its name on the left
+    and its total in an aligned column at the end, then the numbers as a table.
+    """
+    fig = plt.figure(figsize=(8.5, 11))
+    _page_header(fig, VENDORS_TITLE, period_label, VENDORS_NOTE)
     if vendors:
-        names = [v['vendor'] for v in vendors][::-1]
-        amounts = [v['amount'] for v in vendors][::-1]
-        ax.barh(names, amounts, color='#FF8042')
-        ax.set_xlabel('Amount ($)')
+        chart_bottom = VENDOR_CHART_TOP - VENDOR_ROW_HEIGHT * len(vendors)
+        _vendor_bars(fig, vendors, chart_bottom)
+        _table(fig, VENDOR_COLUMNS, [(_vendor_cells(vendor), False) for vendor in vendors],
+               chart_bottom - VENDOR_TABLE_GAP)
     else:
-        ax.text(0.5, 0.5, 'No vendor data available', ha='center', va='center', transform=ax.transAxes)
-        ax.axis('off')
-    ax.set_title('Top 10 Vendors by Spending')
-    fig.tight_layout()
+        fig.text(0.06, VENDOR_CHART_TOP, NO_SPENDING, fontsize=10, color=INK_SECONDARY, va='top')
     pdf.savefig(fig)
     plt.close(fig)
+
+
+def _vendor_bars(fig, vendors, bottom):
+    """The bars, the first on top, scaled so the largest fills the width; no axes but the names."""
+    ax = fig.add_axes([VENDOR_NAMES_RIGHT, bottom, VENDOR_BARS_RIGHT - VENDOR_NAMES_RIGHT, VENDOR_CHART_TOP - bottom])
+    rows = range(len(vendors))
+    ax.barh(rows, [vendor['total'] / 100 for vendor in vendors], height=0.6, color=CHART_BLUE)
+    ax.set_yticks(rows, labels=[_shorten(vendor['vendor'], VENDOR_CHARS) for vendor in vendors], parse_math=False)
+    ax.set_ylim(len(vendors) - 0.5, -0.5)
+    ax.set_xlim(0, vendors[0]['total'] / 100)
+    at_page_margin = blended_transform_factory(fig.transFigure, ax.transData)
+    for row, vendor in zip(rows, vendors):
+        ax.text(0.94, row, _money(vendor['total']), transform=at_page_margin, ha='right', va='center',
+                fontsize=8.5, color=INK, parse_math=False)
+    ax.xaxis.set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(axis='y', length=0, labelsize=8.5, labelcolor=INK)
+
+
+def _vendor_cells(vendor):
+    """A table row: vendor, total, charges, average charge."""
+    return [_shorten(vendor['vendor'], VENDOR_CHARS), _money(vendor['total']), str(vendor['count']),
+            _money(vendor['average'])]
 
 
 # SHARED PIECES =================================================================
