@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TransactionForm from '../components/TransactionForm';
-import { todayISO } from '../utils/dates';
 
 const renderRecurringForm = () => {
   const onSubmitRecurring = jest.fn();
@@ -14,12 +13,14 @@ const renderRecurringForm = () => {
   return { onSubmitRecurring, container };
 };
 
-const fillAndSubmit = async (container) => {
-  await userEvent.type(screen.getByPlaceholderText('e.g., Netflix'), 'Anthropic');
-  await userEvent.type(screen.getByPlaceholderText('e.g., Subscriptions'), 'Subscriptions');
-  await userEvent.type(container.querySelector('input[step="0.01"]'), '-20');
-  await userEvent.click(screen.getByRole('button', { name: 'Add Recurring' }));
+const fillAndSubmit = async (container, user = userEvent) => {
+  await user.type(screen.getByPlaceholderText('e.g., Netflix'), 'Anthropic');
+  await user.type(screen.getByPlaceholderText('e.g., Subscriptions'), 'Subscriptions');
+  await user.type(container.querySelector('input[step="0.01"]'), '-20');
+  await user.click(screen.getByRole('button', { name: 'Add Recurring' }));
 };
+
+afterEach(() => jest.useRealTimers());
 
 test('a new recurring template repeats monthly by default', async () => {
   const { onSubmitRecurring, container } = renderRecurringForm();
@@ -32,11 +33,14 @@ const setDate = (container, value) =>
   fireEvent.change(container.querySelector('input[type="date"]'), { target: { value } });
 
 test('starting today adds nothing extra and needs no warning', async () => {
+  // A fixed clock: on the real one, a run crossing midnight saw the form's today and the test's differ
+  jest.useFakeTimers().setSystemTime(new Date(2026, 10, 15, 12));
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   const { onSubmitRecurring, container } = renderRecurringForm();
-  expect(container.querySelector('input[type="date"]')).toHaveValue(todayISO());
+  expect(container.querySelector('input[type="date"]')).toHaveValue('2026-11-15');
   expect(screen.queryByLabelText('Also add the past occurrences')).not.toBeInTheDocument();
-  await fillAndSubmit(container);
-  expect(onSubmitRecurring).toHaveBeenCalledWith(expect.objectContaining({ skip_past: false }));
+  await fillAndSubmit(container, user);
+  expect(onSubmitRecurring).toHaveBeenCalledWith(expect.objectContaining({ start_date: '2026-11-15', skip_past: false }));
 });
 
 test('a past date skips the past occurrences unless asked', async () => {
