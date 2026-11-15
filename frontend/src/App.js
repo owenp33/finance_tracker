@@ -50,6 +50,12 @@ function App() {
     setError(null);
   }, [endSession]);
 
+  // Moving to another view leaves the last one's message behind; the view you're on keeps it
+  const changeView = (next) => {
+    if (next !== view) setError(null);
+    setView(next);
+  };
+
   // A message from before logging in (an expired login, a failed attempt) no longer applies
   const startSession = (data) => {
     setToken(data.access_token);
@@ -367,7 +373,7 @@ function App() {
         user={user}
         onLogout={handleLogout}
         view={view}
-        onViewChange={setView}
+        onViewChange={changeView}
         error={error}
         onDismissError={() => setError(null)}
       />
@@ -377,7 +383,7 @@ function App() {
           <DashboardView
             transactions={transactions}
             budgetData={budgetData}
-            onNavigate={setView}
+            onNavigate={changeView}
             onError={setError}
           />
         )}

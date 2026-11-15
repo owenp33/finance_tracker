@@ -90,6 +90,29 @@ test("the Dashboard's errors show in the banner", async () => {
   expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
 });
 
+test('switching views clears the banner; clicking the view you are on keeps it', async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  expect(await screen.findByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+  expect(screen.getByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Budgeting' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's links to other views clear it too", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  await screen.findByText('Could not load accounts');
+
+  await userEvent.click(screen.getByRole('button', { name: 'View all →' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
 test("Insights' Recurring tab totals every account's recurring costs", async () => {
   localStorage.setItem('token', 'good-token');
   getAccounts.mockResolvedValue([{ id: 1, account_name: 'Checking' }, { id: 2, account_name: 'Discover' }]);
