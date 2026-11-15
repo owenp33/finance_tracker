@@ -1,5 +1,5 @@
 import { shiftDays } from './dates';
-import { isSpending } from './moneyRules';
+import { isSpending, isReimbursement } from './moneyRules';
 import { isFinished } from './recurring';
 
 // The balance forecast (Phase F, F1), in cents. It learns from the last 90 days (today and the 89
@@ -9,8 +9,10 @@ import { isFinished } from './recurring';
 // the days ahead. Income is scheduled income only (recurring series): irregular deposits are left
 // out. A series with no spending over the last 90 days (a new subscription, or a series of
 // transfers) keeps its schedule. A series that has ended won't charge again, so its charges are
-// left out of everything the forecast learns. Spending is plain spending (utils/moneyRules.js):
-// transfers never count, and reimbursements aren't taken off.
+// left out of everything the forecast learns. Spending follows utils/moneyRules.js (transfers
+// never count), except that a category's reimbursements over the last 90 days come off its
+// spending (Owen, 2026-11-15): the paybacks themselves are left out as irregular income, so
+// without that a paid-back purchase would count as spending to come.
 
 // How far ahead the forecast reaches, and how many days back it learns from
 export const FORECAST_DAYS = 90;
@@ -21,26 +23,38 @@ const SCHEDULED_PERCENT = 90;
 // The first of the last 90 days before `today` (YYYY-MM-DD), today being the last
 export const lastNinetyDaysStart = (today) => shiftDays(today, -(FORECAST_DAYS - 1));
 
-// Spending over the last 90 days in every account, leaving out the charges of the `recurring`
-// templates that have ended
-const recentSpending = (transactions, recurring, today) => {
+// The spending and the reimbursements over the last 90 days in every account, leaving out those
+// of the `recurring` templates that have ended
+const recentActivity = (transactions, recurring, today) => {
   const from = lastNinetyDaysStart(today);
   const ended = new Set(recurring.filter(isFinished).map(r => r.id));
-  return transactions.filter(t => isSpending(t) && t.date >= from && t.date <= today && !ended.has(t.recurring_id));
+  const recent = transactions.filter(t => t.date >= from && t.date <= today && !ended.has(t.recurring_id));
+  return { spending: recent.filter(isSpending), reimbursements: recent.filter(isReimbursement) };
+};
+
+// What's left of a category's spending after its reimbursements (never below 0), and the part of
+// it its series cover (they count up to all of it)
+const afterReimbursements = ({ total, linked, reimbursed }) => {
+  const left = Math.max(total - reimbursed, 0);
+  return { left, covered: Math.min(linked, left) };
 };
 
 // Each category's spending over the last 90 days across every account (ended series left out):
-// `total`, the part in a recurring series (`linked`), and whether that's at least 90%
-// (`scheduled`). Positive amounts.
+// `total`, the part in a recurring series (`linked`), its reimbursements (`reimbursed`), and
+// whether the series cover at least 90% of what's left after them (`scheduled`; never when
+// nothing is left). Positive amounts.
 export const categoryShares = (transactions, recurring, today) => {
+  const { spending, reimbursements } = recentActivity(transactions, recurring, today);
   const shares = {};
-  recentSpending(transactions, recurring, today).forEach(t => {
-    const share = (shares[t.category] = shares[t.category] || { total: 0, linked: 0 });
+  spending.forEach(t => {
+    const share = (shares[t.category] = shares[t.category] || { total: 0, linked: 0, reimbursed: 0 });
     share.total -= t.amount_cents;
     if (t.recurring_id != null) share.linked -= t.amount_cents;
   });
+  reimbursements.forEach(t => { if (shares[t.category]) shares[t.category].reimbursed += t.amount_cents; });
   Object.values(shares).forEach(share => {
-    share.scheduled = share.linked * 100 >= share.total * SCHEDULED_PERCENT;
+    const { left, covered } = afterReimbursements(share);
+    share.scheduled = left > 0 && covered * 100 >= left * SCHEDULED_PERCENT;
   });
   return shares;
 };
@@ -48,23 +62,26 @@ export const categoryShares = (transactions, recurring, today) => {
 // What the forecast of the accounts `accountIds` uses: the projected `occurrences` (GET
 // /recurring/projection) it keeps, which are scheduled income, charges in scheduled categories and
 // charges of series with no spending over the last 90 days; and `averages`, each other category's
-// spending over the last 90 days in those accounts ({category: positive cents}). `recurring` is
-// every template, to tell which series have ended. The 90% test looks at every account, so a
-// category is forecast the same way whichever account is shown.
+// spending over the last 90 days less its reimbursements, both in those accounts ({category:
+// positive cents}; none at 0 or below). `recurring` is every template, to tell which series have
+// ended. The 90% test looks at every account, so a category is forecast the same way whichever
+// account is shown.
 export const forecastInputs = (transactions, recurring, occurrences, accountIds, today) => {
   const shares = categoryShares(transactions, recurring, today);
-  const recent = recentSpending(transactions, recurring, today);
-  const seriesWithSpending = new Set(recent.map(t => t.recurring_id).filter(id => id != null));
+  const { spending, reimbursements } = recentActivity(transactions, recurring, today);
+  const seriesWithSpending = new Set(spending.map(t => t.recurring_id).filter(id => id != null));
 
   const kept = occurrences.filter(o => accountIds.includes(o.account_id) && (
     o.amount > 0
     || (o.amount < 0 && (shares[o.category]?.scheduled || !seriesWithSpending.has(o.recurring_id)))
   ));
 
-  const averages = {};
-  recent
-    .filter(t => accountIds.includes(t.account_id) && !shares[t.category].scheduled)
-    .forEach(t => { averages[t.category] = (averages[t.category] || 0) - t.amount_cents; });
+  const averaged = t => accountIds.includes(t.account_id) && shares[t.category] && !shares[t.category].scheduled;
+  const left = {};
+  [...spending, ...reimbursements]
+    .filter(averaged)
+    .forEach(t => { left[t.category] = (left[t.category] || 0) - t.amount_cents; });
+  const averages = Object.fromEntries(Object.entries(left).filter(([, cents]) => cents > 0));
 
   return { occurrences: kept, averages };
 };
@@ -102,36 +119,40 @@ export const forecastPoints = (startCents, { occurrences, averages }, from, to) 
 // What the forecast of the accounts `accountIds` assumes (F1b), for a table. `categories`: one per
 // category those accounts spent in over the last 90 days or have a charge due in over the next
 // 90, each {category, spent (its spending over the last 90 days in those accounts, ended series
-// left out), share (the percentage of that spending in a series, across every account, rounded
-// down so only a scheduled category reads 90 or more; null without spending), basis
-// ('scheduled', 'average', or 'no-history': only charges from series with no spending over the
-// last 90 days), average (the spending averaged), scheduled (the charges due, negative), count
-// (how many), forecast (what it adds over the next 90 days, negative)}, the largest forecast
-// first, ties by name. `income`: the scheduled income due, {cents, count, series (how many pay it)}.
+// left out), reimbursed (its reimbursements there), share (the percentage of its spending left
+// after reimbursements that its series cover, across every account, rounded down so only a
+// scheduled category reads 90 or more; null when none is left), basis ('scheduled', 'average',
+// or 'no-history': only charges from series with no spending over the last 90 days), average
+// (the spending averaged), scheduled (the charges due, negative), count (how many), forecast
+// (what it adds over the next 90 days, negative)}, the largest forecast first, ties by name.
+// `income`: the scheduled income due, {cents, count, series (how many pay it)}.
 export const forecastAssumptions = (transactions, recurring, occurrences, accountIds, today) => {
   const shares = categoryShares(transactions, recurring, today);
   const { occurrences: kept, averages } = forecastInputs(transactions, recurring, occurrences, accountIds, today);
+  const { spending, reimbursements } = recentActivity(transactions, recurring, today);
   const end = shiftDays(today, FORECAST_DAYS);
   const due = kept.filter(o => o.date >= today && o.date <= end);
+  const shown = t => accountIds.includes(t.account_id);
 
   const rows = {};
-  const row = (category) => (rows[category] = rows[category] || { category, spent: 0, scheduled: 0, count: 0 });
-  recentSpending(transactions, recurring, today)
-    .filter(t => accountIds.includes(t.account_id))
-    .forEach(t => { row(t.category).spent -= t.amount_cents; });
+  const row = (category) => (rows[category] = rows[category] || { category, spent: 0, reimbursed: 0, scheduled: 0, count: 0 });
+  spending.filter(shown).forEach(t => { row(t.category).spent -= t.amount_cents; });
   due.filter(o => o.amount < 0).forEach(o => {
     const r = row(o.category);
     r.scheduled += Math.round(o.amount * 100);
     r.count += 1;
   });
+  reimbursements.filter(t => shown(t) && rows[t.category]).forEach(t => { rows[t.category].reimbursed += t.amount_cents; });
 
   const categories = Object.values(rows).map(r => {
     const share = shares[r.category];
+    const { left, covered } = share ? afterReimbursements(share) : {};
     const average = averages[r.category] || 0;
     return {
       category: r.category,
       spent: r.spent,
-      share: share ? Math.floor((share.linked * 100) / share.total) : null,
+      reimbursed: r.reimbursed,
+      share: left > 0 ? Math.floor((covered * 100) / left) : null,
       basis: !share ? 'no-history' : share.scheduled ? 'scheduled' : 'average',
       average,
       scheduled: r.scheduled,

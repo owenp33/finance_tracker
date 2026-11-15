@@ -226,20 +226,34 @@ describe('the forecast', () => {
     const assumptions = () => cells(screen.getByRole('table', { name: /^What the forecast assumes/ }));
     // $9,421.68 + $1,420.62 = $10,842.30, the forecast line's
     expect(assumptions()).toEqual([
-      ['Category', 'Spent over the last 90 days', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days'],
-      ['Scheduled income', '—', '—', '1 payment from 1 series', '+$1,700.00'],
-      ['Bills', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38'],
-      ['Grocery', '$90.00', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
-      ['Restaurants', '$27.00', '0%', '$0.30 a day, its average over the last 90 days', '-$27.00'],
-      ['Total', '$204.38', '', '', '+$1,420.62'],
+      ['Category', 'Spent over the last 90 days', 'Reimbursed', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days'],
+      ['Scheduled income', '—', '—', '—', '1 payment from 1 series', '+$1,700.00'],
+      ['Bills', '$87.38', '—', '100%', 'Its recurring charges, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '—', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
+      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day, its average over the last 90 days', '-$27.00'],
+      ['Total', '$204.38', '—', '', '', '+$1,420.62'],
     ]);
     await pick("Owen's Checking");
     expect(screen.getByRole('table', { name: "What the forecast assumes, Owen's Checking" })).toBeInTheDocument();
     expect(assumptions().slice(1)).toEqual([
-      ['Bills', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38'],
-      ['Grocery', '$90.00', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
-      ['Total', '$177.38', '', '', '-$252.38'],
+      ['Bills', '$87.38', '—', '100%', 'Its recurring charges, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '—', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
+      ['Total', '$177.38', '—', '', '', '-$252.38'],
     ]);
+  });
+
+  test('a reimbursement that pays back the charge outside the series puts the category back on its schedule', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    // Bills: $87.38 in its series, $87.38 outside it, and $87.38 paid back
+    const paidBack = { ...spend(108, 6, '2026-10-28', 'Bills', 87.38), is_reimbursement: true };
+    await openTab({ transactions: [...RECENT, spend(105, 6, '2026-10-27', 'Bills', -87.38), paidBack] });
+    await pick("Owen's Checking");
+    // As without the extra charge: Allina's and ASPIRE's charges are back, and Bills isn't averaged
+    await waitFor(() => expect(forecastLine())
+      .toBe('Forecast for Feb 6, 2027: $7,021.75, from scheduled items and your average spending over the last 90 days'));
+    await user.click(within(tab()).getByText('What the forecast assumes'));
+    expect(cells(screen.getByRole('table', { name: /^What the forecast assumes/ }))[1])
+      .toEqual(['Bills', '$174.76', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38']);
   });
 
   test('a series with no spending over the last 90 days is named as such, and so is one in an averaged category', async () => {
@@ -251,9 +265,9 @@ describe('the forecast', () => {
     await pick("Owen's Discover");
     await user.click(within(tab()).getByText('What the forecast assumes'));
     await waitFor(() => expect(cells(screen.getByRole('table', { name: /^What the forecast assumes/ })).slice(1)).toEqual([
-      ['Restaurants', '$27.00', '0%', '$0.30 a day, its average over the last 90 days, plus 1 charge due from a series with no spending over the last 90 days', '-$87.00'],
-      ['Streaming', '—', '—', 'Its recurring charges, 1 due (no spending over the last 90 days)', '-$15.99'],
-      ['Total', '$27.00', '', '', '-$102.99'],
+      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day, its average over the last 90 days, plus 1 charge due from a series with no spending over the last 90 days', '-$87.00'],
+      ['Streaming', '—', '—', '—', 'Its recurring charges, 1 due (no spending over the last 90 days)', '-$15.99'],
+      ['Total', '$27.00', '—', '', '', '-$102.99'],
     ]));
   });
 });

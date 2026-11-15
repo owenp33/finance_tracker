@@ -1,4 +1,4 @@
-import { isIncome, isSpending, cashFlow, cashFlowByMonth, categorySpendingByMonth } from '../utils/moneyRules';
+import { isIncome, isSpending, isReimbursement, cashFlow, cashFlowByMonth, categorySpendingByMonth } from '../utils/moneyRules';
 
 const tx = (date, amountCents, overrides) => ({
   date, amount_cents: amountCents, is_transfer: false, is_reimbursement: false, ...overrides,
@@ -17,6 +17,14 @@ test('spending is money out; transfers and zero amounts are neither', () => {
   expect(isSpending(tx('2026-11-04', -50000, { is_transfer: true }))).toBe(false);
   expect(isSpending(tx('2026-11-05', 0))).toBe(false);
   expect(isSpending(tx('2026-11-05', 100))).toBe(false);
+});
+
+test('a reimbursement is money in marked as one; paying someone back (money out) is spending, and transfers are neither', () => {
+  expect(isReimbursement(tx('2026-11-03', 3000, { is_reimbursement: true }))).toBe(true);
+  expect(isReimbursement(tx('2026-11-03', 3000))).toBe(false);
+  expect(isReimbursement(tx('2026-11-03', -3000, { is_reimbursement: true }))).toBe(false);
+  expect(isSpending(tx('2026-11-03', -3000, { is_reimbursement: true }))).toBe(true);
+  expect(isReimbursement(tx('2026-11-04', 3000, { is_reimbursement: true, is_transfer: true }))).toBe(false);
 });
 
 test('cash flow totals income, expenses (as a positive amount) and net between two dates, both included', () => {

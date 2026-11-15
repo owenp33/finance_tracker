@@ -219,7 +219,7 @@ summary page; everything else comes from `summary_data`), so its monthly trends,
 breakdowns and top vendors serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
 the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
-taken off its category, by design (only budgets do that; Owen, 2026-11-10).
+taken off its category, by design (on the server only budgets do that; Owen, 2026-11-10).
 
 **Reports** (`services/reports/`, the export files):
 - `filters.py`: `ExportFilters` (account ids, start and end dates; no account ids means all of

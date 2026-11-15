@@ -1,12 +1,16 @@
 // The money rules every Phase V chart and card agrees on (decision 2), in cents. Transfers move
 // money between the user's own accounts, so they're never income or spending. Income is money in,
 // reimbursements included (totals show plain money in and out, so net matches the bank);
-// spending is money out, never lowered by reimbursements (only budgets do that, on the server);
-// a zero amount is neither.
+// spending is money out, never lowered by reimbursements (only budgets, on the server, and the
+// balance forecast, utils/forecast.js, take them off); a zero amount is neither.
 
 export const isIncome = (t) => !t.is_transfer && t.amount_cents > 0;
 
 export const isSpending = (t) => !t.is_transfer && t.amount_cents < 0;
+
+// A reimbursement: money in marked as one. An expense marked as one (paying someone back) is
+// spending, as in budgets.
+export const isReimbursement = (t) => isIncome(t) && t.is_reimbursement;
 
 // Income, expenses (spending as a positive amount) and net of the transactions dated `from`
 // through `to` (YYYY-MM-DD, both included)

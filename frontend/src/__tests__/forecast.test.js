@@ -58,10 +58,48 @@ test('the forecast learns from the last 90 days, today and the 89 before it, and
 
 test("each category's spending over the last 90 days, the part in a recurring series, and whether that's at least 90%", () => {
   expect(categoryShares(TRANSACTIONS, ACTIVE, TODAY)).toEqual({
-    Loan: { total: 25000, linked: 22500, scheduled: true },
-    Medical: { total: 32476, linked: 17476, scheduled: false },
-    Grocery: { total: 13500, linked: 0, scheduled: false },
+    Loan: { total: 25000, linked: 22500, reimbursed: 0, scheduled: true },
+    Medical: { total: 32476, linked: 17476, reimbursed: 0, scheduled: false },
+    Grocery: { total: 13500, linked: 0, reimbursed: 0, scheduled: false },
   });
+});
+
+// Medical: $174.76 in series 6, and a $150 purchase in Discover paid back with $160 into Checking
+const MEDICAL = [
+  tx(1, 6, '2026-10-12', 'Medical', -87.38, { recurring_id: 6 }),
+  tx(2, 6, '2026-10-26', 'Medical', -87.38, { recurring_id: 6 }),
+  tx(3, 5, '2026-08-24', 'Medical', -150),
+  tx(4, 6, '2026-08-24', 'Medical', 160, { is_reimbursement: true }),
+];
+const ALLINA = [occurrence(6, 6, '2026-11-23', 'Medical', -87.38)];
+
+test("a category's reimbursements come off its spending, so a paid-back purchase no longer outweighs its series", () => {
+  // $324.76 − $160 leaves $164.76, all of it covered by the series' $174.76: scheduled
+  expect(categoryShares(MEDICAL, [template(6)], TODAY)).toEqual({
+    Medical: { total: 32476, linked: 17476, reimbursed: 16000, scheduled: true },
+  });
+  expect(forecastInputs(MEDICAL, [template(6)], ALLINA, [5, 6, 7], TODAY)).toEqual({ occurrences: ALLINA, averages: {} });
+  // Money in that isn't marked as a reimbursement takes nothing off: 53% in the series, averaged
+  const unmarked = MEDICAL.map(t => (t.id === 4 ? { ...t, is_reimbursement: false } : t));
+  expect(forecastInputs(unmarked, [template(6)], ALLINA, [5, 6, 7], TODAY)).toEqual({ occurrences: [], averages: { Medical: 32476 } });
+  // Paid back in full, nothing is left to forecast: neither its series' charges nor an average
+  const paidBack = [...MEDICAL.slice(0, 2), tx(5, 6, '2026-10-27', 'Medical', 174.76, { is_reimbursement: true })];
+  expect(forecastInputs(paidBack, [template(6)], ALLINA, [5, 6, 7], TODAY)).toEqual({ occurrences: [], averages: {} });
+});
+
+test("an averaged category's average is its spending less the reimbursements in the accounts shown, never below 0", () => {
+  const utility = [
+    tx(1, 6, '2026-09-05', 'Utility', -120),                              // Checking pays the bill
+    tx(2, 6, '2026-09-06', 'Utility', -10, { is_reimbursement: true }),  // paying someone back is spending
+    tx(3, 6, '2026-09-20', 'Utility', 40, { is_reimbursement: true }),   // a roommate pays back into Checking
+    tx(4, 5, '2026-10-05', 'Utility', -30),                               // Discover
+    tx(5, 7, '2026-10-06', 'Utility', 50, { is_reimbursement: true }),   // and into Savings
+  ];
+  expect(categoryShares(utility, [], TODAY)).toEqual({ Utility: { total: 16000, linked: 0, reimbursed: 9000, scheduled: false } });
+  expect(forecastInputs(utility, [], [], [5, 6, 7], TODAY).averages).toEqual({ Utility: 7000 });
+  expect(forecastInputs(utility, [], [], [6], TODAY).averages).toEqual({ Utility: 9000 });
+  expect(forecastInputs(utility, [], [], [5], TODAY).averages).toEqual({ Utility: 3000 });
+  expect(forecastInputs(utility, [], [], [7], TODAY).averages).toEqual({});
 });
 
 test('just under 90% in a series is averaged', () => {
@@ -69,7 +107,7 @@ test('just under 90% in a series is averaged', () => {
     tx(1, 6, '2026-10-01', 'Utility', -89.99, { recurring_id: 9 }),
     tx(2, 6, '2026-10-02', 'Utility', -10.02),
   ], [template(9)], TODAY);
-  expect(shares.Utility).toEqual({ total: 10001, linked: 8999, scheduled: false });
+  expect(shares.Utility).toEqual({ total: 10001, linked: 8999, reimbursed: 0, scheduled: false });
 });
 
 test('net position keeps scheduled income, scheduled categories and series without recent spending, and averages the rest', () => {
@@ -98,7 +136,7 @@ test("an ended series' charges won't come again, so the 90% test and the average
   expect(forecastInputs(rent, [template(10)], [], [6], TODAY)).toEqual({ occurrences: [], averages: {} });
   // Ended (12 payments of 12), only the $50 outside it is left, and that's averaged
   const ended = [template(10, 12, 13)];
-  expect(categoryShares(rent, ended, TODAY)).toEqual({ Rent: { total: 5000, linked: 0, scheduled: false } });
+  expect(categoryShares(rent, ended, TODAY)).toEqual({ Rent: { total: 5000, linked: 0, reimbursed: 0, scheduled: false } });
   expect(forecastInputs(rent, ended, [], [6], TODAY)).toEqual({ occurrences: [], averages: { Rent: 5000 } });
   // A category that only had the ended series isn't forecast at all
   expect(forecastInputs([rent[0]], ended, [], [6], TODAY)).toEqual({ occurrences: [], averages: {} });
@@ -150,21 +188,31 @@ describe('what the forecast assumes', () => {
   test("net position: each category's spending, share in a series and basis, largest forecast first, and the scheduled income", () => {
     expect(forecastAssumptions(TRANSACTIONS, ACTIVE, SCHEDULED, [5, 6, 7], TODAY)).toEqual({
       categories: [
-        { category: 'Medical', spent: 32476, share: 53, basis: 'average', average: 32476, scheduled: 0, count: 0, forecast: -32476 },
-        { category: 'Transfer', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -20000, count: 1, forecast: -20000 },
-        { category: 'Grocery', spent: 13500, share: 0, basis: 'average', average: 13500, scheduled: -6000, count: 1, forecast: -19500 },
-        { category: 'Loan', spent: 25000, share: 90, basis: 'scheduled', average: 0, scheduled: -7500, count: 1, forecast: -7500 },
-        { category: 'Streaming', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
+        { category: 'Medical', spent: 32476, reimbursed: 0, share: 53, basis: 'average', average: 32476, scheduled: 0, count: 0, forecast: -32476 },
+        { category: 'Transfer', spent: 0, reimbursed: 0, share: null, basis: 'no-history', average: 0, scheduled: -20000, count: 1, forecast: -20000 },
+        { category: 'Grocery', spent: 13500, reimbursed: 0, share: 0, basis: 'average', average: 13500, scheduled: -6000, count: 1, forecast: -19500 },
+        { category: 'Loan', spent: 25000, reimbursed: 0, share: 90, basis: 'scheduled', average: 0, scheduled: -7500, count: 1, forecast: -7500 },
+        { category: 'Streaming', spent: 0, reimbursed: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
       ],
       income: { cents: 170000, count: 1, series: 1 },
     });
   });
 
+  test('a reimbursed category shows what came off, and its share is of the spending left', () => {
+    expect(forecastAssumptions(MEDICAL, [template(6)], ALLINA, [5, 6, 7], TODAY).categories).toEqual([
+      { category: 'Medical', spent: 32476, reimbursed: 16000, share: 100, basis: 'scheduled', average: 0, scheduled: -8738, count: 1, forecast: -8738 },
+    ]);
+    // Discover paid the purchase; the payback and the charge due are Checking's
+    expect(forecastAssumptions(MEDICAL, [template(6)], ALLINA, [5], TODAY).categories).toEqual([
+      { category: 'Medical', spent: 15000, reimbursed: 0, share: 100, basis: 'scheduled', average: 0, scheduled: 0, count: 0, forecast: 0 },
+    ]);
+  });
+
   test("an account lists only the categories it spent in or has charges due in; the share still spans every account", () => {
     expect(forecastAssumptions(TRANSACTIONS, ACTIVE, SCHEDULED, [5], TODAY)).toEqual({
       categories: [
-        { category: 'Grocery', spent: 9000, share: 0, basis: 'average', average: 9000, scheduled: 0, count: 0, forecast: -9000 },
-        { category: 'Streaming', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
+        { category: 'Grocery', spent: 9000, reimbursed: 0, share: 0, basis: 'average', average: 9000, scheduled: 0, count: 0, forecast: -9000 },
+        { category: 'Streaming', spent: 0, reimbursed: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
       ],
       income: NONE,
     });
@@ -174,7 +222,7 @@ describe('what the forecast assumes', () => {
     const loan = TRANSACTIONS.slice(0, 4);
     const pastTheEnd = occurrence(5, 6, '2027-02-07', 'Loan', -75);
     expect(forecastAssumptions(loan, ACTIVE, [pastTheEnd], [6], TODAY)).toEqual({
-      categories: [{ category: 'Loan', spent: 25000, share: 90, basis: 'scheduled', average: 0, scheduled: 0, count: 0, forecast: 0 }],
+      categories: [{ category: 'Loan', spent: 25000, reimbursed: 0, share: 90, basis: 'scheduled', average: 0, scheduled: 0, count: 0, forecast: 0 }],
       income: NONE,
     });
     const utility = [
