@@ -1,11 +1,9 @@
 name: Deploy
 
-# Runs only when CI passes on main
+# By hand only (Actions → Deploy → Run workflow) until there's a server to deploy to (roadmap
+# Phase 5): its SSH step needs the SERVER_* secrets. Then it can run after CI passes on main again.
 on:
-  workflow_run:
-    workflows: [CI]
-    branches: [main]
-    types: [completed]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -19,8 +17,6 @@ jobs:
   build:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    # Only deploy if CI succeeded (not cancelled/failed)
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write   # needed to push to ghcr.io

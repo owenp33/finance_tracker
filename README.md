@@ -193,12 +193,12 @@ python -c "import secrets; print(secrets.token_hex(32))"
 Two GitHub Actions workflows automate testing and deployment.
 
 ### CI (`ci.yml`)
-Runs on every push to `main`/`develop` and on PRs targeting `main`.
+Runs on every push to `main` or `dev`, on pull requests into either, and by hand from the Actions tab ("Run workflow", any branch).
 - **Backend**: pytest against SQLite in-memory — no PostgreSQL service needed
 - **Frontend**: `npm ci` + Jest
 
 ### Deploy (`deploy.yml`)
-Runs automatically after CI passes on `main`.
+Runs by hand for now (Actions → Deploy → Run workflow), until there's a server to deploy to and its secrets are set; then it can go back to running after CI passes on `main`.
 1. Builds backend and frontend Docker images with layer caching
 2. Pushes to GitHub Container Registry (`ghcr.io`) using the auto-provided `GITHUB_TOKEN`
 3. SSHes into the production server and runs:
