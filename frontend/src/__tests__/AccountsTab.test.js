@@ -213,7 +213,48 @@ describe('the forecast', () => {
     await openTab({ onError });
     await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load the projection'));
     expect(tab().querySelector('.balance-forecast-line')).toBeNull();
+    expect(within(tab()).queryByText('What the forecast assumes')).not.toBeInTheDocument();
     expect(summary()).toEqual(['$9,421.68', 'Up $9,913.97 since Nov 8, 2025']);
+  });
+
+  test('"What the forecast assumes" gives each category\'s basis, the scheduled income and a total that matches the forecast', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    await openTab({ transactions: RECENT });
+    await waitFor(() => expect(forecastLine()).toMatch(/\$10,842\.30/));
+    await user.click(within(tab()).getByText('What the forecast assumes'));
+    expect(within(tab()).getByText(/^A category is forecast by its recurring charges when at least 90%/)).toBeInTheDocument();
+    const assumptions = () => cells(screen.getByRole('table', { name: /^What the forecast assumes/ }));
+    // $9,421.68 + $1,420.62 = $10,842.30, the forecast line's
+    expect(assumptions()).toEqual([
+      ['Category', 'Spent over the last 90 days', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days'],
+      ['Scheduled income', '—', '—', '1 payment from 1 series', '+$1,700.00'],
+      ['Bills', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
+      ['Restaurants', '$27.00', '0%', '$0.30 a day, its average over the last 90 days', '-$27.00'],
+      ['Total', '$204.38', '', '', '+$1,420.62'],
+    ]);
+    await pick("Owen's Checking");
+    expect(screen.getByRole('table', { name: "What the forecast assumes, Owen's Checking" })).toBeInTheDocument();
+    expect(assumptions().slice(1)).toEqual([
+      ['Bills', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
+      ['Total', '$177.38', '', '', '-$252.38'],
+    ]);
+  });
+
+  test('a series with no spending over the last 90 days is named as such, and so is one in an averaged category', async () => {
+    getProjection.mockResolvedValue([
+      { recurring_id: 30, account_id: 5, date: '2026-11-20', vendor: 'StreamCo', category: 'Streaming', amount: -15.99 },
+      { recurring_id: 31, account_id: 5, date: '2026-11-21', vendor: 'Meal kit', category: 'Restaurants', amount: -60 },
+    ]);
+    await openTab({ transactions: RECENT });
+    await pick("Owen's Discover");
+    await user.click(within(tab()).getByText('What the forecast assumes'));
+    await waitFor(() => expect(cells(screen.getByRole('table', { name: /^What the forecast assumes/ })).slice(1)).toEqual([
+      ['Restaurants', '$27.00', '0%', '$0.30 a day, its average over the last 90 days, plus 1 charge due from a series with no spending over the last 90 days', '-$87.00'],
+      ['Streaming', '—', '—', 'Its recurring charges, 1 due (no spending over the last 90 days)', '-$15.99'],
+      ['Total', '$27.00', '', '', '-$102.99'],
+    ]));
   });
 });
 

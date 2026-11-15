@@ -1,4 +1,6 @@
-import { FORECAST_DAYS, lastNinetyDaysStart, categoryShares, forecastInputs, forecastPoints } from '../utils/forecast';
+import {
+  FORECAST_DAYS, lastNinetyDaysStart, categoryShares, forecastInputs, forecastPoints, forecastAssumptions,
+} from '../utils/forecast';
 import { shiftDays } from '../utils/dates';
 
 const TODAY = '2026-11-08';      // the last 90 days: Aug 11 through Nov 8, 2026
@@ -139,5 +141,46 @@ describe('forecast points', () => {
     expect(forecastPoints(10000, { occurrences: [], averages: {} }, TODAY, END)).toEqual([
       { date: '2027-02-06', cents: 10000, kind: 'forecast-end', items: [], average: 0 },
     ]);
+  });
+});
+
+describe('what the forecast assumes', () => {
+  const NONE = { cents: 0, count: 0, series: 0 };
+
+  test("net position: each category's spending, share in a series and basis, largest forecast first, and the scheduled income", () => {
+    expect(forecastAssumptions(TRANSACTIONS, ACTIVE, SCHEDULED, [5, 6, 7], TODAY)).toEqual({
+      categories: [
+        { category: 'Medical', spent: 32476, share: 53, basis: 'average', average: 32476, scheduled: 0, count: 0, forecast: -32476 },
+        { category: 'Transfer', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -20000, count: 1, forecast: -20000 },
+        { category: 'Grocery', spent: 13500, share: 0, basis: 'average', average: 13500, scheduled: -6000, count: 1, forecast: -19500 },
+        { category: 'Loan', spent: 25000, share: 90, basis: 'scheduled', average: 0, scheduled: -7500, count: 1, forecast: -7500 },
+        { category: 'Streaming', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
+      ],
+      income: { cents: 170000, count: 1, series: 1 },
+    });
+  });
+
+  test("an account lists only the categories it spent in or has charges due in; the share still spans every account", () => {
+    expect(forecastAssumptions(TRANSACTIONS, ACTIVE, SCHEDULED, [5], TODAY)).toEqual({
+      categories: [
+        { category: 'Grocery', spent: 9000, share: 0, basis: 'average', average: 9000, scheduled: 0, count: 0, forecast: -9000 },
+        { category: 'Streaming', spent: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
+      ],
+      income: NONE,
+    });
+  });
+
+  test('a scheduled category with nothing due in the next 90 days still shows, adding nothing; the share rounds down', () => {
+    const loan = TRANSACTIONS.slice(0, 4);
+    const pastTheEnd = occurrence(5, 6, '2027-02-07', 'Loan', -75);
+    expect(forecastAssumptions(loan, ACTIVE, [pastTheEnd], [6], TODAY)).toEqual({
+      categories: [{ category: 'Loan', spent: 25000, share: 90, basis: 'scheduled', average: 0, scheduled: 0, count: 0, forecast: 0 }],
+      income: NONE,
+    });
+    const utility = [
+      tx(1, 6, '2026-10-01', 'Utility', -89.99, { recurring_id: 9 }),
+      tx(2, 6, '2026-10-02', 'Utility', -10.02),
+    ];
+    expect(forecastAssumptions(utility, [template(9)], [], [6], TODAY).categories[0]).toMatchObject({ share: 89, basis: 'average' });
   });
 });

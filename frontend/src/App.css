@@ -3699,6 +3699,11 @@ body {
   cursor: pointer;
 }
 
+.view-as-table-note {
+  margin: 8px 0 0;
+  color: #6b7280;
+}
+
 .view-as-table-scroll {
   overflow-x: auto;
   margin-top: 8px;

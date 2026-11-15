@@ -98,3 +98,53 @@ export const forecastPoints = (startCents, { occurrences, averages }, from, to) 
   }
   return points;
 };
+
+// What the forecast of the accounts `accountIds` assumes (F1b), for a table. `categories`: one per
+// category those accounts spent in over the last 90 days or have a charge due in over the next
+// 90, each {category, spent (its spending over the last 90 days in those accounts, ended series
+// left out), share (the percentage of that spending in a series, across every account, rounded
+// down so only a scheduled category reads 90 or more; null without spending), basis
+// ('scheduled', 'average', or 'no-history': only charges from series with no spending over the
+// last 90 days), average (the spending averaged), scheduled (the charges due, negative), count
+// (how many), forecast (what it adds over the next 90 days, negative)}, the largest forecast
+// first, ties by name. `income`: the scheduled income due, {cents, count, series (how many pay it)}.
+export const forecastAssumptions = (transactions, recurring, occurrences, accountIds, today) => {
+  const shares = categoryShares(transactions, recurring, today);
+  const { occurrences: kept, averages } = forecastInputs(transactions, recurring, occurrences, accountIds, today);
+  const end = shiftDays(today, FORECAST_DAYS);
+  const due = kept.filter(o => o.date >= today && o.date <= end);
+
+  const rows = {};
+  const row = (category) => (rows[category] = rows[category] || { category, spent: 0, scheduled: 0, count: 0 });
+  recentSpending(transactions, recurring, today)
+    .filter(t => accountIds.includes(t.account_id))
+    .forEach(t => { row(t.category).spent -= t.amount_cents; });
+  due.filter(o => o.amount < 0).forEach(o => {
+    const r = row(o.category);
+    r.scheduled += Math.round(o.amount * 100);
+    r.count += 1;
+  });
+
+  const categories = Object.values(rows).map(r => {
+    const share = shares[r.category];
+    const average = averages[r.category] || 0;
+    return {
+      category: r.category,
+      spent: r.spent,
+      share: share ? Math.floor((share.linked * 100) / share.total) : null,
+      basis: !share ? 'no-history' : share.scheduled ? 'scheduled' : 'average',
+      average,
+      scheduled: r.scheduled,
+      count: r.count,
+      forecast: r.scheduled - average,
+    };
+  }).sort((a, b) => Math.abs(b.forecast) - Math.abs(a.forecast) || a.category.localeCompare(b.category));
+
+  const paying = due.filter(o => o.amount > 0);
+  const income = {
+    cents: paying.reduce((sum, o) => sum + Math.round(o.amount * 100), 0),
+    count: paying.length,
+    series: new Set(paying.map(o => o.recurring_id)).size,
+  };
+  return { categories, income };
+};

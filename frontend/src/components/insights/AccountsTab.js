@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import BalanceChart from './charts/BalanceChart';
+import ForecastAssumptions from './ForecastAssumptions';
 import ViewAsTable from '../ViewAsTable';
 import { formatDate } from '../transactions/utils';
 import { useBalances } from '../../hooks/useBalances';
@@ -24,7 +25,7 @@ const changeLabel = (change, from) => {
 // Insights → Accounts (Phase V, V4): is each account growing or shrinking, and what's the net
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
 // balance and its change over the range, a step line with a brush, a 90-day forecast (Phase F,
-// F1: utils/forecast.js), and a table. `accounts` (GET
+// F1: utils/forecast.js) with what it assumes (F1b), and a table. `accounts` (GET
 // /api/accounts) give the current balances each history should end at (the plan's check);
 // `recurring` (every template) tells the forecast which series have ended.
 function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
@@ -122,6 +123,12 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
           <li><span className="balance-key" aria-hidden="true" />Balance</li>
           <li><span className="balance-key forecast" aria-hidden="true" />Forecast: scheduled items and average spending over the last 90 days</li>
         </ul>
+      )}
+      {forecast.length > 0 && (
+        <ForecastAssumptions
+          transactions={transactions} recurring={recurring} occurrences={occurrences}
+          accountIds={shownIds} today={today} label={label}
+        />
       )}
       <ViewAsTable
         caption={`Balance by day, ${label}`}
