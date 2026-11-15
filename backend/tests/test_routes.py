@@ -2,7 +2,7 @@
 HTTP integration tests — hit the actual Flask routes via test client.
 These verify the full request/response cycle including auth middleware.
 """
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -273,6 +273,59 @@ class TestTransactionRoutes:
 
 # ── Recurring routes ──────────────────────────────────────────────────────────
 
+class TestBalanceRoutes:
+    """GET /api/balances: each account's end-of-day balance per date with transactions."""
+
+    def _add(self, client, account, auth_headers, day, amount):
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers,
+                    json={'date': day, 'vendor': 'Shop', 'category': 'Misc', 'amount': amount})
+
+    def test_every_account_with_its_opening_its_days_and_its_closing(self, client, account, auth_headers):
+        client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 250}, headers=auth_headers)
+        self._add(client, account, auth_headers, '2026-01-05', -40)
+        self._add(client, account, auth_headers, '2026-01-05', 10.5)
+        self._add(client, account, auth_headers, '2026-02-01', 1000)
+        resp = client.get('/api/balances', headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json == {'success': True, 'balances': [{
+            'id': account.id, 'account_name': 'Test Checking',
+            'opening': 250.0, 'opening_cents': 25_000,
+            'days': [
+                {'date': '2026-01-05', 'balance': 220.5, 'balance_cents': 22_050},
+                {'date': '2026-02-01', 'balance': 1220.5, 'balance_cents': 122_050},
+            ],
+            'closing': 1220.5, 'closing_cents': 122_050,
+        }]}
+        current = client.get(f'/api/accounts/{account.id}', headers=auth_headers).json['account']['balance']
+        assert resp.json['balances'][0]['closing'] == current
+
+    def test_filters_by_account_and_dates_as_the_exports_do(self, client, account, auth_headers):
+        savings_id = client.post('/api/accounts', json={'account_id': 'savings-5678', 'account_name': 'Savings'},
+                                 headers=auth_headers).json['account']['id']
+        self._add(client, account, auth_headers, '2026-01-15', -20)
+        self._add(client, account, auth_headers, '2026-02-01', -30)
+        self._add(client, account, auth_headers, '2026-03-01', -5)
+        resp = client.get(f'/api/balances?account_ids={account.id}&start_date=2026-02-01&end_date=2026-02-28',
+                          headers=auth_headers)
+        [only] = resp.json['balances']
+        assert (only['id'], only['opening_cents'], only['days'], only['closing_cents']) == (
+            account.id, -2_000, [{'date': '2026-02-01', 'balance': -50.0, 'balance_cents': -5_000}], -5_000)
+        assert savings_id not in [b['id'] for b in resp.json['balances']]
+
+    @pytest.mark.parametrize('query, error', [
+        ('account_ids=abc', 'account_ids must be a comma-separated list of account ids.'),
+        ('account_ids=999999', 'Unknown account: 999999'),
+        ('start_date=yesterday', 'start_date must be a date like 2026-01-31.'),
+        ('start_date=2026-03-01&end_date=2026-02-01', 'The start date must be on or before the end date.'),
+    ], ids=['not-ids', 'unknown-account', 'bad-date', 'start-after-end'])
+    def test_bad_filters_are_400s(self, client, account, auth_headers, query, error):
+        resp = client.get(f'/api/balances?{query}', headers=auth_headers)
+        assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_requires_a_login(self, client, account):
+        assert client.get('/api/balances').status_code == 401
+
+
 class TestRecurringRoutes:
     def test_add_recurring(self, client, account, auth_headers):
         resp = client.post(f'/api/accounts/{account.id}/recurring',
@@ -363,6 +416,24 @@ class TestRecurringRoutes:
         client.post(url, headers=auth_headers)
         again = client.post(url, headers=auth_headers)
         assert (again.status_code, again.json['error']) == (400, 'That transaction is already part of a recurring series.')
+
+    def test_templates_say_which_account_they_are_on(self, client, account, auth_headers):
+        """Every template response carries account_id: the account's database id, as transactions do."""
+        savings_id = client.post('/api/accounts', json={'account_id': 'savings-5678', 'account_name': 'Savings'},
+                                 headers=auth_headers).json['account']['id']
+        assert savings_id != account.id
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        created = client.post(f'/api/accounts/{savings_id}/recurring', headers=auth_headers, json={
+            'start_date': tomorrow, 'vendor': 'Rent', 'category': 'Housing', 'amount': -900,
+            'frequency': 1, 'frequency_unit': 'months'}).json['recurring']
+        responses = [
+            created,
+            client.get(f'/api/recurring/{created["id"]}', headers=auth_headers).json['recurring'],
+            client.patch(f'/api/recurring/{created["id"]}', json={'notes': 'Lease'}, headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/recurring', headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/upcoming', headers=auth_headers).json['upcoming'],
+        ]
+        assert [r.get('account_id') for r in responses] == [savings_id] * 5
 
     def test_templates_report_whether_they_need_attention(self, client, account, auth_headers, pin_today):
         rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)

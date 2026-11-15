@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
-import BudgetProgressBar from './BudgetProgressBar';
+import BudgetPace from './BudgetPace';
 import BudgetTransactionList from './BudgetTransactionList';
 import ColorPickerPopover from './ColorPickerPopover';
 
 function BudgetRow({
   item,
+  pace,
+  monthEnd,
   onAmountBlur,
   onRolloverToggle,
+  onPaceToggle,
   onDelete,
   hasSaveError,
   monthlyIncome,
@@ -88,13 +91,22 @@ function BudgetRow({
         {incomePct !== null && <span className="bri-pct">{incomePct}%</span>}
         {hasSaveError && <span className="bri-error">Save failed</span>}
 
-        <label className="bri-rollover">
+        <label className="bri-toggle">
           <input
             type="checkbox"
             checked={item.rollover}
             onChange={() => onRolloverToggle(item)}
           />
           Rollover
+        </label>
+
+        <label className="bri-toggle">
+          <input
+            type="checkbox"
+            checked={item.scheduled_pace}
+            onChange={() => onPaceToggle(item)}
+          />
+          Pace by recurring
         </label>
 
         <button
@@ -106,7 +118,7 @@ function BudgetRow({
         </button>
       </div>
 
-      <BudgetProgressBar item={item} showCategory={false} compact />
+      <BudgetPace category={item.category} pace={pace} monthEnd={monthEnd} />
 
       <BudgetTransactionList transactions={categoryTransactions} />
 

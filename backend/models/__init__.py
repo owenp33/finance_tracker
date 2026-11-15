@@ -9,6 +9,7 @@ from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
 from models.series_dismissal import SeriesDismissalModel
 from models.budget import BudgetModel
+from models.scheduled_pace import ScheduledPaceModel
 
 __all__ = [
     'User',
@@ -19,4 +20,5 @@ __all__ = [
     'RecurringAliasModel',
     'SeriesDismissalModel',
     'BudgetModel',
+    'ScheduledPaceModel',
 ]

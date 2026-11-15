@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import BudgetRow from './BudgetRow';
 import AddBudgetForm from './AddBudgetForm';
+import ViewAsTable from './ViewAsTable';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -8,10 +9,33 @@ import {
   getNextPeriod,
   formatPeriod,
 } from '../hooks/useBudgetData';
+import { useMonthProjection } from '../hooks/useProjection';
+import { todayISO, monthEndLabel } from '../utils/dates';
+import { formatCents } from '../utils/money';
+import { rowPace, percentUsed, paceLabel } from '../utils/budgetPace';
 
 const getCurrentPeriod = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// The rows' paces as a table. `monthEnd` ("Oct 31", the current month only) adds the expected
+// spend, the bills still due, and where the month ends at this rate (paced by recurring: with the
+// bills still due).
+const paceTableColumns = (monthEnd) => [
+  'Category', 'Spent', 'Budget', 'Used',
+  ...(monthEnd ? ['Expected by today', 'Bills still due', `At this rate, by ${monthEnd}`] : []),
+  'Status',
+];
+
+const paceTableRow = (item, pace, monthEnd) => {
+  const used = percentUsed(pace);
+  const atMonthEnd = formatCents(pace.projected) + (pace.basis === 'scheduled' ? ' with bills due' : '');
+  return [
+    item.category, formatCents(pace.spent), formatCents(pace.effective), used === null ? '—' : `${used}%`,
+    ...(monthEnd ? [formatCents(pace.expected), formatCents(pace.due), atMonthEnd] : []),
+    paceLabel(pace),
+  ];
 };
 
 function BudgetingView({ transactions, onBudgetChange }) {
@@ -33,9 +57,14 @@ function BudgetingView({ transactions, onBudgetChange }) {
     setError,
     handleAmountBlur,
     handleRolloverToggle,
+    handlePaceToggle,
     handleDelete,
     handleAdd,
   } = useBudgetData(period, onBudgetChange);
+
+  // The recurring charges still to come this month, for paces by recurring and bills still due
+  const today = todayISO();
+  const occurrences = useMonthProjection(today, setError);
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -43,6 +72,11 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const totalSpent = progress.reduce((sum, item) => sum + item.spent, 0);
   const unallocated = monthlyIncome - totalAllocated;
   const incomeSet = monthlyIncome > 0;
+
+  // Each row's pace, worked out as the Dashboard does (rowPace); this month's also says where the
+  // month ends
+  const monthEnd = period === today.slice(0, 7) ? monthEndLabel(period) : null;
+  const paces = progress.map(item => rowPace(item, { period, today, transactions, occurrences }));
 
   const budgetedCategories = new Set(progress.map(p => p.category));
   const suggestedCategories = [
@@ -183,20 +217,30 @@ function BudgetingView({ transactions, onBudgetChange }) {
         ) : progress.length === 0 ? (
           <p className="no-data">No budgets set for this period. Add a category above.</p>
         ) : (
-          <div className="budget-rows">
-            {progress.map(item => (
-              <BudgetRow
-                key={item.id}
-                item={item}
-                onAmountBlur={handleAmountBlur}
-                onRolloverToggle={handleRolloverToggle}
-                onDelete={handleDelete}
-                hasSaveError={saveErrors.has(item.id)}
-                monthlyIncome={monthlyIncome}
-                categoryTransactions={txsByCategory[item.category] || []}
-              />
-            ))}
-          </div>
+          <>
+            <div className="budget-rows">
+              {progress.map((item, i) => (
+                <BudgetRow
+                  key={item.id}
+                  item={item}
+                  pace={paces[i]}
+                  monthEnd={monthEnd}
+                  onAmountBlur={handleAmountBlur}
+                  onRolloverToggle={handleRolloverToggle}
+                  onPaceToggle={handlePaceToggle}
+                  onDelete={handleDelete}
+                  hasSaveError={saveErrors.has(item.id)}
+                  monthlyIncome={monthlyIncome}
+                  categoryTransactions={txsByCategory[item.category] || []}
+                />
+              ))}
+            </div>
+            <ViewAsTable
+              caption={`Budget pace, ${formatPeriod(period)}`}
+              columns={paceTableColumns(monthEnd)}
+              rows={progress.map((item, i) => paceTableRow(item, paces[i], monthEnd))}
+            />
+          </>
         )}
       </div>
 

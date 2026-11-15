@@ -115,7 +115,7 @@ HTTP request
 ## Services
 
 **`DbService`** (`db_service.py`): data access. CRUD and lookups for users, accounts,
-transactions, recurring templates, and budgets, plus two queries used by business logic:
+transactions, recurring templates, budgets, and scheduled paces, plus two queries used by business logic:
 `transaction_exists` (the import duplicate check), `find_transfer_peer` (an unlinked transfer
 with the opposite amount in another of the user's accounts, within ±5 days; the earliest such
 match wins), `find_recurring_candidates` (transactions in no recurring series with a given
@@ -156,13 +156,15 @@ two ways to change a stored balance, `adjust_balance` and `recompute_balance` (s
 `unlink_transaction`, `suggest_matches`, `dismiss_suggestion`, `undo_dismissal`,
 `replace_occurrence` and `remember_alias` for imports, and `template_dict` for API
 responses), and finding series among a user's transactions (`detect_series`, using the pure
-`series_detection` module; `add_detected_series`, `dismiss_detected_series`); see
+`series_detection` module; `add_detected_series`, `dismiss_detected_series`), and the
+occurrences still to come (`projected_occurrences`); see
 [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
 `AccountService.delete_transaction`.
 
-**`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports.
+**`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
+Insights balance chart.
 `ledgers(user_id, account_ids=None, start_date=None, end_date=None)` returns one `AccountLedger`
 per account (id order; accounts without activity included): `opening_cents` (starting balance
 plus every transaction before the period), `rows` (each transaction in the period, date then id
@@ -171,7 +173,11 @@ reimbursements count. Both dates are inclusive and optional; an account that isn
 or a start after the end, raises `ValueError`. The arithmetic is the pure function
 `running_balances(opening_cents, transactions)`. Ledgers are computed from the transactions
 themselves, so with no dates `closing_cents` equals the stored `balance_cents` whenever that
-cache is correct.
+cache is correct. `daily_balances(user_id, account_ids=None, start_date=None, end_date=None)`
+selects the same accounts (raising the same errors) and returns one `DailyBalances` per account:
+`opening_cents`, `days` (each date with transactions and its end-of-day balance, the balance
+after the date's last transaction; the pure function `end_of_day(rows)`), and `closing_cents`.
+It serves `GET /api/balances`.
 
 **`BudgetFlagService`** (`budget_flag_service.py`): which expenses are over budget, computed
 when transactions are read. `over_budget_ids(user_id, transactions)` returns the ids among the
@@ -183,9 +189,18 @@ and every route that returns transactions uses it. The walk itself is the pure f
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
-against the allocation (`amount + carried_over`). `delete_budget` also deletes the budget's
-future rollover copies. Budget changes don't touch transactions: over-budget flags are computed
-when transactions are read (`BudgetFlagService`), so they follow every budget change on their own.
+against the allocation (`amount + carried_over`), and whether the category has a scheduled pace.
+`delete_budget` also deletes the budget's future rollover copies. Budget changes don't touch
+transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
+so they follow every budget change on their own.
+
+**Scheduled pace.** Budget pace (the Budgeting view, and the Dashboard's budgets furthest ahead of pace) expects a category's spending evenly
+through the month unless the user sets the category to a scheduled pace (shown as "Pace by
+recurring"), which expects it on its recurring charges' dates. `set_scheduled_pace(user_id, category, scheduled)` stores the
+choice per category in `scheduled_paces`, for every month: the category matches its budgets'
+name exactly, and the setting stays when those budgets are deleted (adding the budget back finds
+it). Setting the pace a category already has changes nothing; a category that isn't text of 1 to
+50 characters, or a `scheduled` that isn't a boolean, raises `ValueError`.
 
 **`AuthService`** (`auth_service.py`)
 - `register(username, email, password)` trims the username and email, lowercases the email, and
@@ -199,7 +214,12 @@ when transactions are read (`BudgetFlagService`), so they follow every budget ch
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
 builds the summary (totals, monthly trends, category and vendor breakdowns) behind
-`/api/analytics` and the PDF report.
+`/api/analytics` and the PDF report. The PDF uses only its totals and weekly averages (the
+summary page; everything else comes from `summary_data`), so its monthly trends, category
+breakdowns and top vendors serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
+V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
+the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
+taken off its category, by design (only budgets do that; Owen, 2026-11-10).
 
 **Reports** (`services/reports/`, the export files):
 - `filters.py`: `ExportFilters` (account ids, start and end dates; no account ids means all of
@@ -223,25 +243,83 @@ with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as pl
 `unguard(text)` removes exactly that apostrophe, and `import_parser` applies it to the vendor,
 category, notes and account columns, so an export imports back exactly. Text without the
 pattern (e.g. `'Til Midnight`) is left alone both ways.
-- `pdf_pages.py`: the matplotlib pages. Up to six summary pages (summary, monthly trends,
-  category pies, top vendors, spending breakdown), one function each, drawn from
-  `AnalyticsService.generate_report` data; they leave transfers out. `ReportService` adds the
-  monthly trends page only when there are at least `MIN_TREND_MONTHS` (2) months of data: one
-  month would be three lone points repeating the summary page's totals. Then
-  `render_account_pages(pdf, ledger, over_budget_ids, period_label, start_date, end_date)` per
-  account: a first page with the opening and closing balance, the balance over the period as a
-  step line, and the first `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor,
-  Category, Amount, Balance, Budget), then `CONTINUED_ROWS` rows a page. Account pages include
-  transfers (the page says so); over-budget rows get a light red band and "Over" in the Budget
-  column. The pure pieces `account_page_chunks` and `account_table_rows` are tested directly.
-  Text that can hold a `$` is drawn with `parse_math=False` (matplotlib would read `$…$` as
-  math).
-- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters)` build
+- `summary_data.py` (pure functions, cents): the numbers behind the summary pages, counted as
+  the app's Insights counts them (transfers never count; money in is income, reimbursements
+  included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
+  chosen_end, today)` → `(months, partial)` ('YYYY-MM'): from the chosen start (else the first
+  transaction) to the chosen end (else the last), stopping at today's month or a later
+  transaction's, since a month still to come holds nothing yet ("this year" ends Dec 31);
+  partial are a chosen start after its 1st, a chosen end before its month's last day, and today's
+  month and any after it. `monthly_net(transactions, months, partial)` → per month `{month,
+  income, expenses, net, partial, average}`, `average` being the 3-month moving average of net
+  over full months only (each full month with the two before it; else None).
+  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → the top 8 categories by
+  plain spending, then the rest as Other (`others` names them), each `{category, total, count,
+  months: [{month, cents, partial}], average (full months; None without one), last (the last
+  full month's `{month, cents}`, or None)}`. `largest_income(transactions)` → `{category, cents,
+  total, categories}` (the largest income category, all money in, how many categories), or
+  None. `top_vendors(transactions, limit=VENDOR_LIMIT)` → the 10 vendors spent with most,
+  `{vendor, total, count, average (per charge)}`, ties by name, every charge counted (the app's
+  "leave out recurring charges" toggle has no paper form). `recurring_costs(templates, payments,
+  today)` → `{series, total, active_count, income_count}`: cost templates only (income isn't a
+  cost), each `{template, active, monthly (positive), ended ('YYYY-MM': the last payment's, else
+  the schedule's last occurrence's), beyond}`, active first then ended, each costliest first;
+  `total` is the active series' cost per month. `monthly_equivalent(template)` (signed; every N
+  days repeats 364/N times a year, every N months 12/N) and `paid_beyond_schedule(template,
+  payments, today)` (over the 12 full months before today's, from the first payment's month if
+  later: payments as spending, transfers left out, against the cost per month; `{from, to,
+  months, paid, scheduled, extra}`, or None without a payment before this month). A template is
+  finished when `number != -1` and `idx > number`. `round_half_up` rounds halves up like
+  JavaScript's `Math.round`, so averages and shares match the app's to the cent.
+- `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
+  out: the summary (with income by category as one line, "Largest income category: Paycheck,
+  $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category,
+  top vendors, and recurring costs.
+  `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
+  Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
+  month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
+  (Month, Money in, Money out, Net, 3-month average), continued on more pages like an account's.
+  `ReportService` adds it only when the period covers at least `MIN_NET_MONTHS` (2) months: one
+  month would repeat the summary page's totals. `render_spending_by_category_page(pdf, panels,
+  period_label)` draws `category_panels` as the app's small multiples, three to a row: each
+  panel's category, its last full month against its average in whole dollars ("Oct: $350, 8%
+  above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
+  small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
+  year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
+  2026)", Transactions); no spending says "No spending in this period.".
+  `render_top_vendors_page(pdf, vendors, period_label)` draws `top_vendors` as the app does: a
+  bar per vendor, largest on top and filling the width, its name on the left and its total in an
+  aligned column at the page margin, then the table (Vendor, Total, Charges, Average charge).
+  `render_recurring_costs_page(pdf, costs, account_names, as_of)` draws `recurring_costs` as the
+  app's Insights → Recurring does, as of the day the report is made ("not limited to the
+  report's period"): the active series' total ("$75.00/mo", "N active series at their scheduled
+  amounts; income isn't counted", or "No active recurring costs"), a "Not included: $240 paid to
+  ASPIRE beyond its $75.00/mo schedule in Nov 2025–Oct 2026" note per active series at least
+  `BEYOND_MIN_CENTS` ($1) beyond, a bar per series (ended ones lighter and labelled "$652.50/mo ·
+  ended Aug 2026"), then the table (Series, Account, Charged "$87.38 biweekly", Per month,
+  Status, Paid beyond schedule), continued on more pages when long. Both bar pages draw with
+  `_labelled_bars` (names on the left, labels in a column at the page margin, rows thinner when
+  many). Only the summary's totals still draw `AnalyticsService.generate_report` data. Then
+  `render_account_pages(pdf, ledger,
+  over_budget_ids, period_label, start_date, end_date)` per account: a first page with the
+  opening and closing balance, the balance over the period as a step line, and the first
+  `FIRST_PAGE_ROWS` rows of the transaction table (Date, Vendor, Category, Amount, Balance,
+  Budget), then `CONTINUED_ROWS` rows a page. Account pages include transfers (the page says so);
+  over-budget rows get a light red band and "Over" in the Budget column. Pages with a chart over
+  a table share `page_chunks(rows, first=FIRST_PAGE_ROWS)` (tested directly), `_table`, the headers and `_style_axes`;
+  `account_table_rows` is tested directly too. Text that can hold a `$` is drawn with
+  `parse_math=False` (matplotlib would read `$…$` as math).
+- `report_service.py`: `ReportService.csv(user_id, filters)` and `.pdf(user_id, filters,
+  generated_at=None)` (printed on the summary page; its date is "today" for the partial months
+  and the recurring costs) build
   the files from the `BalanceService` ledgers of the chosen accounts, leaving out accounts with
   no transactions in the period. Transactions are listed by date, then account id, then id. When
   no account has any, or an account isn't the user's, they raise `ValueError`
   ("No transactions in this period." / "Unknown account: …"). The PDF's over-budget marks come
-  from `BudgetFlagService.over_budget_ids` over every exported transaction. Each returns an
+  from `BudgetFlagService.over_budget_ids` over every exported transaction. The recurring costs
+  page covers the chosen accounts' templates (`DbService.get_user_recurring`) with every payment
+  in their series (`generated_transactions`), not just the period's, and is left out when there's
+  no cost series. Each returns an
   `ExportFile` (content, mimetype, filename). The export's period is the chosen dates, with an
   open side filled from its first or last transaction (`_period`); it names the files
   (`transactions_<start>_to_<end>.csv`, `report_<start>_to_<end>.pdf`), is the PDF's period
@@ -280,6 +358,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 | `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
+| `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
 the account's database id is `id`.
@@ -326,7 +405,8 @@ Every change must keep these true.
 - **`MIN_PASSWORD_LENGTH`** (8) is defined in both `services/auth_service.py` and the frontend's
   `AuthScreen.js`. Keep them equal.
 - **Budgets** are per user (they cover all accounts). Rollover copies for new months are created by
-  the frontend (`useBudgetData`, looking back up to 12 months).
+  the frontend (`useBudgetData`, looking back up to 12 months). A category's scheduled pace
+  belongs to the category, not to one month's budget.
 
 ---
 
@@ -486,6 +566,15 @@ always one more than their count.
   (`recurring_aliases`). Aliases only affect import matching; generation and suggestions still
   compare the template's vendor. See [Importing files](#importing-files).
 
+**Projection** (`RecurringService.projected_occurrences(user_id, days)`) lists the occurrences
+still to come from today through `days` days ahead, by date, without writing anything: each
+template's schedule from its `next_date` on its own anchor (`shift`, so month ends clamp), while
+a limited series has occurrences left (`idx <= number`; finished templates list nothing). Dates
+before today are left out (generation fills them at the next page load), and so is an occurrence
+whose real charge is already in: an exact match (`match_candidates`) that generation would link
+instead. A charge stands in for one occurrence only, the earliest, as generation would use it.
+Income templates are included; the caller decides what to count.
+
 **Finding series** (`RecurringService.detect_series(user_id)`, rules in the pure
 `series_detection.detect_series`) lists series hiding among transactions that aren't in one yet,
 for the user to confirm; nothing is written.
@@ -555,11 +644,12 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
-| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals` |
-| `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PATCH` / `DELETE /<id>` |
+| `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
+| `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PUT /scheduled-pace`, `PATCH` / `DELETE /<id>` |
 | `/analytics` | `GET /all`, `GET /<account_id>` |
 | `/import` | `POST /preview`, `POST /confirm` |
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
+| `/balances` | `GET ?account_ids=&start_date=&end_date=` |
 
 Details worth knowing:
 - `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
@@ -580,8 +670,9 @@ Details worth knowing:
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
   series and `DELETE` on the same path takes it out; both return the updated template, and an
   invalid link or unlink is a 400. `POST /recurring/<id>/dismissals/<transaction_id>` dismisses a
-  suggestion and `DELETE` undoes it. Templates in every response carry `suggestion_count`,
-  `needs_attention`, and `dismissed_transaction_ids`.
+  suggestion and `DELETE` undoes it. Templates in every response carry `account_id` (the
+  account's database id, as transactions do), and all but `GET /accounts/<id>/upcoming` also
+  carry `suggestion_count`, `needs_attention`, and `dismissed_transaction_ids`.
 - `GET /recurring/detected` returns `{series: [{account_id, vendor, category, amount, frequency,
   frequency_unit, ongoing, next_date, transactions}]}` (see Finding series): `amount` is the
   latest payment's, `next_date` is null for an ended series, and `transactions` are the payments,
@@ -589,6 +680,15 @@ Details worth knowing:
   adds it as a template and returns it (201); `POST /recurring/detected/dismissals` with the same
   body marks it "Not recurring". A missing or malformed list, or a series that has changed since
   it was listed, is a 400.
+- `GET /recurring/projection?days=60` returns `{occurrences: [{recurring_id, account_id, date,
+  vendor, category, amount}]}` by date (see Projection). `days` defaults to 60; anything but a
+  whole number from 1 to 366 is a 400. The Dashboard's 30-day agenda reads it (Phase V, V6a), so
+  the older `GET /accounts/<id>/upcoming` (templates due within `days`) has no frontend caller.
+- `GET /budgets/progress?period=YYYY-MM` (default: this month) returns `{period, progress: [...]}`
+  sorted by category; each row has `id`, `category`, `period`, `allocated`, `carried_over`,
+  `spent`, `remaining` (each also as `*_cents`), `rollover`, `over_budget`, and
+  `scheduled_pace`. `PUT /budgets/scheduled-pace` with `{category, scheduled}` sets a category's
+  pace (see Scheduled pace) and returns `{category, scheduled}`; invalid input is a 400.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -606,6 +706,13 @@ Details worth knowing:
   malformed filter, an account that isn't the user's, or a period with nothing to export is a 400.
   The `Content-Disposition` filename carries the export's period, e.g.
   `transactions_2026-01-01_to_2026-06-30.csv`.
+- `GET /balances` takes the same filters as `/export` (all optional; the same 400s, except that a
+  period without transactions is fine) and returns `{balances: [{id, account_name, opening, days:
+  [{date, balance}], closing}]}`, one entry per account in id order, every amount also as
+  `*_cents`: the balance just before `start_date` (the starting balance when there's none), the
+  end-of-day balance of each date with transactions through `end_date`, and the balance at the
+  end. Transfers and reimbursements count. Over all time, `closing` is the account's current
+  balance.
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---
@@ -656,15 +763,18 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 
 | File | Covers |
 |---|---|
-| `test_routes.py` | HTTP behavior: auth, registration validation, accounts, transactions, recurring |
+| `test_routes.py` | HTTP behavior: auth, registration validation, accounts, transactions, recurring, balances |
 | `test_service.py` | Service logic: account review, transactions and balances, recurring generation and deletion, auth |
 | `test_imports.py` | Import preview and confirm, end to end |
 | `test_import_parser.py` | The pure parsing functions |
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
-| `test_balance_service.py` | Account ledgers: opening, running and closing balances |
+| `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
+| `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
-| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, account pages |
+| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
+| `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors, recurring costs and account pages |
+| `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors, recurring costs |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |
 | `test_error_handlers.py` | Global error responses |
 
@@ -712,11 +822,5 @@ Recorded so nobody builds on them by accident; each is planned to be fixed.
 - **Template responses compute their suggestions.** `needs_attention` walks each template's
   schedule (one query per occurrence) every time a template is returned, including the account
   template lists. Fine at today's scale; cache or store it if templates or history grow large.
-- **Template responses don't say which account they're on.** `RecurringModel.to_dict` has no
-  `account_id`; a client only knows it from having asked `GET /accounts/<id>/recurring`.
-- **Analytics count reimbursements as income.** `AnalyticsService.generate_report` (the
-  `/analytics` routes and the PDF's summary pages) counts every positive transaction that isn't
-  a transfer as income, while budgets and over-budget flags count a reimbursement against its
-  category's spending.
 - **`authenticate` answers faster for an unknown username** (no hash check), which leaks whether
   a username exists to someone timing requests.

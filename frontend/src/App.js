@@ -9,8 +9,6 @@ import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
-import { useUpcoming } from './hooks/useUpcoming';
-import { useAnalytics } from './hooks/useAnalytics';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -36,8 +34,6 @@ function App() {
   const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
-  const { upcoming, loadUpcoming } = useUpcoming({ setError });
-  const { analytics, loadAnalytics } = useAnalytics({ setError });
   // AUTH HANDLERS =============================================================
 
   // Forgets the login; the caller decides what the login screen says
@@ -53,6 +49,12 @@ function App() {
     endSession();
     setError(null);
   }, [endSession]);
+
+  // Moving to another view leaves the last one's message behind; the view you're on keeps it
+  const changeView = (next) => {
+    if (next !== view) setError(null);
+    setView(next);
+  };
 
   // A message from before logging in (an expired login, a failed attempt) no longer applies
   const startSession = (data) => {
@@ -101,8 +103,8 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadAnalytics()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -196,7 +198,7 @@ function App() {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -205,7 +207,7 @@ function App() {
   const handleEditRecurring = async (id, fields) => {
     try {
       await recurringAPI.updateRecurring(id, fields);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -214,7 +216,7 @@ function App() {
   const handleDeleteRecurring = async (id) => {
     try {
       await recurringAPI.deleteRecurring(id);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await loadAllRecurring(accounts);
     } catch (err) {
       setError(err.message);
     }
@@ -250,12 +252,11 @@ function App() {
     }
   };
 
-  // A found series becomes a template linked to its payments, so templates, the upcoming list
-  // and transactions all reload
+  // A found series becomes a template linked to its payments, so templates and transactions reload
   const handleAddDetectedSeries = async (transactionIds) => {
     try {
       await recurringAPI.addDetectedSeries(transactionIds);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -342,14 +343,12 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
-      loadAnalytics();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
-    loadUpcoming(accounts);
-  }, [accounts, loadAllRecurring, loadUpcoming]);
+  }, [accounts, loadAllRecurring]);
 
   // RENDER ====================================================================
 
@@ -374,7 +373,7 @@ function App() {
         user={user}
         onLogout={handleLogout}
         view={view}
-        onViewChange={setView}
+        onViewChange={changeView}
         error={error}
         onDismissError={() => setError(null)}
       />
@@ -382,11 +381,10 @@ function App() {
       <main className="App-main">
         {view === 'dashboard' && (
           <DashboardView
-            analytics={analytics}
             transactions={transactions}
             budgetData={budgetData}
-            upcoming={upcoming}
-            onNavigate={setView}
+            onNavigate={changeView}
+            onError={setError}
           />
         )}
         {view === 'transactions' && (
@@ -424,7 +422,12 @@ function App() {
           />
         )}
         {view === 'insights' && (
-          <InsightsView transactions={transactions} accounts={accounts} />
+          <InsightsView
+            transactions={transactions}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            onError={setError}
+          />
         )}
       </main>
     </div>

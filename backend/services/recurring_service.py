@@ -441,6 +441,36 @@ class RecurringService:
             'dismissed_transaction_ids': sorted(db_service.get_dismissed_transaction_ids(rec.id)),
         }
 
+    # PROJECTION ================================================================
+
+    def projected_occurrences(self, user_id, days):
+        """
+        The user's recurring occurrences still to come, from today through `days` days ahead, as
+        (template, date) pairs by date: each template's schedule from its next date on its own
+        anchor (month ends clamp), while a limited series has occurrences left. Left out: dates
+        before today (generation fills them at the next page load), and an occurrence whose real
+        charge is already in, i.e. an exact match generation would link instead (match_candidates;
+        a charge stands in for one occurrence only, the earliest, as generation would use it).
+        """
+        today = date.today()
+        until = today + timedelta(days=days)
+        occurrences = []
+        for rec in db_service.get_user_recurring(user_id):
+            used = set()
+            idx, steps = rec.idx, 0
+            while rec.number == -1 or idx <= rec.number:
+                day = rec.shift(rec.next_date, steps)
+                if day > until:
+                    break
+                if day >= today:
+                    charge = next((t for t in self.match_candidates(rec, day) if t.id not in used), None)
+                    if charge:
+                        used.add(charge.id)
+                    else:
+                        occurrences.append((rec, day))
+                idx, steps = idx + 1, steps + 1
+        return sorted(occurrences, key=lambda occurrence: (occurrence[1], occurrence[0].id))
+
     # GENERATION ================================================================
 
     def process_due_recurring(self, account_id):

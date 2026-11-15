@@ -7,13 +7,12 @@ import { login, me } from '../api/auth';
 import { getAccounts } from '../api/accounts';
 import { getAllTransactions } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
-import { getAnalytics } from '../api/analytics';
+import { getProjection, getAccountRecurring } from '../api/recurring';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
 jest.mock('../api/transactions');
 jest.mock('../api/budgets');
-jest.mock('../api/analytics');
 jest.mock('../api/recurring');
 
 const EXPIRED = 'Your session has expired. Please log in again.';
@@ -34,7 +33,7 @@ beforeEach(() => {
   getAccounts.mockResolvedValue([]);
   getAllTransactions.mockResolvedValue([]);
   getBudgetProgress.mockResolvedValue([]);
-  getAnalytics.mockResolvedValue(null);
+  getProjection.mockResolvedValue([]);
 });
 
 const renderApp = () => render(<CategoryColorProvider><App /></CategoryColorProvider>);
@@ -82,6 +81,62 @@ test("logging out leaves the session's messages behind", async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Logout' }));
   expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument();
   expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's errors show in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
+test('switching views clears the banner; clicking the view you are on keeps it', async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  expect(await screen.findByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+  expect(screen.getByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Budgeting' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's links to other views clear it too", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  await screen.findByText('Could not load accounts');
+
+  await userEvent.click(screen.getByRole('button', { name: 'View all →' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("Insights' Recurring tab totals every account's recurring costs", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockResolvedValue([{ id: 1, account_name: 'Checking' }, { id: 2, account_name: 'Discover' }]);
+  getAccountRecurring.mockImplementation(async (accountId) => [{
+    id: accountId, account_id: accountId, date: '2026-04-02', vendor: `Bill ${accountId}`, category: 'Bills',
+    amount: accountId === 1 ? -75 : -20, notes: '', next_date: '2026-12-02', last_date: null,
+    frequency: 1, frequency_unit: 'months', number: -1, idx: 1,
+  }]);
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('$95.00/mo')).toBeInTheDocument();
+});
+
+test("Insights' Recurring tab reports a failed projection in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  await screen.findByText('Could not load the projection');           // the Dashboard's
+  await userEvent.click(screen.getByRole('button', { name: '×' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
 });
 
 test('a login that expires while you use the app sends you to the login screen, saying why', async () => {

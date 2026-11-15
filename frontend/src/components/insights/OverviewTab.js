@@ -1,17 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { useCategoryColors } from '../../CategoryColorContext';
 import FilterPanel from '../FilterPanel';
 import { computeAnalytics, PRESETS, presetDates } from './analytics';
 import SummaryCards from './SummaryCards';
-import MonthlyTrendsChart from './charts/MonthlyTrendsChart';
-import CategoryPieChart from './charts/CategoryPieChart';
-import TopVendorsChart from './charts/TopVendorsChart';
-import CategoryBreakdownTable from './CategoryBreakdownTable';
+import CategoryMultiples from './CategoryMultiples';
+import NetByMonth from './NetByMonth';
+import TopVendors from './TopVendors';
+import { periodMonths, categoryPanels } from './categoryPanels';
+import { monthlyNet } from './monthlyNet';
+import { todayISO } from '../../utils/dates';
+import { formatDollars } from '../../utils/money';
 import WeeklyAverages from './WeeklyAverages';
 
 function OverviewTab({ transactions = [], accounts = [] }) {
-  const { getColor } = useCategoryColors();
-
   // ── Filter state ──────────────────────────────────────────────────────────
   const [startDate,          setStartDate]          = useState('');
   const [endDate,            setEndDate]            = useState('');
@@ -75,6 +75,17 @@ function OverviewTab({ transactions = [], accounts = [] }) {
 
   const analytics = useMemo(() => computeAnalytics(filtered), [filtered]);
 
+  // The monthly charts share the months the period covers: net per month, one small chart per
+  // spending category, and a vendor's months in the top vendors
+  const { months, partial, netRows, panels } = useMemo(() => {
+    const period = periodMonths(filtered, startDate, endDate, todayISO());
+    return {
+      ...period,
+      netRows: monthlyNet(filtered, period.months, period.partial),
+      panels:  categoryPanels(filtered, period.months, period.partial),
+    };
+  }, [filtered, startDate, endDate]);
+
   // ── Header + filter panel ─────────────────────────────────────────────────
   const header = (
     <div className="insights-header-card">
@@ -134,45 +145,26 @@ function OverviewTab({ transactions = [], accounts = [] }) {
   }
 
   // ── Chart data ────────────────────────────────────────────────────────────
-  const spendingPieData = analytics.spending_by_category?.map(cat => ({
-    name: cat.category, value: cat.total,
-  })) || [];
-
-  const incomePieData = analytics.income_by_category?.map(cat => ({
-    name: cat.category, value: cat.total,
-  })) || [];
-
-  const monthlyTrendData = (analytics.monthly_summary?.map(month => ({
-    month: month.month,
-    income:   month.income,
-    expenses: month.expenses,
-    net:      month.net,
-  })) || []).slice().reverse();
-
-  const topVendorsData = analytics.top_vendors?.slice(0, 10) || [];
+  // Income by category is one line (Phase V, V5b): its largest category and that category's share
+  // (worded so a category named "Income" still reads)
+  const incomeRows = analytics.income_by_category;
+  const incomeLine = incomeRows.length === 0 ? null
+    : incomeRows.length === 1
+      ? `All income is in one category: ${incomeRows[0].category} (${formatDollars(incomeRows[0].total)})`
+      : `Largest income category: ${incomeRows[0].category}, ${formatDollars(incomeRows[0].total)} of `
+        + `${formatDollars(analytics.summary.total_income)} (${Math.round((incomeRows[0].total / analytics.summary.total_income) * 100)}%)`;
 
   return (
     <div className="analytics-dashboard">
       {header}
 
       <SummaryCards summary={analytics.summary} />
+      {incomeLine && <p className="income-line">{incomeLine}</p>}
 
       <div className="charts-grid">
-        <MonthlyTrendsChart data={monthlyTrendData} />
-        <CategoryPieChart
-          title="Spending by Category"
-          data={spendingPieData}
-          getColor={getColor}
-          emptyLabel="No expense data available"
-        />
-        <CategoryPieChart
-          title="Income by Category"
-          data={incomePieData}
-          getColor={getColor}
-          emptyLabel="No income data available"
-        />
-        <TopVendorsChart data={topVendorsData} />
-        <CategoryBreakdownTable rows={analytics.spending_by_category} />
+        <NetByMonth rows={netRows} />
+        <CategoryMultiples panels={panels} />
+        <TopVendors transactions={filtered} months={months} partial={partial} />
         <WeeklyAverages trends={analytics.trends} />
       </div>
     </div>

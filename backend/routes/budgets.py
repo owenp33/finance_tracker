@@ -9,6 +9,7 @@ Endpoints
 GET    /api/budgets               List allocations (optionally filtered by ?period=YYYY-MM)
 POST   /api/budgets               Create a new allocation
 GET    /api/budgets/progress      Computed spent-vs-allocated for a period
+PUT    /api/budgets/scheduled-pace  Pace a category by its recurring charges or evenly
 PATCH  /api/budgets/<id>          Update amount, rollover flag, or carried_over
 DELETE /api/budgets/<id>          Remove an allocation
 """
@@ -17,6 +18,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, BudgetService
 from middleware.ownership import owns_budget
+from middleware.request_body import json_body
 
 budgets_bp = Blueprint('budgets', __name__)
 db_service     = DbService()
@@ -53,6 +55,21 @@ def get_budget_progress():
         'period':   period,
         'progress': progress,
     }), 200
+
+
+@budgets_bp.route('/scheduled-pace', methods=['PUT'])
+@jwt_required()
+def set_scheduled_pace():
+    """
+    Pace a budget category by its recurring charges or evenly, in every month.
+    Body: {category, scheduled (true | false)}.
+    """
+    data = json_body()
+    try:
+        budget_service.set_scheduled_pace(get_jwt_identity(), data.get('category'), data.get('scheduled'))
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True, 'category': data['category'], 'scheduled': data['scheduled']}), 200
 
 
 @budgets_bp.route('', methods=['POST'])

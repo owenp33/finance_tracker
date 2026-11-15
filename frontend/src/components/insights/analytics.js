@@ -1,95 +1,61 @@
-// Pure analytics helpers shared by the Overview and Reports tabs.
+import { isIncome, isSpending } from '../../utils/moneyRules';
+import { todayISO, shiftMonths, dayNumber } from '../../utils/dates';
 
-// Derives the same analytics shape the backend produces, from a raw transactions array.
+// Pure analytics helpers for the Overview tab, by the shared money rules (utils/moneyRules.js,
+// decision 2): transfers never count, income is money in (reimbursements included), spending is
+// money out, and a zero amount is neither. Sums are in cents; the results are in dollars, in the
+// shape the backend's AnalyticsService produces, less its monthly summary and top vendors (the
+// Overview's come from monthlyNet since V5c and topVendors since V5d).
+
+const dollars = (cents) => cents / 100;
+const size = (t) => Math.abs(t.amount_cents);
+const total = (list) => list.reduce((sum, t) => sum + size(t), 0);
+
+// Rows of {[key], total, average, count, percentage (of `whole`, a string)}, largest first
+const byKey = (list, key, whole) => {
+  const groups = {};
+  for (const t of list) (groups[t[key]] = groups[t[key]] || []).push(t);
+  return Object.entries(groups)
+    .map(([name, group]) => {
+      const cents = total(group);
+      return {
+        [key]: name,
+        total: dollars(cents),
+        average: dollars(cents / group.length),
+        count: group.length,
+        percentage: whole > 0 ? ((cents / whole) * 100).toFixed(1) : '0.0',
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+};
+
+// The Overview's numbers from a list of transactions (null when there are none)
 export function computeAnalytics(transactions) {
   if (!transactions || transactions.length === 0) return null;
 
-  const nonTransfers = transactions.filter(t => !t.is_transfer);
-  const expenses = nonTransfers.filter(t => t.amount < 0);
-  const income   = nonTransfers.filter(t => t.amount >= 0);
+  const income = transactions.filter(isIncome);
+  const expenses = transactions.filter(isSpending);
+  const counted = [...income, ...expenses];
+  const incomeCents = total(income);
+  const expenseCents = total(expenses);
 
-  const totalIncome   = income.reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
-  const avgTransaction = nonTransfers.length > 0
-    ? nonTransfers.reduce((s, t) => s + Math.abs(t.amount), 0) / nonTransfers.length
-    : 0;
-
-  const groupBy = (txns, key, getValue) => {
-    const map = {};
-    for (const t of txns) {
-      const k = t[key];
-      if (!map[k]) map[k] = [];
-      map[k].push(getValue(t));
-    }
-    return map;
-  };
-
-  const toCatRows = (map, total) =>
-    Object.entries(map)
-      .map(([category, vals]) => {
-        const sum = vals.reduce((s, v) => s + v, 0);
-        return {
-          category,
-          total: sum,
-          average: sum / vals.length,
-          count: vals.length,
-          percentage: total > 0 ? ((sum / total) * 100).toFixed(1) : '0.0',
-        };
-      })
-      .sort((a, b) => b.total - a.total);
-
-  const spending_by_category = toCatRows(
-    groupBy(expenses, 'category', t => Math.abs(t.amount)),
-    totalExpenses,
-  );
-  const income_by_category = toCatRows(
-    groupBy(income, 'category', t => t.amount),
-    totalIncome,
-  );
-
-  // Monthly summary — sorted newest-first to match backend convention
-  // (Overview/Reports reverse it for the line chart so oldest renders on the left)
-  const monthMap = {};
-  for (const t of nonTransfers) {
-    const m = t.date.substring(0, 7);
-    if (!monthMap[m]) monthMap[m] = { income: 0, expenses: 0 };
-    if (t.amount >= 0) monthMap[m].income   += t.amount;
-    else               monthMap[m].expenses += Math.abs(t.amount);
-  }
-  const monthly_summary = Object.entries(monthMap)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([month, { income: inc, expenses: exp }]) => ({
-      month, income: inc, expenses: exp, net: inc - exp,
-    }));
-
-  // Top vendors by absolute spend
-  const vendorMap = groupBy(expenses, 'vendor', t => Math.abs(t.amount));
-  const top_vendors = Object.entries(vendorMap)
-    .map(([vendor, vals]) => ({ vendor, amount: vals.reduce((s, v) => s + v, 0) }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 10);
-
-  // Weekly averages over the span of the non-transfer transactions
-  const dates  = nonTransfers.map(t => new Date(t.date));
-  const minMs  = Math.min(...dates);
-  const maxMs  = Math.max(...dates);
-  const weeks  = Math.max(1, (maxMs - minMs) / (7 * 24 * 60 * 60 * 1000));
+  // Weekly averages over the days from the first counted transaction to the last (at least a week)
+  const days = counted.map(t => dayNumber(t.date));
+  const weeks = days.length ? Math.max(1, (Math.max(...days) - Math.min(...days)) / 7) : 1;
 
   return {
     summary: {
-      transaction_count: nonTransfers.length,
-      total_income:      totalIncome,
-      total_expenses:    totalExpenses,
-      net_amount:        totalIncome - totalExpenses,
-      avg_transaction:   avgTransaction,
+      transaction_count: counted.length,
+      total_income:      dollars(incomeCents),
+      total_expenses:    dollars(expenseCents),
+      net_amount:        dollars(incomeCents - expenseCents),
+      avg_transaction:   counted.length ? dollars(total(counted) / counted.length) : 0,
     },
-    spending_by_category,
-    income_by_category,
-    monthly_summary,
-    top_vendors,
+    spending_by_category: byKey(expenses, 'category', expenseCents),
+    income_by_category:   byKey(income, 'category', incomeCents),
     trends: {
-      weekly_avg_income:    totalIncome   / weeks,
-      weekly_avg_expenses:  totalExpenses / weeks,
+      weekly_avg_income:   dollars(incomeCents) / weeks,
+      weekly_avg_expenses: dollars(expenseCents) / weeks,
     },
   };
 }
@@ -103,14 +69,12 @@ export const PRESETS = [
   ['ytd', 'YTD'],
 ];
 
-export const toISO = d => d.toISOString().slice(0, 10);
-
+// A preset's dates through today, by the local date: the same day 1, 3, 6 or 12 months back
+// (a shorter month's last day when needed), Jan 1 for YTD, none for All Time
 export function presetDates(preset) {
-  const today = new Date();
+  const today = todayISO();
   if (preset === 'all')  return { start: '', end: '' };
-  if (preset === 'ytd')  return { start: `${today.getFullYear()}-01-01`, end: toISO(today) };
+  if (preset === 'ytd')  return { start: `${today.slice(0, 4)}-01-01`, end: today };
   const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[preset];
-  const d = new Date(today);
-  d.setMonth(d.getMonth() - months);
-  return { start: toISO(d), end: toISO(today) };
+  return { start: shiftMonths(today, -months), end: today };
 }

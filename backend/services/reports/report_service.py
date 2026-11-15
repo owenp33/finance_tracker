@@ -10,15 +10,17 @@ from datetime import datetime
 from services.analytics_service import AnalyticsService
 from services.balance_service import BalanceService
 from services.budget_flag_service import BudgetFlagService
-from services.reports import pdf_pages
+from services.db_service import DbService
+from services.reports import pdf_pages, summary_data
 from services.reports.csv_export import ledger_csv
 from matplotlib.backends.backend_pdf import PdfPages   # after pdf_pages, which picks the backend
 
 balance_service = BalanceService()
 budget_flag_service = BudgetFlagService()
+db_service = DbService()
 
 NOTHING_TO_EXPORT = 'No transactions in this period.'
-MIN_TREND_MONTHS = 2   # one month's totals are already on the summary page; a trend needs two points
+MIN_NET_MONTHS = 2   # net per month needs two months; one month's totals are already on the summary page
 
 
 @dataclass(frozen=True)
@@ -52,31 +54,51 @@ class ReportService:
 
     def pdf(self, user_id, filters, generated_at=None):
         """
-        The PDF report: the summary pages (summary, monthly trends when there are at least
-        MIN_TREND_MONTHS months of data, pies, top vendors, breakdown), then each account's pages
+        The PDF report: the summary pages (the summary with income as one line, net per month
+        when the period covers at least MIN_NET_MONTHS months, spending by category, top vendors,
+        and the chosen accounts' recurring costs as of today when there are any), then each
+        account's pages
         (balance chart over the period, transaction table with running balances, over-budget
-        transactions marked).
+        transactions marked). `generated_at` (default now) is printed, and its date is today.
         """
         ledgers = self._ledgers(user_id, filters)
         start, end = _period(filters, ledgers)
         transactions = [row.transaction for row in _by_date(ledgers)]
         analytics = AnalyticsService.generate_report(transactions)
         over_budget_ids = budget_flag_service.over_budget_ids(user_id, transactions)
+        generated_at = generated_at or datetime.now()
+        months, partial = summary_data.period_months(
+            transactions, filters.start_date, filters.end_date, generated_at.date())
         period_label = f'{start} to {end}'
-        generated_label = (generated_at or datetime.now()).strftime('%Y-%m-%d %H:%M')
+        generated_label = generated_at.strftime('%Y-%m-%d %H:%M')
 
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
-            pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label)
-            if len(analytics['monthly_summary']) >= MIN_TREND_MONTHS:
-                pdf_pages.render_monthly_trends_page(pdf, analytics)
-            pdf_pages.render_category_pie_page(pdf, analytics['spending_by_category'], 'Spending by Category')
-            pdf_pages.render_category_pie_page(pdf, analytics['income_by_category'], 'Income by Category')
-            pdf_pages.render_top_vendors_page(pdf, analytics['top_vendors'])
-            pdf_pages.render_breakdown_table_page(pdf, analytics['spending_by_category'])
+            pdf_pages.render_summary_page(pdf, analytics, period_label, generated_label,
+                                          summary_data.largest_income(transactions))
+            if len(months) >= MIN_NET_MONTHS:
+                pdf_pages.render_net_per_month_pages(
+                    pdf, summary_data.monthly_net(transactions, months, partial), period_label)
+            pdf_pages.render_spending_by_category_page(
+                pdf, summary_data.category_panels(transactions, months, partial), period_label)
+            pdf_pages.render_top_vendors_page(pdf, summary_data.top_vendors(transactions), period_label)
+            self._recurring_costs_page(pdf, user_id, filters, generated_at.date())
             for ledger in ledgers:
                 pdf_pages.render_account_pages(pdf, ledger, over_budget_ids, period_label, start, end)
         return ExportFile(buf.getvalue(), 'application/pdf', f'report_{start}_to_{end}.pdf')
+
+    def _recurring_costs_page(self, pdf, user_id, filters, today):
+        """
+        The recurring costs page for the chosen accounts' templates (default: all of the user's),
+        from every payment in their series, not just the period's; none without a cost series.
+        """
+        templates = [t for t in db_service.get_user_recurring(user_id)
+                     if not filters.account_ids or t.account_id in filters.account_ids]
+        payments = [payment for template in templates for payment in template.generated_transactions]
+        costs = summary_data.recurring_costs(templates, payments, today)
+        if costs['series']:
+            account_names = {template.account_id: template.account.acct_name for template in templates}
+            pdf_pages.render_recurring_costs_page(pdf, costs, account_names, today)
 
     def _ledgers(self, user_id, filters):
         """
