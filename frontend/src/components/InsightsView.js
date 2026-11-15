@@ -19,7 +19,7 @@ const InsightsView = ({ transactions = [], accounts = [], recurring = [], onErro
 
       {tab === 'overview' && <OverviewTab transactions={transactions} accounts={accounts} />}
       {tab === 'recurring' && <RecurringCostsTab recurring={recurring} transactions={transactions} accounts={accounts} onError={onError} />}
-      {tab === 'accounts' && <AccountsTab accounts={accounts} transactions={transactions} onError={onError} />}
+      {tab === 'accounts' && <AccountsTab accounts={accounts} transactions={transactions} recurring={recurring} onError={onError} />}
       {tab === 'reports'  && <ReportsTab accounts={accounts} />}
     </div>
   );

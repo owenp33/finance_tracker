@@ -25,8 +25,9 @@ const changeLabel = (change, from) => {
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
 // balance and its change over the range, a step line with a brush, a 90-day forecast (Phase F,
 // F1: utils/forecast.js), and a table. `accounts` (GET
-// /api/accounts) give the current balances each history should end at (the plan's check).
-function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR }) {
+// /api/accounts) give the current balances each history should end at (the plan's check);
+// `recurring` (every template) tells the forecast which series have ended.
+function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
   const [range, setRange] = useState('1Y');
@@ -56,7 +57,7 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
   const shownIds = shown.map(b => b.id);
   const forecastEnd = shiftDays(today, FORECAST_DAYS);
   const forecast = forecastFailed ? []
-    : forecastPoints(series.closing_cents, forecastInputs(transactions, occurrences, shownIds, today), today, forecastEnd);
+    : forecastPoints(series.closing_cents, forecastInputs(transactions, recurring, occurrences, shownIds, today), today, forecastEnd);
 
   const allPoints = [...points, ...forecast];
   const days = allPoints

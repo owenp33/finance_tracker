@@ -1,5 +1,6 @@
 import { shiftDays } from './dates';
 import { isSpending } from './moneyRules';
+import { isFinished } from './recurring';
 
 // The balance forecast (Phase F, F1), in cents. It learns from the last 90 days (today and the 89
 // days before it) and reaches as far ahead. A category whose spending over the last 90 days is at
@@ -7,8 +8,9 @@ import { isSpending } from './moneyRules';
 // every other category, bills included, by its spending over the last 90 days, spread evenly over
 // the days ahead. Income is scheduled income only (recurring series): irregular deposits are left
 // out. A series with no spending over the last 90 days (a new subscription, or a series of
-// transfers) keeps its schedule. Spending is plain spending (utils/moneyRules.js): transfers never
-// count, and reimbursements aren't taken off.
+// transfers) keeps its schedule. A series that has ended won't charge again, so its charges are
+// left out of everything the forecast learns. Spending is plain spending (utils/moneyRules.js):
+// transfers never count, and reimbursements aren't taken off.
 
 // How far ahead the forecast reaches, and how many days back it learns from
 export const FORECAST_DAYS = 90;
@@ -19,17 +21,20 @@ const SCHEDULED_PERCENT = 90;
 // The first of the last 90 days before `today` (YYYY-MM-DD), today being the last
 export const lastNinetyDaysStart = (today) => shiftDays(today, -(FORECAST_DAYS - 1));
 
-// Spending over the last 90 days, in every account
-const recentSpending = (transactions, today) => {
+// Spending over the last 90 days in every account, leaving out the charges of the `recurring`
+// templates that have ended
+const recentSpending = (transactions, recurring, today) => {
   const from = lastNinetyDaysStart(today);
-  return transactions.filter(t => isSpending(t) && t.date >= from && t.date <= today);
+  const ended = new Set(recurring.filter(isFinished).map(r => r.id));
+  return transactions.filter(t => isSpending(t) && t.date >= from && t.date <= today && !ended.has(t.recurring_id));
 };
 
-// Each category's spending over the last 90 days across every account: `total`, the part in a
-// recurring series (`linked`), and whether that's at least 90% (`scheduled`). Positive amounts.
-export const categoryShares = (transactions, today) => {
+// Each category's spending over the last 90 days across every account (ended series left out):
+// `total`, the part in a recurring series (`linked`), and whether that's at least 90%
+// (`scheduled`). Positive amounts.
+export const categoryShares = (transactions, recurring, today) => {
   const shares = {};
-  recentSpending(transactions, today).forEach(t => {
+  recentSpending(transactions, recurring, today).forEach(t => {
     const share = (shares[t.category] = shares[t.category] || { total: 0, linked: 0 });
     share.total -= t.amount_cents;
     if (t.recurring_id != null) share.linked -= t.amount_cents;
@@ -43,11 +48,12 @@ export const categoryShares = (transactions, today) => {
 // What the forecast of the accounts `accountIds` uses: the projected `occurrences` (GET
 // /recurring/projection) it keeps, which are scheduled income, charges in scheduled categories and
 // charges of series with no spending over the last 90 days; and `averages`, each other category's
-// spending over the last 90 days in those accounts ({category: positive cents}). The 90% test
-// looks at every account, so a category is forecast the same way whichever account is shown.
-export const forecastInputs = (transactions, occurrences, accountIds, today) => {
-  const shares = categoryShares(transactions, today);
-  const recent = recentSpending(transactions, today);
+// spending over the last 90 days in those accounts ({category: positive cents}). `recurring` is
+// every template, to tell which series have ended. The 90% test looks at every account, so a
+// category is forecast the same way whichever account is shown.
+export const forecastInputs = (transactions, recurring, occurrences, accountIds, today) => {
+  const shares = categoryShares(transactions, recurring, today);
+  const recent = recentSpending(transactions, recurring, today);
   const seriesWithSpending = new Set(recent.map(t => t.recurring_id).filter(id => id != null));
 
   const kept = occurrences.filter(o => accountIds.includes(o.account_id) && (

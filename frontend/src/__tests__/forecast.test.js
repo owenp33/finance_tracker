@@ -30,6 +30,11 @@ const TRANSACTIONS = [
   tx(14, 6, '2026-10-16', 'Transfer', -200, { is_transfer: true, recurring_id: 22 }),
 ];
 
+// A recurring template, as far as the forecast reads it: unlimited (`number` -1) unless given,
+// finished once `idx` passes `number`
+const template = (id, number = -1, idx = 1) => ({ id, number, idx });
+const ACTIVE = [template(5), template(6), template(22)];
+
 // An occurrence as GET /recurring/projection lists it, amounts in dollars
 const occurrence = (recurringId, accountId, date, category, amount) =>
   ({ recurring_id: recurringId, account_id: accountId, date, vendor: `Series ${recurringId}`, category, amount });
@@ -50,7 +55,7 @@ test('the forecast learns from the last 90 days, today and the 89 before it, and
 });
 
 test("each category's spending over the last 90 days, the part in a recurring series, and whether that's at least 90%", () => {
-  expect(categoryShares(TRANSACTIONS, TODAY)).toEqual({
+  expect(categoryShares(TRANSACTIONS, ACTIVE, TODAY)).toEqual({
     Loan: { total: 25000, linked: 22500, scheduled: true },
     Medical: { total: 32476, linked: 17476, scheduled: false },
     Grocery: { total: 13500, linked: 0, scheduled: false },
@@ -61,30 +66,40 @@ test('just under 90% in a series is averaged', () => {
   const shares = categoryShares([
     tx(1, 6, '2026-10-01', 'Utility', -89.99, { recurring_id: 9 }),
     tx(2, 6, '2026-10-02', 'Utility', -10.02),
-  ], TODAY);
+  ], [template(9)], TODAY);
   expect(shares.Utility).toEqual({ total: 10001, linked: 8999, scheduled: false });
 });
 
 test('net position keeps scheduled income, scheduled categories and series without recent spending, and averages the rest', () => {
-  const { occurrences, averages } = forecastInputs(TRANSACTIONS, SCHEDULED, [5, 6, 7], TODAY);
+  const { occurrences, averages } = forecastInputs(TRANSACTIONS, ACTIVE, SCHEDULED, [5, 6, 7], TODAY);
   expect(occurrences.map(o => o.recurring_id)).toEqual([22, 20, 21, 5, 13]);
   // Medical's series charges are in its average; Loan's unlinked $25 isn't forecast
   expect(averages).toEqual({ Medical: 32476, Grocery: 13500 });
 });
 
 test("an account's forecast keeps only its own items and averages only its own spending, but the 90% test spans every account", () => {
-  const checking = forecastInputs(TRANSACTIONS, SCHEDULED, [6], TODAY);
+  const checking = forecastInputs(TRANSACTIONS, ACTIVE, SCHEDULED, [6], TODAY);
   expect(checking.occurrences.map(o => o.recurring_id)).toEqual([22, 21, 5]);
   expect(checking.averages).toEqual({ Medical: 32476, Grocery: 4500 });
 
-  const discover = forecastInputs(TRANSACTIONS, SCHEDULED, [5], TODAY);
+  const discover = forecastInputs(TRANSACTIONS, ACTIVE, SCHEDULED, [5], TODAY);
   expect(discover.occurrences.map(o => o.recurring_id)).toEqual([20]);
   expect(discover.averages).toEqual({ Grocery: 9000 });
 });
 
-test('a scheduled category whose series have all ended forecasts nothing', () => {
-  const ended = [tx(1, 6, '2026-09-03', 'Rent', -652.50, { recurring_id: 10 })];
-  expect(forecastInputs(ended, [], [6], TODAY)).toEqual({ occurrences: [], averages: {} });
+test("an ended series' charges won't come again, so the 90% test and the averages leave them out", () => {
+  const rent = [
+    tx(1, 6, '2026-09-03', 'Rent', -652.50, { recurring_id: 10 }),
+    tx(2, 6, '2026-09-10', 'Rent', -50),
+  ];
+  // Still running, the series makes Rent 93% scheduled; with no charges to come, it forecasts nothing
+  expect(forecastInputs(rent, [template(10)], [], [6], TODAY)).toEqual({ occurrences: [], averages: {} });
+  // Ended (12 payments of 12), only the $50 outside it is left, and that's averaged
+  const ended = [template(10, 12, 13)];
+  expect(categoryShares(rent, ended, TODAY)).toEqual({ Rent: { total: 5000, linked: 0, scheduled: false } });
+  expect(forecastInputs(rent, ended, [], [6], TODAY)).toEqual({ occurrences: [], averages: { Rent: 5000 } });
+  // A category that only had the ended series isn't forecast at all
+  expect(forecastInputs([rent[0]], ended, [], [6], TODAY)).toEqual({ occurrences: [], averages: {} });
 });
 
 describe('forecast points', () => {

@@ -69,10 +69,10 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 // Opens Insights → Accounts and waits for the balances
-const openTab = async ({ accounts = ACCOUNTS, transactions = [], onError = jest.fn() } = {}) => {
+const openTab = async ({ accounts = ACCOUNTS, transactions = [], recurring = [], onError = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
-      <InsightsView transactions={transactions} accounts={accounts} recurring={[]} onError={onError} />
+      <InsightsView transactions={transactions} accounts={accounts} recurring={recurring} onError={onError} />
     </CategoryColorProvider>
   );
   await user.click(screen.getByRole('button', { name: 'Accounts' }));
@@ -192,6 +192,19 @@ describe('the forecast', () => {
     // $7,274.13 − $90.00 Grocery − $174.76 Bills
     await waitFor(() => expect(forecastLine())
       .toBe('Forecast for Feb 6, 2027: $7,009.37, from scheduled items and your average spending over the last 90 days'));
+  });
+
+  test("an ended series' charges are left out of its category's average", async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    // Medical: $120 from series 7, finished after 4 payments, and $30 outside it: only the $30 is averaged
+    await openTab({
+      transactions: [...RECENT, spend(106, 6, '2026-09-20', 'Medical', -120, 7), spend(107, 6, '2026-09-21', 'Medical', -30)],
+      recurring: [{ id: 7, number: 4, idx: 5 }],
+    });
+    await pick("Owen's Checking");
+    // $7,274.13 − $87.38 − $75.00 scheduled − $90.00 Grocery − $30.00 Medical
+    await waitFor(() => expect(forecastLine())
+      .toBe('Forecast for Feb 6, 2027: $6,991.75, from scheduled items and your average spending over the last 90 days'));
   });
 
   test('a failed projection is reported, and the history shows without a forecast', async () => {
