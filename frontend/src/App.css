@@ -3428,7 +3428,7 @@ body {
   color: #6b7280;
 }
 
-/* The forecast (V6b): dashed, and labelled as known recurring items only */
+/* The forecast (Phase F, F1): dashed, and labelled with what it counts */
 .balance-forecast-line {
   margin: -6px 0 12px;
   font-size: 0.85rem;

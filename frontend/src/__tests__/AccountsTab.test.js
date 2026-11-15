@@ -31,12 +31,25 @@ const CHECKING = entry(6, "Owen's Checking", 0, [['2025-01-01', -98541], ['2026-
 const SAVINGS = entry(7, "Owen's Savings", 707429, [['2025-07-11', 49312], ['2026-09-28', 300000]]);
 const BALANCES = [DISCOVER, CHECKING, SAVINGS];
 
-// What GET /recurring/projection lists for the 30 days from Nov 8, 2026
+// What GET /recurring/projection lists for the 90 days from Nov 8, 2026
 const occurrence = (accountId, date, vendor, amount) => ({ recurring_id: 1, account_id: accountId, date, vendor, category: 'Bills', amount });
 const SCHEDULED = [
   occurrence(6, '2026-11-09', 'Allina Health', -87.38),
   occurrence(6, '2026-11-30', 'ASPIRE', -75),
   occurrence(7, '2026-12-01', 'HLWW School District', 1700),
+];
+
+// Spending over the last 90 days (Aug 11 – Nov 8, 2026): Bills all in its series, so scheduled;
+// Grocery ($90 in Checking) and Restaurants ($27 in Discover) averaged, $1.00 and $0.30 a day
+const spend = (id, accountId, date, category, amount, recurringId = null) => ({
+  id, account_id: accountId, date, vendor: `Vendor ${id}`, category,
+  amount_cents: Math.round(amount * 100), recurring_id: recurringId, is_transfer: false,
+});
+const RECENT = [
+  spend(101, 6, '2026-10-26', 'Bills', -87.38, 1),
+  spend(102, 6, '2026-09-01', 'Grocery', -45),
+  spend(103, 6, '2026-10-01', 'Grocery', -45),
+  spend(104, 5, '2026-10-10', 'Restaurants', -27),
 ];
 
 // GET /api/accounts: current balances, which the histories end at
@@ -56,10 +69,10 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 // Opens Insights → Accounts and waits for the balances
-const openTab = async ({ accounts = ACCOUNTS, onError = jest.fn() } = {}) => {
+const openTab = async ({ accounts = ACCOUNTS, transactions = [], onError = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
-      <InsightsView transactions={[]} accounts={accounts} recurring={[]} onError={onError} />
+      <InsightsView transactions={transactions} accounts={accounts} recurring={[]} onError={onError} />
     </CategoryColorProvider>
   );
   await user.click(screen.getByRole('button', { name: 'Accounts' }));
@@ -140,27 +153,45 @@ test('a failed load is reported, and the tab says there is nothing to show', asy
 describe('the forecast', () => {
   const forecastLine = () => tab().querySelector('.balance-forecast-line').textContent;
 
-  test('it continues net position for 30 days by the scheduled recurring items, dashed and labelled', async () => {
+  test('it continues net position for 90 days by the scheduled items and the averaged spending, dashed and labelled', async () => {
     getProjection.mockResolvedValue(SCHEDULED);
-    await openTab();
-    await waitFor(() => expect(getProjection).toHaveBeenCalledWith(30));
-    await waitFor(() => expect(forecastLine()).toBe('Forecast for Dec 8, 2026: $10,959.30, from known recurring items only'));
+    await openTab({ transactions: RECENT });
+    await waitFor(() => expect(getProjection).toHaveBeenCalledWith(90));
+    // $9,421.68 − $87.38 − $75.00 + $1,700.00 scheduled, − $117.00 averaged over the 90 days
+    await waitFor(() => expect(forecastLine())
+      .toBe('Forecast for Feb 6, 2027: $10,842.30, from scheduled items and your average spending over the last 90 days'));
     expect(tab().querySelector('.balance-forecast .recharts-line-curve')).not.toBeNull();
-    expect(within(tab()).getByText('Forecast: known recurring items only')).toBeInTheDocument();
+    expect(within(tab()).getByText('Forecast: scheduled items and average spending over the last 90 days')).toBeInTheDocument();
     expect(summary()).toEqual(['$9,421.68', 'Up $9,913.97 since Nov 8, 2025']);     // the history is unchanged
   });
 
-  test("an account's forecast counts only its own items, and the table marks forecast days", async () => {
+  test("an account's forecast counts only its own items and spending, and the table lists each forecast day", async () => {
     getProjection.mockResolvedValue(SCHEDULED);
-    await openTab();
+    await openTab({ transactions: RECENT });
     await pick("Owen's Checking");
     await pick('3M');
-    await waitFor(() => expect(forecastLine()).toBe('Forecast for Dec 8, 2026: $7,111.75, from known recurring items only'));
-    expect((await tableRows()).slice(1)).toEqual([
+    await waitFor(() => expect(forecastLine())
+      .toBe('Forecast for Feb 6, 2027: $7,021.75, from scheduled items and your average spending over the last 90 days'));
+    const rows = (await tableRows()).slice(1);
+    expect(rows).toHaveLength(91);
+    expect(rows.slice(0, 3)).toEqual([
       ['Oct 31, 2026', '$7,274.13', '+$2,274.13'],
-      ['Nov 9, 2026 (forecast)', '$7,186.75', '-$87.38'],
-      ['Nov 30, 2026 (forecast)', '$7,111.75', '-$75.00'],
+      ['Nov 9, 2026 (forecast)', '$7,185.75', '-$88.38'],
+      ['Nov 10, 2026 (forecast)', '$7,184.75', '-$1.00'],
     ]);
+    expect(rows[22]).toEqual(['Nov 30, 2026 (forecast)', '$7,089.75', '-$76.00']);
+    expect(rows[90]).toEqual(['Feb 6, 2027 (forecast)', '$7,021.75', '-$1.00']);
+  });
+
+  test('a series charge in an averaged category gives way to the average', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    // Bills now half in its series: Allina's and ASPIRE's charges leave the forecast, and Bills'
+    // $174.76 joins the averages
+    await openTab({ transactions: [...RECENT, spend(105, 6, '2026-10-27', 'Bills', -87.38)] });
+    await pick("Owen's Checking");
+    // $7,274.13 − $90.00 Grocery − $174.76 Bills
+    await waitFor(() => expect(forecastLine())
+      .toBe('Forecast for Feb 6, 2027: $7,009.37, from scheduled items and your average spending over the last 90 days'));
   });
 
   test('a failed projection is reported, and the history shows without a forecast', async () => {
@@ -174,10 +205,18 @@ describe('the forecast', () => {
 });
 
 test("a forecast day's tooltip lists the items scheduled that day", () => {
-  render(<BalanceTooltip active payload={[{ payload: { date: '2026-12-01', cents: 1095930, kind: 'forecast', items: [SCHEDULED[2]] } }]}
+  render(<BalanceTooltip active payload={[{ payload: { date: '2026-12-01', cents: 1095930, kind: 'forecast', items: [SCHEDULED[2]], average: 0 } }]}
     transactions={[]} accountIds={[5, 6, 7]} />);
   expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
     'Dec 1, 2026, forecast', '$10,959.30', 'HLWW School District+$1,700.00',
+  ]);
+});
+
+test("a forecast day's tooltip adds that day's share of the average spending", () => {
+  render(<BalanceTooltip active payload={[{ payload: { date: '2026-11-09', cents: 718575, kind: 'forecast', items: [SCHEDULED[0]], average: 100 } }]}
+    transactions={[]} accountIds={[6]} />);
+  expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
+    'Nov 9, 2026, forecast', '$7,185.75', 'Allina Health-$87.38', 'Average spending over the last 90 days-$1.00',
   ]);
 });
 

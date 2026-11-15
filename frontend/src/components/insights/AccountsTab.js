@@ -6,13 +6,10 @@ import { useBalances } from '../../hooks/useBalances';
 import { useProjection } from '../../hooks/useProjection';
 import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
-import { RANGES, netPosition, rangeStart, rangePoints, forecastPoints } from '../../utils/balances';
+import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
+import { FORECAST_DAYS, forecastInputs, forecastPoints } from '../../utils/forecast';
 
 const NET = 'net';
-
-// How far the forecast reaches: as far as the Dashboard's agenda (a forecast of known recurring
-// items only drifts further from reality the longer it runs)
-const FORECAST_DAYS = 30;
 
 // A stable stand-in when no one listens for errors (useBalances refetches when it changes)
 const IGNORE_ERROR = () => {};
@@ -26,8 +23,8 @@ const changeLabel = (change, from) => {
 
 // Insights → Accounts (Phase V, V4): is each account growing or shrinking, and what's the net
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
-// balance and its change over the range, a step line with a brush, a 30-day forecast of the known
-// recurring items (V6b), and a table. `accounts` (GET
+// balance and its change over the range, a step line with a brush, a 90-day forecast (Phase F,
+// F1: utils/forecast.js), and a table. `accounts` (GET
 // /api/accounts) give the current balances each history should end at (the plan's check).
 function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
@@ -55,11 +52,11 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
   const points = rangePoints(series, from, today);
   const change = points[points.length - 1].cents - points[0].cents;
 
-  // The forecast (V6b): from today's balance, the shown accounts' scheduled recurring items
+  // The forecast: from today's balance, the shown accounts' scheduled items and average spending
   const shownIds = shown.map(b => b.id);
   const forecastEnd = shiftDays(today, FORECAST_DAYS);
   const forecast = forecastFailed ? []
-    : forecastPoints(series.closing_cents, occurrences.filter(o => shownIds.includes(o.account_id)), today, forecastEnd);
+    : forecastPoints(series.closing_cents, forecastInputs(transactions, occurrences, shownIds, today), today, forecastEnd);
 
   const allPoints = [...points, ...forecast];
   const days = allPoints
@@ -105,7 +102,7 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
       {forecast.length > 0 && (
         <p className="balance-forecast-line">
           {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}, `
-            + 'from known recurring items only'}
+            + 'from scheduled items and your average spending over the last 90 days'}
         </p>
       )}
       {mismatch && (
@@ -122,7 +119,7 @@ function AccountsTab({ accounts = [], transactions = [], onError = IGNORE_ERROR 
       {forecast.length > 0 && (
         <ul className="timeline-legend">
           <li><span className="balance-key" aria-hidden="true" />Balance</li>
-          <li><span className="balance-key forecast" aria-hidden="true" />Forecast: known recurring items only</li>
+          <li><span className="balance-key forecast" aria-hidden="true" />Forecast: scheduled items and average spending over the last 90 days</li>
         </ul>
       )}
       <ViewAsTable

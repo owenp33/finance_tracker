@@ -23,6 +23,7 @@ const monthTicks = (from, to) => {
 
 // A point's details on hover or tap: its date and balance, and for a day with changes, that day's
 // transactions in the accounts shown (`accountIds`), or for a forecast day, the items scheduled
+// and its share of the average spending (utils/forecast.js forecastPoints)
 export function BalanceTooltip({ active, payload, transactions, accountIds }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
@@ -30,7 +31,10 @@ export function BalanceTooltip({ active, payload, transactions, accountIds }) {
   const onDay = point.kind === 'day'
     ? transactions.filter(t => t.date === point.date && accountIds.includes(t.account_id))
     : forecast
-      ? point.items.map((o, i) => ({ id: `${o.recurring_id}-${i}`, vendor: o.vendor, amount_cents: Math.round(o.amount * 100) }))
+      ? [
+        ...point.items.map((o, i) => ({ id: `${o.recurring_id}-${i}`, vendor: o.vendor, amount_cents: Math.round(o.amount * 100) })),
+        ...(point.average > 0 ? [{ id: 'average', vendor: 'Average spending over the last 90 days', amount_cents: -point.average }] : []),
+      ]
       : [];
   const title = point.kind === 'start' ? `${formatDate(point.date, true)}, start of range`
     : point.kind === 'end' ? `${formatDate(point.date, true)}, today`
@@ -54,7 +58,7 @@ export function BalanceTooltip({ active, payload, transactions, accountIds }) {
 
 // A step line of a balance over a range (`points`: utils/balances.js rangePoints), on a time axis,
 // with a $0 line when it crosses zero and a brush underneath to zoom; then, dashed from today's
-// balance, the `forecast` (forecastPoints) with a "Today" line between them
+// balance, the `forecast` (utils/forecast.js forecastPoints) with a "Today" line between them
 function BalanceChart({ points, forecast = [], today, transactions, accountIds }) {
   const last = points.length - 1;
   const data = [
