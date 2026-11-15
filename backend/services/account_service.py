@@ -30,17 +30,25 @@ def _account_label(value, column, shown_as):
     return label
 
 
-# Dollars. Keeps balance_cents (a 32-bit INTEGER in Postgres) far from overflowing.
-MAX_OPENING_BALANCE = 10_000_000
+# Dollars, for a starting or current balance. Keeps balance_cents (a 32-bit INTEGER in Postgres)
+# far from overflowing.
+MAX_BALANCE = 10_000_000
+
+BALANCE_LIMIT_TEXT = f'between -${MAX_BALANCE:,} and ${MAX_BALANCE:,}'
 
 
-def _opening_balance(value):
-    """The starting balance in dollars. Raises ValueError unless it's a finite number within ±MAX_OPENING_BALANCE."""
+def _balance_dollars(value, label):
+    """A balance in dollars (`label` names it in errors). Raises ValueError unless it's a finite number within ±MAX_BALANCE."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
-        raise ValueError('Starting balance must be a number.')
-    if abs(value) > MAX_OPENING_BALANCE:
-        raise ValueError(f'Starting balance must be between -${MAX_OPENING_BALANCE:,} and ${MAX_OPENING_BALANCE:,}.')
+        raise ValueError(f'{label} must be a number.')
+    if abs(value) > MAX_BALANCE:
+        raise ValueError(f'{label} must be {BALANCE_LIMIT_TEXT}.')
     return value
+
+
+def _money(cents):
+    """Cents as dollars for a message: '$1,234.50', '-$815.07'."""
+    return f"{'-' if cents < 0 else ''}${abs(cents) / 100:,.2f}"
 
 
 class AccountService:
@@ -62,11 +70,14 @@ class AccountService:
 
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account. Editing the name, id string, or starting balance
-        (opening_balance, in dollars), or sending needs_attention=False ("Looks good"), marks an
-        import-created account as reviewed. Names and id strings are trimmed; changing the
-        starting balance moves the balance by the same amount. Returns (updated_account,
-        error_message); raises ValueError for invalid input, before changing anything.
+        Apply field updates to an account. Editing the name, id string, starting balance
+        (opening_balance, in dollars) or current balance (balance, in dollars), or sending
+        needs_attention=False ("Looks good"), marks an import-created account as reviewed. Names
+        and id strings are trimmed. Changing the starting balance moves the balance by the same
+        amount; setting the current balance sets the starting balance to it less the account's
+        transactions (transfers included), so the two always add up. One balance or the other,
+        not both. Returns (updated_account, error_message); raises ValueError for invalid input,
+        before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
@@ -75,6 +86,8 @@ class AccountService:
         # Validate every field before changing any
         if 'needs_attention' in data and data['needs_attention'] is not False:
             raise ValueError('needs_attention can only be set to false')
+        if 'opening_balance' in data and 'balance' in data:
+            raise ValueError('Send either the starting balance or the current balance, not both.')
         name = account.acct_name
         if 'account_name' in data:
             name = _account_label(data['account_name'], AccountModel.acct_name, 'Display name')
@@ -83,15 +96,26 @@ class AccountService:
             id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
         opening = account.opening_balance
         if 'opening_balance' in data:
-            opening = _opening_balance(data['opening_balance'])
+            opening = _balance_dollars(data['opening_balance'], 'Starting balance')
+        balance_cents = None
+        if 'balance' in data:
+            balance_cents = int(round(_balance_dollars(data['balance'], 'Current balance') * 100))
+            # The transactions add up to the stored balance less the starting balance
+            implied = balance_cents - (account.balance_cents - account.opening_balance_cents)
+            if abs(implied) > MAX_BALANCE * 100:
+                raise ValueError(f'Starting balance must be {BALANCE_LIMIT_TEXT}; '
+                                 f'this current balance would make it {_money(implied)}.')
 
         account.acct_name   = name
         account.acct_id_str = id_str
-        # The balance includes the starting balance, so it moves by the same difference
-        old_opening_cents = account.opening_balance_cents
-        account.opening_balance = opening
-        db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
-        if {'needs_attention', 'account_name', 'account_id', 'opening_balance'} & data.keys():
+        if balance_cents is not None:
+            db_service.set_balance(account.id, balance_cents)
+        else:
+            # The balance includes the starting balance, so it moves by the same difference
+            old_opening_cents = account.opening_balance_cents
+            account.opening_balance = opening
+            db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
+        if {'needs_attention', 'account_name', 'account_id', 'opening_balance', 'balance'} & data.keys():
             account.needs_attention = False
 
         db.session.commit()

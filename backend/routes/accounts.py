@@ -76,7 +76,11 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string, or mark it reviewed with {"needs_attention": false}."""
+    """
+    Update the account name, id string, and starting balance (opening_balance) or current balance
+    (balance, which sets the starting balance to it less the transactions), or mark it reviewed
+    with {"needs_attention": false}.
+    """
     try:
         acc, error = account_service.update_account(account_id, json_body())
     except ValueError as e:

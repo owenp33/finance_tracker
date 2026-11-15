@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
-import { formatDollars } from '../utils/money';
+import { formatDollars, formatSignedCents } from '../utils/money';
 
 const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -8,6 +8,12 @@ const formatDate = (dateStr, showYear = false) => {
     ? { month: 'short', day: 'numeric', year: 'numeric' }
     : { month: 'short', day: 'numeric' };
   return new Date(year, month - 1, day).toLocaleDateString('en-US', opts);
+};
+
+// A typed dollar amount in cents, or null while it's blank or not a number
+const typedCents = (text) => {
+  const dollars = Number(text);
+  return text.trim() === '' || !Number.isFinite(dollars) ? null : Math.round(dollars * 100);
 };
 
 function AccountsView({
@@ -29,6 +35,8 @@ function AccountsView({
   const [editingAccountName, setEditingAccountName] = useState('');
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
   const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
+  const [editingCurrentBalance, setEditingCurrentBalance] = useState('');
+  const [editingBalanceSource, setEditingBalanceSource] = useState('opening');   // the one typed in last
   const [pairingTxId, setPairingTxId] = useState(null);
   const [pairingToAccountId, setPairingToAccountId] = useState('');
   const [selectedTransferIds, setSelectedTransferIds] = useState(new Set());
@@ -118,6 +126,21 @@ function AccountsView({
             const visibleTransfers = applyTransferSort(accountTransfers, cfg.sort);
             const transferYears = new Set(accountTransfers.map(t => t.date.slice(0, 4)));
             const showYear = transferYears.size > 1;
+            // Starting balance + transactions (transfers included) = current balance
+            const transactionCents = Math.round(a.balance * 100) - Math.round((a.opening_balance ?? 0) * 100);
+            const typeStarting = (text) => {
+              setEditingOpeningBalance(text);
+              setEditingBalanceSource('opening');
+              const cents = typedCents(text);
+              if (cents !== null) setEditingCurrentBalance(((cents + transactionCents) / 100).toFixed(2));
+            };
+            const typeCurrent = (text) => {
+              setEditingCurrentBalance(text);
+              setEditingBalanceSource('current');
+              const cents = typedCents(text);
+              if (cents !== null) setEditingOpeningBalance(((cents - transactionCents) / 100).toFixed(2));
+            };
+            const typedBalance = editingBalanceSource === 'current' ? editingCurrentBalance : editingOpeningBalance;
 
             return (
               <div key={a.id} className="account-item">
@@ -151,7 +174,7 @@ function AccountsView({
                         type="number"
                         step="0.01"
                         value={editingOpeningBalance}
-                        onChange={e => setEditingOpeningBalance(e.target.value)}
+                        onChange={e => typeStarting(e.target.value)}
                         placeholder="0.00"
                       />
                       <small className="account-field-hint">
@@ -160,15 +183,36 @@ function AccountsView({
                         transactions, subtract their total from this.
                       </small>
                     </div>
+                    <p className="account-balance-sum">
+                      The transactions here add up to {formatSignedCents(transactionCents)}, so
+                      starting balance + transactions = current balance.
+                    </p>
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-current`}>Current balance</label>
+                      <input
+                        id={`account-${a.id}-current`}
+                        type="number"
+                        step="0.01"
+                        value={editingCurrentBalance}
+                        onChange={e => typeCurrent(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <small className="account-field-hint">
+                        What your bank shows today. Enter it once every transaction up to today is
+                        here; the starting balance becomes this less the transactions.
+                      </small>
+                    </div>
                     <div className="account-edit-actions">
                       <button
                         className="btn btn-primary btn-sm"
-                        disabled={editingOpeningBalance.trim() === ''}
+                        disabled={typedBalance.trim() === ''}
                         onClick={async () => {
                           const saved = await onEditAccount(a.id, {
                             account_id: editingAccountIdStr,
                             account_name: editingAccountName,
-                            opening_balance: Number(editingOpeningBalance),
+                            ...(editingBalanceSource === 'current'
+                              ? { balance: Number(editingCurrentBalance) }
+                              : { opening_balance: Number(editingOpeningBalance) }),
                           });
                           if (saved) setEditingAccountId(null);
                         }}
@@ -230,6 +274,8 @@ function AccountsView({
                             setEditingAccountName(a.account_name);
                             setEditingAccountIdStr(a.account_id);
                             setEditingOpeningBalance(String(a.opening_balance ?? 0));
+                            setEditingCurrentBalance(String(a.balance ?? 0));
+                            setEditingBalanceSource('opening');
                           }}
                         ><Pencil size={14} /></button>
                         <button

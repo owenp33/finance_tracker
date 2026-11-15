@@ -160,6 +160,22 @@ class TestAccountRoutes:
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': 'Starting balance must be a number.'}
 
+    def test_setting_the_current_balance_returns_the_starting_balance_it_makes(self, client, auth_headers, account):
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers,
+                    json={'date': '2026-01-15', 'vendor': 'Shop', 'category': 'Groceries', 'amount': -20})
+        resp = client.patch(f'/api/accounts/{account.id}', json={'balance': 1000}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['balance'], resp.json['account']['opening_balance']) == (1000, 1020)
+
+    @pytest.mark.parametrize('body, error', [
+        ({'balance': 'lots'}, 'Current balance must be a number.'),
+        ({'balance': 20, 'opening_balance': 10}, 'Send either the starting balance or the current balance, not both.'),
+    ], ids=['not-a-number', 'both'])
+    def test_invalid_current_balance_returns_400(self, client, auth_headers, account, body, error):
+        resp = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
 
 # ── Budget flags in responses ─────────────────────────────────────────────────
 

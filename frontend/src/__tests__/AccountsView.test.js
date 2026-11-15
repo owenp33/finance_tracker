@@ -76,6 +76,40 @@ test('saving needs a starting balance', async () => {
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
+const currentField = () => screen.getByLabelText('Current balance');
+
+test('the starting and current balances are linked by what the transactions add up to', async () => {
+  // $100.00 now from a $0.00 start, so the transactions add up to $100.00
+  renderAccounts([account({ balance: 100, opening_balance: 0 })]);
+  const starting = await startEditing('Checking');
+  expect(currentField()).toHaveValue(100);
+  expect(screen.getByText(/^The transactions here add up to \+\$100\.00/)).toBeInTheDocument();
+
+  await userEvent.clear(starting);
+  await userEvent.type(starting, '1500.25');
+  expect(currentField()).toHaveValue(1600.25);
+
+  await userEvent.clear(currentField());
+  await userEvent.type(currentField(), '50');
+  expect(starting).toHaveValue(-50);
+});
+
+test('saving after typing the current balance sends it, for the server to work out the starting balance', async () => {
+  const onEditAccount = renderAccounts([account({ balance: 100, opening_balance: 0 })], jest.fn().mockResolvedValue(true));
+  await startEditing('Checking');
+  await userEvent.clear(currentField());
+  await userEvent.type(currentField(), '2000');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onEditAccount).toHaveBeenCalledWith(1, { account_id: 'checking-1234', account_name: 'Checking', balance: 2000 });
+});
+
+test('saving needs the balance typed in last', async () => {
+  renderAccounts([account()]);
+  await startEditing('Checking');
+  await userEvent.clear(currentField());
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+});
+
 test('the row shows the balance, and the starting balance when there is one', () => {
   renderAccounts([
     account({ id: 1, account_name: 'Discover', balance: -1630.14, opening_balance: -815.07 }),

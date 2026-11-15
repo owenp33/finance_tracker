@@ -61,34 +61,45 @@ class DbService:
     def get_account(self, account_id):
         return db.session.get(AccountModel, account_id)
 
-    # Stored balances change only through these two, each a single SQL statement: reading the
+    # Stored balances change only through these three, each a single SQL statement: reading the
     # balance into Python, adding, and writing it back lets two simultaneous requests overwrite
     # each other's change.
 
     def adjust_balance(self, account_id, delta_cents):
         """Add delta_cents to an account's stored balance atomically."""
         if delta_cents:
-            self._update_balance(account_id, AccountModel.balance_cents + delta_cents)
+            self._update_balance(account_id, balance_cents=AccountModel.balance_cents + delta_cents)
 
     def recompute_balance(self, account_id):
         """Set an account's stored balance to its starting balance plus its transactions, atomically."""
-        total = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
-                 .where(TransactionModel.account_id == account_id)
-                 .scalar_subquery())
-        self._update_balance(account_id, AccountModel.opening_balance_cents + total)
+        self._update_balance(account_id, balance_cents=AccountModel.opening_balance_cents + self._transaction_total(account_id))
 
-    def _update_balance(self, account_id, new_value):
+    def set_balance(self, account_id, balance_cents):
+        """
+        Set an account's stored balance to balance_cents and its starting balance to that less the
+        sum of its transactions, atomically, so starting balance + transactions = balance.
+        """
+        self._update_balance(account_id, balance_cents=balance_cents,
+                             opening_balance_cents=balance_cents - self._transaction_total(account_id))
+
+    def _transaction_total(self, account_id):
+        """The sum of an account's transaction amounts, as a subquery for the statements above."""
+        return (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+                .where(TransactionModel.account_id == account_id)
+                .scalar_subquery())
+
+    def _update_balance(self, account_id, **values):
         db.session.flush()   # write pending changes first (a starting balance, a new transaction)
         db.session.execute(
             update(AccountModel)
             .where(AccountModel.id == account_id)
-            .values(balance_cents=new_value)
+            .values(**values)
             .execution_options(synchronize_session=False)
         )
-        # A loaded account still holds the old value; make it read the new one when next used
+        # A loaded account still holds the old values; make it read the new ones when next used
         account = db.session.get(AccountModel, account_id)
         if account:
-            db.session.expire(account, ['balance_cents'])
+            db.session.expire(account, list(values))
 
     # TRANSACTION OPERATIONS ====================================================
 

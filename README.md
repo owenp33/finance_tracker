@@ -76,7 +76,7 @@ finance_tracker/
 A short tour; [docs/backend.md](docs/backend.md) has the details behind each part.
 
 ### Money and balances
-Every amount is stored as an integer number of cents (negative = expense, positive = income); dollars appear only at the API boundary and in the frontend. Each account stores its current balance, which always equals its starting balance plus the sum of its transactions, and every change is applied as a single SQL update so simultaneous requests can't lose one. See [Data model](docs/backend.md#data-model) and [Invariants](docs/backend.md#invariants).
+Every amount is stored as an integer number of cents (negative = expense, positive = income); dollars appear only at the API boundary and in the frontend. Each account stores its current balance, which always equals its starting balance plus the sum of its transactions, and every change is applied as a single SQL update so simultaneous requests can't lose one. The Accounts tab edits either side: type the starting balance and the current balance follows, or type the current balance your bank shows and the starting balance becomes it less the transactions. See [Data model](docs/backend.md#data-model) and [Invariants](docs/backend.md#invariants).
 
 ### Layers
 Routes only parse requests and shape responses; business rules live in services, and `DbService` is the data-access layer, which keeps the logic testable without HTTP. See [Services](docs/backend.md#services) and [Conventions](docs/backend.md#conventions).

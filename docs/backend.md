@@ -127,18 +127,23 @@ series on some accounts between two dates, for the import preview's recurring ma
 reimbursements in some categories between two dates, for budget flags), and
 `get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
-two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants).
+three ways to change a stored balance, `adjust_balance`, `recompute_balance` and `set_balance`
+(sets the balance and the starting balance together, the second from the account's transaction
+total in the same statement; see Invariants).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
 - `create_account(user_id, data)` takes `account_id` (required) and `account_name` (defaults to
   the id string), validated the same way as editing (trimmed, non-empty text, at most 100).
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
-  `opening_balance` (the starting balance, in dollars), and `needs_attention`, which may only be
-  set to `false`. Names and id strings are trimmed and must be non-empty text within the column
-  length (100). The starting balance must be a finite number within ±`MAX_OPENING_BALANCE`
-  ($10,000,000, which keeps `balance_cents` far from the 32-bit integer limit); changing it moves
-  the balance by the same amount. Invalid input raises `ValueError` before anything changes; the
-  messages name the fields as the edit form shows them ("Display name", "Account ID", "Starting
+  `opening_balance` (the starting balance, in dollars) or `balance` (the current balance, in
+  dollars; not both), and `needs_attention`, which may only be set to `false`. Names and id
+  strings are trimmed and must be non-empty text within the column length (100). Either balance
+  must be a finite number within ±`MAX_BALANCE` ($10,000,000, which keeps `balance_cents` far
+  from the 32-bit integer limit). Changing the starting balance moves the balance by the same
+  amount; setting the current balance sets the starting balance to it less the account's
+  transactions, transfers included (`DbService.set_balance`), which must also land within the
+  limit. Invalid input raises `ValueError` before anything changes; the messages name the fields
+  as the edit form shows them ("Display name", "Account ID", "Starting balance", "Current
   balance"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
 - `delete_account` unlinks the account's transfers, then deletes it; its transactions and
   recurring templates cascade.
@@ -374,19 +379,23 @@ Every change must keep these true.
   `opening_balance_cents` plus the sum of the account's `amount_cents`. The starting balance is
   what the account held before its earliest transaction in the app. It is a field on the account,
   not a transaction, so it never counts as income in reports, budgets, or analytics. Importing
-  older history later means lowering it by that history's total.
+  older history later means lowering it by that history's total. Entering the current balance
+  instead (as the bank shows it) sets the starting balance to that less the transactions, so the
+  invariant holds either way; it's right once every transaction up to that day is in the app.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
   delete, transfer pairing, deleting a recurring template with its generated transactions, and
   an import replacing a series transaction's amount.
-  Changing the starting balance moves the balance by the difference. Import confirm resyncs each
+  Changing the starting balance moves the balance by the difference; entering the current balance
+  moves the starting balance instead. Import confirm resyncs each
   affected account with `recalculate_account_balance`. A new mutation path must keep the balance
   correct.
 - **Balance changes are atomic.** The stored balance changes only through
-  `DbService.adjust_balance(account_id, delta)` (`balance_cents = balance_cents + delta`) and
-  `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), each a
-  single SQL statement, so simultaneous requests can't overwrite each other's change. Never read
-  `balance_cents`, add in Python, and write it back.
+  `DbService.adjust_balance(account_id, delta)` (`balance_cents = balance_cents + delta`),
+  `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), and
+  `DbService.set_balance(account_id, cents)` (the balance, with the starting balance as it less
+  the database's own sum), each a single SQL statement, so simultaneous requests can't overwrite
+  each other's change. Never read `balance_cents`, add in Python, and write it back.
 - **`over_budget` is computed when transactions are read** (`BudgetFlagService`). For each
   category-month with a budget, it walks the month's non-transfer expenses in date order,
   credits the month's reimbursements up front, and flags each expense from the point cumulative
@@ -654,11 +663,13 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 Details worth knowing:
 - `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
   over-100-character value is a 400.
-- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` (dollars),
-  and `needs_attention: false` ("Looks good"). Any of them clears `needs_attention`. A blank,
-  non-text, or over-100-character name or id string is a 400, and so is a starting balance that
-  isn't a number or is beyond ±$10,000,000. Account responses include `balance` and
-  `opening_balance`.
+- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` or
+  `balance` (dollars; the current balance, which sets the starting balance to it less the
+  transactions), and `needs_attention: false` ("Looks good"). Any of them clears
+  `needs_attention`. A blank, non-text, or over-100-character name or id string is a 400, and so
+  is a balance that isn't a number or is beyond ±$10,000,000, a current balance that would put
+  the starting balance beyond it, or both balances at once. Account responses include `balance`
+  and `opening_balance`.
 - `POST /accounts/<id>/recurring` takes `start_date`, `vendor`, `category`, `amount`, `frequency`,
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
