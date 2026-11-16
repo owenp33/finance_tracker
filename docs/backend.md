@@ -155,6 +155,15 @@ total in the same statement; see Invariants).
   down, then deletes it; its transactions and recurring templates cascade.
 - `update_account` refuses to make a loan that a series pays down anything else ("ASPIRE pays
   down this loan; choose another account for it first.").
+- `update_from_statement(account_id, data)` brings a loan in line with a statement: `date`
+  (`YYYY-MM-DD`, not in the future) and `balance` (dollars, negative when owed, like the
+  account's). The difference from the app's balance at the end of that day (the starting balance
+  plus the transactions dated then or earlier) is booked on that date as an ordinary transaction,
+  vendor and category "Statement adjustment" (`STATEMENT_ADJUSTMENT`), notes "Statement balance
+  -$19,900.00": interest, fees, or anything the app didn't know about. A later statement builds
+  on the earlier ones' adjustments; a statement that already matches books nothing (returns
+  `None`). Only a loan takes one ("Only a loan account can be updated from a statement."); the
+  other messages name "Statement date" and "Statement balance" (within ±$10,000,000).
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance in step
   with every change (over-budget flags are computed on read; see `BudgetFlagService`). Editing
   or deleting a payment moves or removes its loan entry; a loan entry itself can't be edited or
@@ -696,7 +705,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 |---|---|
 | (none) | `GET /health` (no auth), `GET /` (no auth; its endpoint list is out of date) |
 | `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
-| `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
+| `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `POST /<id>/statement`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
 | `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
 | `/budgets` | `GET ?period=`, `POST`, `GET /progress?period=`, `PUT /scheduled-pace`, `PATCH` / `DELETE /<id>` |
@@ -717,6 +726,10 @@ Details worth knowing:
   is beyond ±$10,000,000, a current balance that would put the starting balance beyond it, or
   both balances at once. Account responses include `balance`, `opening_balance`, `kind` and
   `apr`.
+- `POST /accounts/<id>/statement` takes `{date, balance}` for a loan (see
+  `AccountService.update_from_statement`) and returns `{account, adjustment}`, the adjustment
+  being the booked transaction or `null` when the statement already matched; invalid input or an
+  account that isn't a loan is a 400.
 - `POST /accounts/<id>/recurring` takes `start_date`, `vendor`, `category`, `amount`, `frequency`,
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
@@ -835,6 +848,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
 | `test_loan_entries.py` | Loan entries: a series paying down a loan, entries following their payments' edits, deletes and series membership, read-only entries, and the routes |
+| `test_loan_statements.py` | Updating a loan from a statement: the adjustment it books, validation, and `POST /accounts/<id>/statement` |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |

@@ -94,6 +94,26 @@ def update_account(account_id):
     return jsonify({'success': True, 'account': acc.to_dict()}), 200
 
 
+@accounts_bp.route('/<int:account_id>/statement', methods=['POST'])
+@jwt_required()
+@owns_account
+def update_from_statement(account_id):
+    """
+    Bring a loan in line with a statement, {date, balance} (dollars, negative when owed): books
+    the difference as a "Statement adjustment" on that date. Returns the account and the
+    adjustment (null when the statement already matched).
+    """
+    try:
+        adjustment = account_service.update_from_statement(account_id, json_body())
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({
+        'success': True,
+        'account': db_service.get_account(account_id).to_dict(),
+        'adjustment': budget_flags.transaction_dicts(get_jwt_identity(), [adjustment])[0] if adjustment else None,
+    }), 200
+
+
 @accounts_bp.route('/<int:account_id>/transactions', methods=['GET'])
 @jwt_required()
 @owns_account
