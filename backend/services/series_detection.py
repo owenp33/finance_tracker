@@ -64,8 +64,9 @@ def detect_series(transactions, today, tracked=(), dismissed=()):
     Recurring series among a user's transactions: at least MIN_PAYMENTS payments on one account
     to one vendor (vendor_key), moving money the same way and within vendor_match's tolerance of
     each other in size, that keep at least MIN_SCHEDULE_SHARE of one of SCHEDULES (_fit).
-    Transactions already in a series and transfers are left out (every transaction still counts
-    toward its account's newest date), and so is a series matching a template (`tracked`) or a
+    Transactions already in a series, transfers and a loan account's transactions (they mirror
+    payments made from another account, and those are the series) are left out (every transaction
+    still counts toward its account's newest date), and so is a series matching a template (`tracked`) or a
     "Not recurring" mark (`dismissed`), both (account_id, vendor_key, amount_cents): the same
     account and vendor, and a typical payment close to that amount (vendor_match.amount_close),
     so a rent's template doesn't hide its small fee.
@@ -78,7 +79,7 @@ def detect_series(transactions, today, tracked=(), dismissed=()):
     by_vendor = defaultdict(list)   # (account id, vendor key, is expense) -> payments
     for t in transactions:
         newest[t.account_id] = max(newest.get(t.account_id, t.date), t.date)
-        if t.recurring_id is None and not t.is_transfer and t.amount_cents != 0:
+        if t.recurring_id is None and not t.is_transfer and not t.on_loan_account and t.amount_cents != 0:
             by_vendor[(t.account_id, vendor_key(t.vendor), t.amount_cents < 0)].append(t)
 
     found = []

@@ -27,6 +27,17 @@ test('a reimbursement is money in marked as one; paying someone back (money out)
   expect(isReimbursement(tx('2026-11-04', 3000, { is_reimbursement: true, is_transfer: true }))).toBe(false);
 });
 
+test("a loan account's transactions are never income, spending or a reimbursement: they only move what's owed", () => {
+  const onLoan = (amountCents, overrides) => tx('2026-11-30', amountCents, { on_loan_account: true, ...overrides });
+  expect(isIncome(onLoan(7500))).toBe(false);                              // a payment's entry
+  expect(isSpending(onLoan(-1250))).toBe(false);                           // a statement adjustment
+  expect(isReimbursement(onLoan(3000, { is_reimbursement: true }))).toBe(false);
+  const transactions = [tx('2026-11-30', -7500, { category: 'Loan' }), onLoan(7500, { category: 'Loan' }), onLoan(-1250, { category: 'Loan' })];
+  expect(cashFlow(transactions, '2026-11-01', '2026-11-30')).toEqual({ income: 0, expenses: 7500, net: -7500 });
+  expect(cashFlowByMonth(transactions)).toEqual({ '2026-11': { income: 0, expenses: 7500, net: -7500 } });
+  expect(categorySpendingByMonth(transactions)).toEqual({ Loan: { '2026-11': 7500 } });
+});
+
 test('cash flow totals income, expenses (as a positive amount) and net between two dates, both included', () => {
   const transactions = [
     tx('2026-10-31', 100000),                          // before

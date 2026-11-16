@@ -46,6 +46,7 @@ class BudgetService:
             .join(AccountModel, TransactionModel.account_id == AccountModel.id)
             .filter(
                 AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',            # a loan's entries only move what's owed
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.amount_cents < 0,      # expenses only
@@ -60,6 +61,7 @@ class BudgetService:
             .join(AccountModel, TransactionModel.account_id == AccountModel.id)
             .filter(
                 AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.is_reimbursement == True,

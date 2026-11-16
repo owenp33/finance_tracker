@@ -214,13 +214,14 @@ class DbService:
     def get_budget_activity(self, user_id, categories, start_date, end_date):
         """
         The user's transactions that count toward budgets in these categories between the dates
-        (inclusive): expenses that aren't transfers, and reimbursements.
+        (inclusive): expenses that aren't transfers, and reimbursements, neither on a loan account.
         """
         return (
             TransactionModel.query
             .join(AccountModel, TransactionModel.account_id == AccountModel.id)
             .filter(
                 AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',
                 TransactionModel.category.in_(categories),
                 TransactionModel.date.between(start_date, end_date),
                 or_(

@@ -94,6 +94,16 @@ describe("this month's cards", () => {
     expect(screen.queryByText('Total Transactions')).not.toBeInTheDocument();
   });
 
+  test("a loan account's transactions are left out of the cards, like transfers", async () => {
+    await renderDashboard({ transactions: [
+      ...TRANSACTIONS,
+      tx(11, '2026-11-02', 75, { category: 'Loan', vendor: 'ASPIRE', on_loan_account: true }),
+      tx(12, '2026-11-03', -12.5, { category: 'Loan', vendor: 'Statement adjustment', on_loan_account: true }),
+    ] });
+    expect(card('Income this month')).toEqual(['$1,280.00', '$280 more than Oct 1–5']);
+    expect(card('Expenses this month')).toEqual(['$389.40', '$45 less than Oct 1–5']);
+  });
+
   test("left to spend is this month's budgets less what they've spent", async () => {
     await renderDashboard();
     expect(card('Left to spend this month')).toEqual(['$90.60', 'of $450.00 budgeted']);

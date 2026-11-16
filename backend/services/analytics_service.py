@@ -14,10 +14,12 @@ class AnalyticsService:
     @staticmethod
     def generate_report(transactions: list) -> dict:
         """
-        Generate a comprehensive analytics report from a list of TransactionModel objects.
-        Returns a dictionary ready for use in an API response.
+        Generate a comprehensive analytics report from a list of TransactionModel objects, leaving
+        out transfers and a loan account's transactions (they count in no total). Returns a
+        dictionary ready for use in an API response.
         """
-        if not transactions:
+        counted = [t for t in transactions if not t.is_transfer and not t.on_loan_account]
+        if not counted:
             return {
                 'summary': {
                     'total_income': 0.0,
@@ -44,7 +46,7 @@ class AnalyticsService:
             'category': trans.category,
             'amount': trans.amount,
             'notes': trans.notes
-        } for trans in transactions if not trans.is_transfer]
+        } for trans in counted]
 
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'])

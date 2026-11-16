@@ -75,6 +75,15 @@ class TestBudgetFlags:
         _expense(other, date(2026, 1, 3), -45)
         assert _flagged(user, [_expense(account, date(2026, 1, 10), -10)]) != set()
 
+    def test_a_loan_accounts_transactions_never_count_or_get_flagged(self, user, account):
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        budgets.create_budget(user.id, 'Groceries', '2026-01', 50.0)
+        on_loan = _expense(loan, date(2026, 1, 3), -100)
+        bill = _expense(account, date(2026, 1, 10), -40)
+        assert _flagged(user, [on_loan, bill]) == set()
+
 
 class TestNoChangeLeavesAFlagStale:
     """Each of these left a stored flag wrong; computed flags follow every change."""

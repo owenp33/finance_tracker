@@ -30,6 +30,15 @@ class TransactionModel(db.Model):
         post_update=True,
     )
 
+    @property
+    def on_loan_account(self):
+        """
+        On a loan account. Such transactions only move what's owed (the bill they mirror is spent
+        from the bank account), so like transfers they count in no total: not in cash flow,
+        budgets, reports or series detection. Balances include them.
+        """
+        return bool(self.account and self.account.kind == 'loan')
+
     def to_dict(self):
         peer_account = None
         if self.transfer_peer_id and self.transfer_peer and self.transfer_peer.account:
@@ -38,7 +47,7 @@ class TransactionModel(db.Model):
             'id': self.id,
             'account_id': self.account_id,
             'account_name': self.account.acct_name if self.account else None,
-            'on_loan_account': bool(self.account and self.account.kind == 'loan'),
+            'on_loan_account': self.on_loan_account,
             'date': self.date.isoformat(),
             'vendor': self.vendor,
             'category': self.category,

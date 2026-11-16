@@ -26,11 +26,11 @@ _ids = itertools.count(1)
 
 
 def tx(day, vendor='Netflix', amount=-15.49, account_id=1, category='Subscriptions', recurring_id=None,
-       is_transfer=False):
+       is_transfer=False, on_loan_account=False):
     """A transaction as detect_series reads it."""
     return SimpleNamespace(id=next(_ids), account_id=account_id, date=date.fromisoformat(day), vendor=vendor,
                            category=category, amount_cents=round(amount * 100), recurring_id=recurring_id,
-                           is_transfer=is_transfer)
+                           is_transfer=is_transfer, on_loan_account=on_loan_account)
 
 
 def payments(days, **fields):
@@ -141,8 +141,10 @@ def test_vendor_spellings_group_together_and_the_most_common_names_win():
     assert series.category == 'Streaming'     # a tie goes to the latest
 
 
-@pytest.mark.parametrize('fields', [{'recurring_id': 5}, {'is_transfer': True}], ids=['in-a-series', 'transfers'])
-def test_series_transactions_and_transfers_are_left_out(fields):
+@pytest.mark.parametrize('fields', [{'recurring_id': 5}, {'is_transfer': True}, {'on_loan_account': True}],
+                         ids=['in-a-series', 'transfers', 'on-a-loan-account'])
+def test_series_transactions_transfers_and_loan_accounts_are_left_out(fields):
+    # A loan's entries mirror payments made from another account, and those are the series
     assert detect_series(payments(MONTHLY, **fields), TODAY) == []
 
 

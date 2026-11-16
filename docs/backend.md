@@ -198,7 +198,8 @@ and every route that returns transactions uses it. The walk itself is the pure f
 `over_budget_in_month(expenses, reimbursed_cents, allocated_cents)`.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
-budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
+budgeted category, spending (expenses minus reimbursements, never below 0; transfers and loan
+accounts' transactions excluded)
 against the allocation (`amount + carried_over`), and whether the category has a scheduled pace.
 `delete_budget` also deletes the budget's future rollover copies. Budget changes don't touch
 transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
@@ -223,7 +224,8 @@ it). Setting the pace a category already has changes nothing; a category that is
 - Hashing lives on the `User` model (`set_password`, `verify_password`).
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
-builds the summary (totals, monthly trends, category and vendor breakdowns) behind
+builds the summary (totals, monthly trends, category and vendor breakdowns; transfers and loan
+accounts' transactions left out, and nothing left gives the empty report) behind
 `/api/analytics` and the PDF report. The PDF uses only its totals and weekly averages (the
 summary page; everything else comes from `summary_data`), so its monthly trends, category
 breakdowns and top vendors serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
@@ -254,8 +256,8 @@ with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as pl
 category, notes and account columns, so an export imports back exactly. Text without the
 pattern (e.g. `'Til Midnight`) is left alone both ways.
 - `summary_data.py` (pure functions, cents): the numbers behind the summary pages, counted as
-  the app's Insights counts them (transfers never count; money in is income, reimbursements
-  included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
+  the app's Insights counts them (transfers and loan accounts' transactions never count; money in
+  is income, reimbursements included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
   chosen_end, today)` → `(months, partial)` ('YYYY-MM'): from the chosen start (else the first
   transaction) to the chosen end (else the last), stopping at today's month or a later
   transaction's, since a month still to come holds nothing yet ("this year" ends Dec 31);
@@ -283,7 +285,7 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   finished when `number != -1` and `idx > number`. `round_half_up` rounds halves up like
   JavaScript's `Math.round`, so averages and shares match the app's to the cent.
 - `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
-  out: the summary (with income by category as one line, "Largest income category: Paycheck,
+  and loan accounts' transactions out: the summary (with income by category as one line, "Largest income category: Paycheck,
   $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category,
   top vendors, and recurring costs.
   `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
@@ -390,6 +392,11 @@ Every change must keep these true.
   older history later means lowering it by that history's total. Entering the current balance
   instead (as the bank shows it) sets the starting balance to that less the transactions, so the
   invariant holds either way; it's right once every transaction up to that day is in the app.
+- **A loan account's transactions count in no total.** A loan's entries only move what's owed
+  (the bill they mirror is spent from the bank account), so like transfers they're left out of
+  cash flow, budgets and their flags, the PDF's summary pages, `/api/analytics` and finding
+  series (`TransactionModel.on_loan_account`; in SQL, `AccountModel.kind != 'loan'`). Balances
+  include them: the account's own balance, its PDF pages, `GET /api/balances` and so Net position.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
   delete, transfer pairing, deleting a recurring template with its generated transactions, and
@@ -405,7 +412,8 @@ Every change must keep these true.
   the database's own sum), each a single SQL statement, so simultaneous requests can't overwrite
   each other's change. Never read `balance_cents`, add in Python, and write it back.
 - **`over_budget` is computed when transactions are read** (`BudgetFlagService`). For each
-  category-month with a budget, it walks the month's non-transfer expenses in date order,
+  category-month with a budget, it walks the month's expenses (not transfers, not on a loan
+  account) in date order,
   credits the month's reimbursements up front, and flags each expense from the point cumulative
   spending passes the allocation (amount + carried over). API responses always carry the
   computed value, so no change can leave a flag stale; nothing about flags is stored (the old
@@ -598,7 +606,8 @@ for the user to confirm; nothing is written.
 - **Who counts:** payments on one account to one vendor (`vendor_key`), moving money the same
   way. A vendor's payments split into groups by size (a payment more than 50% from its group's
   median starts a new one), so a rent and its small fee are two series. Transactions already in
-  a series and transfers are left out, and so is a series that matches a template (left to
+  a series, transfers and a loan account's transactions (they mirror payments made from another
+  account) are left out, and so is a series that matches a template (left to
   that template's suggestions) or a "Not recurring" mark: the same account and vendor, and a
   typical (median) payment within 50% of the template's amount or the mark's. A rent's template
   therefore doesn't hide its fee.
@@ -821,8 +830,6 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 
 Recorded so nobody builds on them by accident; each is planned to be fixed.
 
-- **A loan account's transactions still count in totals.** Budget progress, the PDF's summary
-  pages and `/api/analytics` treat them like any account's; they should count only in balances.
 - **Input validation is incomplete.** Older routes still read bodies with `request.get_json()` and
   index fields directly, so a missing field or malformed date there is a generic 500 instead of a
   400. `AccountService.update_transaction` returns raw exception text as its 400 message.

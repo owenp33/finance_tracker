@@ -1,19 +1,23 @@
 """
-The numbers behind the PDF's summary pages (services/reports/summary_data.py), counted as the
-app's Insights counts them: transfers never count, money in is income (reimbursements included),
-money out is spending, and a zero amount is neither.
+The numbers behind the PDF's summary pages (services/reports/summary_data.py, and the totals from
+AnalyticsService.generate_report), counted as the app's Insights counts them: transfers and a loan
+account's transactions never count, money in is income (reimbursements included), money out is
+spending, and a zero amount is neither.
 """
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
+from services.analytics_service import AnalyticsService
 from services.reports import summary_data
 
 TODAY = date(2026, 11, 12)
 
 
-def tx(day, cents, transfer=False, reimbursement=False, category='Misc', vendor='Shop'):
+def tx(day, cents, transfer=False, reimbursement=False, category='Misc', vendor='Shop', loan=False):
     return SimpleNamespace(date=day, amount_cents=cents, is_transfer=transfer, is_reimbursement=reimbursement,
-                           category=category, vendor=vendor)
+                           category=category, vendor=vendor, on_loan_account=loan)
 
 
 def spend(day, category, dollars):
@@ -204,6 +208,56 @@ class TestTopVendors:
 
     def test_no_spending_no_vendors(self):
         assert summary_data.top_vendors([tx(date(2026, 10, 1), 200000, vendor='Employer')]) == []
+
+
+class TestLoanAccounts:
+    """A loan account's transactions only move what's owed (the bill is spent from the bank), so no summary counts them."""
+
+    BANK = [tx(date(2026, 9, 1), 200000, category='Paycheck', vendor='Employer'), spend(date(2026, 9, 30), 'Loan', 75)]
+    LOAN = [
+        tx(date(2026, 9, 30), 7500, category='Loan', vendor='ASPIRE', loan=True),            # the payment's entry
+        tx(date(2026, 9, 15), -1250, category='Loan', vendor='Statement adjustment', loan=True),
+        tx(date(2026, 9, 20), 3000, reimbursement=True, category='Loan', loan=True),
+    ]
+
+    def test_net_per_month(self):
+        rows = summary_data.monthly_net(self.BANK + self.LOAN, ['2026-09'], [])
+        assert [(r['income'], r['expenses'], r['net']) for r in rows] == [(200000, 7500, 192500)]
+
+    def test_spending_by_category_the_income_line_and_top_vendors(self):
+        both = self.BANK + self.LOAN
+        panels = summary_data.category_panels(both, ['2026-09'], [])
+        assert [(p['category'], p['total'], p['count']) for p in panels] == [('Loan', 7500, 1)]
+        assert summary_data.largest_income(both) == {'category': 'Paycheck', 'cents': 200000, 'total': 200000,
+                                                     'categories': 1}
+        assert summary_data.top_vendors(both) == [{'vendor': 'Shop', 'total': 7500, 'count': 1, 'average': 7500}]
+
+
+def report_tx(id, dollars, category='Misc', transfer=False, loan=False):
+    """A transaction as AnalyticsService.generate_report reads it."""
+    return SimpleNamespace(id=id, date=date(2026, 9, id), vendor='Shop', category=category, amount=dollars,
+                           amount_cents=round(dollars * 100), notes='', is_transfer=transfer, on_loan_account=loan)
+
+
+class TestSummaryTotals:
+    """The summary page's totals (AnalyticsService.generate_report): transfers and loan accounts left out."""
+
+    def test_income_expenses_and_the_count_leave_them_out(self):
+        report = AnalyticsService.generate_report([
+            report_tx(1, 2000.0, 'Paycheck'), report_tx(2, -75.0, 'Loan'),
+            report_tx(3, -500.0, 'Transfer', transfer=True),
+            report_tx(4, 75.0, 'Loan', loan=True), report_tx(5, -12.5, 'Loan', loan=True),
+        ])
+        summary = report['summary']
+        assert (summary['total_income'], summary['total_expenses'], summary['net_amount'],
+                summary['transaction_count']) == (2000.0, 75.0, 1925.0, 2)
+
+    @pytest.mark.parametrize('only', [{'transfer': True}, {'loan': True}], ids=['transfers', 'loan-account'])
+    def test_nothing_left_to_count_is_an_empty_report(self, only):
+        report = AnalyticsService.generate_report([report_tx(1, -75.0, **only), report_tx(2, 75.0, **only)])
+        assert report['summary'] == {'total_income': 0.0, 'total_expenses': 0.0, 'net_amount': 0.0,
+                                     'transaction_count': 0, 'avg_transaction': 0.0}
+        assert report['spending_by_category'] == report['monthly_summary'] == []
 
 
 def template(id, vendor, cents, frequency=1, unit='months', number=-1, idx=1, next_date=date(2026, 11, 30)):

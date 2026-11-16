@@ -83,6 +83,17 @@ class TestProgress:
         spend(account, date(2026, 10, 3), 'Groceries', -100.0, is_transfer=True)
         assert progress(client, auth_headers)['Groceries']['spent_cents'] == 0
 
+    def test_a_loan_accounts_transactions_never_count(self, client, auth_headers, user, account):
+        # A loan's entries only move what's owed; the bill they mirror is spent from the bank account
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        budget_svc.create_budget(user.id, 'Loan', '2026-10', 100.0)
+        spend(account, date(2026, 10, 31), 'Loan', -75.0)
+        spend(loan, date(2026, 10, 15), 'Loan', -12.5)                          # e.g. a statement adjustment
+        spend(loan, date(2026, 10, 20), 'Loan', 40.0, is_reimbursement=True)    # would lower the spending
+        assert progress(client, auth_headers)['Loan']['spent_cents'] == 7500
+
     def test_reimbursements_lower_the_spending_but_never_below_zero(self, client, auth_headers, user, account):
         budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
         budget_svc.create_budget(user.id, 'Medical', '2026-10', 100.0)

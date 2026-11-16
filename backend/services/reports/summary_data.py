@@ -2,9 +2,9 @@
 summary_data.py - The numbers behind the PDF report's summary pages, in cents
 
 Counted as the app's Insights counts them (frontend `utils/moneyRules.js` and
-`components/insights/`): transfers never count, money in is income (reimbursements included),
-money out is spending, and a zero amount is neither. Pure functions over transactions; months
-are 'YYYY-MM' strings.
+`components/insights/`): transfers and a loan account's transactions never count, money in is
+income (reimbursements included), money out is spending, and a zero amount is neither. Pure
+functions over transactions; months are 'YYYY-MM' strings.
 """
 import calendar
 import math
@@ -20,12 +20,16 @@ def round_half_up(value):
     return math.floor(value + 0.5)
 
 
+def _counts(t):
+    return not t.is_transfer and not t.on_loan_account
+
+
 def _is_income(t):
-    return not t.is_transfer and t.amount_cents > 0
+    return _counts(t) and t.amount_cents > 0
 
 
 def _is_spending(t):
-    return not t.is_transfer and t.amount_cents < 0
+    return _counts(t) and t.amount_cents < 0
 
 
 def _month(day):
