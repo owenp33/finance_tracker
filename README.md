@@ -8,7 +8,7 @@ This README covers what the app does and how to run it. For how the backend is b
 
 ## Features
 
-- **Multi-account support** — any number of bank accounts, each with its own starting balance and current balance
+- **Multi-account support** — any number of bank, card, and loan accounts, each with its own starting balance and current balance. A loan carries its APR and can be updated from a statement (the difference from its balance here on that day is booked as a "Statement adjustment": interest, fees); its transactions move only its balance and Net position, never income, spending or budgets
 - **Transaction management** — add, edit, delete, and bulk-operate on transactions; filter by date, account, or category; over-budget transactions carry an "Over budget" chip
 - **Transfers** — link paired transactions across accounts (auto-detected or manually paired); both balances reflect the move
 - **Reimbursements** — flag positive transactions as reimbursements to offset category spending in budgets and the balance forecast while still crediting the account balance normally

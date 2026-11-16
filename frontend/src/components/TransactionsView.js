@@ -28,6 +28,7 @@ function TransactionsView({
   onImportDone,
   onCreateAccount,
   onEditAccount,
+  onLoanStatement,
   onDeleteAccount,
 }) {
   const [tab, setTab] = useState('all');
@@ -109,6 +110,7 @@ function TransactionsView({
           onDeleteTransferBulk={onDeleteTransferBulk}
           onCreateAccount={onCreateAccount}
           onEditAccount={onEditAccount}
+          onLoanStatement={onLoanStatement}
           onDeleteAccount={onDeleteAccount}
         />
       )}

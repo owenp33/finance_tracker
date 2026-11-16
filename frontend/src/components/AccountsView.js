@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
+import AccountKindFields from './AccountKindFields';
+import LoanStatementForm from './LoanStatementForm';
 
 const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -16,6 +18,17 @@ const typedCents = (text) => {
   return text.trim() === '' || !Number.isFinite(dollars) ? null : Math.round(dollars * 100);
 };
 
+// A loan's typed APR (percent), or null while it's blank: the server keeps it unknown
+const typedApr = (text) => (text.trim() === '' ? null : Number(text));
+
+// What a statement did, from the adjustment it booked (null when it already matched)
+const statementResultText = (adjustment) => (adjustment
+  ? `Booked a statement adjustment of ${formatSignedCents(adjustment.amount_cents)} on ${formatDate(adjustment.date, true)}.`
+  : 'The statement matches the balance here, so nothing was booked.');
+
+// The kind and, for a loan, the APR, as account fields for the API
+const kindFields = (kind, aprText) => ({ kind, ...(kind === 'loan' ? { apr: typedApr(aprText) } : {}) });
+
 function AccountsView({
   transactions,
   accounts,
@@ -25,15 +38,22 @@ function AccountsView({
   onDeleteTransferBulk,
   onCreateAccount,
   onEditAccount,
+  onLoanStatement,
   onDeleteAccount,
 }) {
   const [showAddAccountForm, setShowAddAccountForm] = useState(false);
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountKind, setNewAccountKind] = useState('bank');
+  const [newAccountApr, setNewAccountApr] = useState('');
   const [accountAdding, setAccountAdding] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [editingAccountName, setEditingAccountName] = useState('');
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
+  const [editingKind, setEditingKind] = useState('bank');
+  const [editingApr, setEditingApr] = useState('');
+  const [statementAccountId, setStatementAccountId] = useState(null);   // whose statement form is open
+  const [statementResult, setStatementResult] = useState(null);         // {accountId, text}
   const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
   const [editingCurrentBalance, setEditingCurrentBalance] = useState('');
   const [editingBalanceSource, setEditingBalanceSource] = useState('opening');   // the one typed in last
@@ -77,10 +97,27 @@ function AccountsView({
     setEditingTransferId(null);
   };
 
+  const closeAddForm = () => {
+    setShowAddAccountForm(false);
+    setNewAccountId('');
+    setNewAccountName('');
+    setNewAccountKind('bank');
+    setNewAccountApr('');
+  };
+
+  // Resolves to whether the statement went through (the form closes and says what it booked)
+  const submitStatement = async (a, statement) => {
+    const result = await onLoanStatement(a.id, statement);
+    if (!result) return false;
+    setStatementAccountId(null);
+    setStatementResult({ accountId: a.id, text: statementResultText(result.adjustment) });
+    return true;
+  };
+
   return (
     <div className="accounts-view">
       <div className="view-header">
-        <h2>Bank Accounts</h2>
+        <h2>Accounts</h2>
         {!showAddAccountForm && (
           <button className="btn btn-primary" onClick={() => setShowAddAccountForm(true)}>+ Add Account</button>
         )}
@@ -89,29 +126,35 @@ function AccountsView({
       {showAddAccountForm && (
         <div className="account-form">
           <div className="form-group">
-            <label>Account ID <small>(e.g. checking-1234)</small></label>
-            <input type="text" value={newAccountId} onChange={e => setNewAccountId(e.target.value)} placeholder="checking-1234" autoFocus />
+            <label htmlFor="new-account-id">Account ID <small>(e.g. checking-1234)</small></label>
+            <input id="new-account-id" type="text" value={newAccountId} onChange={e => setNewAccountId(e.target.value)} placeholder="checking-1234" autoFocus />
           </div>
           <div className="form-group">
-            <label>Display Name</label>
-            <input type="text" value={newAccountName} onChange={e => setNewAccountName(e.target.value)} placeholder="Chase Checking" />
+            <label htmlFor="new-account-name">Display Name</label>
+            <input id="new-account-name" type="text" value={newAccountName} onChange={e => setNewAccountName(e.target.value)} placeholder="Chase Checking" />
           </div>
+          <AccountKindFields
+            idPrefix="new-account" kind={newAccountKind} onKind={setNewAccountKind}
+            apr={newAccountApr} onApr={setNewAccountApr}
+          />
           <div className="form-actions">
             <button
               className="btn btn-primary"
               disabled={!newAccountId.trim() || accountAdding}
               onClick={async () => {
                 setAccountAdding(true);
-                await onCreateAccount(newAccountId.trim(), newAccountName.trim() || newAccountId.trim());
-                setNewAccountId('');
-                setNewAccountName('');
-                setShowAddAccountForm(false);
+                await onCreateAccount({
+                  account_id: newAccountId.trim(),
+                  account_name: newAccountName.trim() || newAccountId.trim(),
+                  ...kindFields(newAccountKind, newAccountApr),
+                });
+                closeAddForm();
                 setAccountAdding(false);
               }}
             >
               {accountAdding ? 'Adding…' : 'Add'}
             </button>
-            <button className="btn btn-ghost" onClick={() => { setShowAddAccountForm(false); setNewAccountId(''); setNewAccountName(''); }}>Cancel</button>
+            <button className="btn btn-ghost" onClick={closeAddForm}>Cancel</button>
           </div>
         </div>
       )}
@@ -167,6 +210,10 @@ function AccountsView({
                         placeholder="e.g., Chase Checking"
                       />
                     </div>
+                    <AccountKindFields
+                      idPrefix={`account-${a.id}`} kind={editingKind} onKind={setEditingKind}
+                      apr={editingApr} onApr={setEditingApr}
+                    />
                     <div className="form-group">
                       <label htmlFor={`account-${a.id}-opening`}>Starting balance</label>
                       <input
@@ -210,6 +257,7 @@ function AccountsView({
                           const saved = await onEditAccount(a.id, {
                             account_id: editingAccountIdStr,
                             account_name: editingAccountName,
+                            ...kindFields(editingKind, editingApr),
                             ...(editingBalanceSource === 'current'
                               ? { balance: Number(editingCurrentBalance) }
                               : { opening_balance: Number(editingOpeningBalance) }),
@@ -234,6 +282,7 @@ function AccountsView({
                       <div className="account-info">
                         <strong>
                           {a.account_name}
+                          {a.kind === 'loan' && <span className="loan-badge">Loan</span>}
                           {a.needs_attention && <span className="needs-attention-badge">Needs attention</span>}
                         </strong>
                         <small>
@@ -248,6 +297,9 @@ function AccountsView({
                               Starting balance {formatDollars(a.opening_balance)}
                             </span>
                           )}
+                          {a.kind === 'loan' && a.apr != null && (
+                            <span className="account-apr">APR {a.apr.toFixed(2)}%</span>
+                          )}
                         </small>
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
@@ -260,6 +312,12 @@ function AccountsView({
                         {formatDollars(a.balance)}
                       </div>
                       <div className="account-actions">
+                        {a.kind === 'loan' && (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => { setStatementAccountId(a.id); setStatementResult(null); }}
+                          >Update from statement</button>
+                        )}
                         {a.needs_attention && (
                           <button
                             className="btn btn-secondary btn-sm"
@@ -273,6 +331,8 @@ function AccountsView({
                             setEditingAccountId(a.id);
                             setEditingAccountName(a.account_name);
                             setEditingAccountIdStr(a.account_id);
+                            setEditingKind(a.kind ?? 'bank');
+                            setEditingApr(a.apr == null ? '' : String(a.apr));
                             setEditingOpeningBalance(String(a.opening_balance ?? 0));
                             setEditingCurrentBalance(String(a.balance ?? 0));
                             setEditingBalanceSource('opening');
@@ -288,6 +348,17 @@ function AccountsView({
                         ><Trash2 size={14} /></button>
                       </div>
                     </div>
+
+                    {statementAccountId === a.id && (
+                      <LoanStatementForm
+                        account={a}
+                        onSubmit={statement => submitStatement(a, statement)}
+                        onCancel={() => setStatementAccountId(null)}
+                      />
+                    )}
+                    {statementResult?.accountId === a.id && (
+                      <p className="account-statement-result">{statementResult.text}</p>
+                    )}
 
                     {accountTransfers.length > 0 && expandedAccountIds.has(a.id) && (() => {
                       const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
