@@ -1,9 +1,9 @@
 """
 scheduler.py - Background scheduler for recurring transaction processing.
 
-Runs process_due_recurring, and a loan's monthly interest (LoanService.accrue_interest), for
-every account on startup (catch-up for any days the server was offline) and then once per day
-at 00:05, so recurring transactions and interest are booked even when no user is logged in.
+Runs process_due_recurring, and the interest due (InterestService.accrue), for every account on
+startup (catch-up for any days the server was offline) and then once per day at 00:05, so
+recurring transactions and interest are booked even when no user is logged in.
 """
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -14,17 +14,17 @@ logger = logging.getLogger(__name__)
 
 def _process_all(app):
     """
-    Generate all due recurring transactions, and charge loans' monthly interest, across every account.
+    Generate all due recurring transactions, and book the interest due, across every account.
     Must be called with an app reference so it can push its own app context —
     APScheduler jobs run in a background thread with no active context.
     """
     with app.app_context():
         from services.db_service import DbService
-        from services.loan_service import LoanService
+        from services.interest_service import InterestService
         from services.recurring_service import RecurringService
 
         db_svc = DbService()
-        loan_svc = LoanService()
+        interest_svc = InterestService()
         recurring_svc = RecurringService()
 
         total = 0
@@ -36,9 +36,9 @@ def _process_all(app):
                     "Scheduler: failed to process recurring for account %s", account.id
                 )
             try:
-                loan_svc.accrue_interest(account.id)
+                interest_svc.accrue(account.id)
             except Exception:
-                logger.exception("Scheduler: failed to charge interest for account %s", account.id)
+                logger.exception("Scheduler: failed to book interest for account %s", account.id)
 
         if total:
             logger.info("Scheduler: generated %d recurring transaction(s)", total)

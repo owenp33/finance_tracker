@@ -28,6 +28,9 @@ def _run_migrations(db):
             "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'bank'",
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS apr_bps INTEGER',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_through DATE',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_frequency VARCHAR(10)',
+            # Rates set before interest had a frequency were loans charged monthly
+            "UPDATE accounts SET interest_frequency = 'monthly' WHERE apr_bps IS NOT NULL AND interest_frequency IS NULL",
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',

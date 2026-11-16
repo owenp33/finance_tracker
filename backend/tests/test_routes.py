@@ -189,11 +189,18 @@ class TestAccountRoutes:
         listed = client.get('/api/accounts', headers=auth_headers).json['accounts']
         assert [(a['kind'], a['apr']) for a in listed] == [('loan', 5.25)]
 
+    def test_a_bank_account_can_earn_interest_yearly(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'apr': 0.5, 'interest_frequency': 'yearly'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['kind'], resp.json['account']['apr'], resp.json['account']['interest_frequency']) \
+            == ('bank', 0.5, 'yearly')
+
     @pytest.mark.parametrize('body, error', [
         ({'kind': 'card'}, 'Account type must be bank or loan.'),
-        ({'apr': 6.8}, 'Only a loan account has an APR.'),
+        ({'apr': 6.8, 'interest_frequency': 'weekly'}, 'How often must be monthly, quarterly or yearly.'),
         ({'kind': 'loan', 'apr': 'high'}, 'APR must be a number.'),
-    ], ids=['unknown-kind', 'apr-on-a-bank-account', 'string-apr'])
+    ], ids=['unknown-kind', 'unknown-frequency', 'string-apr'])
     def test_invalid_kind_or_apr_returns_400(self, client, auth_headers, account, body, error):
         created = client.post('/api/accounts', json={'account_id': 'new-1', **body}, headers=auth_headers)
         edited = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)

@@ -5,13 +5,13 @@ from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from services import DbService, RecurringService, AuthService
 from services.auth_service import RegistrationConflict
-from services.loan_service import LoanService
+from services.interest_service import InterestService
 from middleware.request_body import json_body
 
 auth_bp = Blueprint('auth', __name__)
 db_service = DbService()
 recurring_service = RecurringService()
-loan_service = LoanService()
+interest_service = InterestService()
 auth_service = AuthService()
 
 
@@ -52,7 +52,7 @@ def login():
     total_generated = 0
     for account in db_service.get_user_accounts(user.id):
         total_generated += recurring_service.process_due_recurring(account.id)
-        loan_service.accrue_interest(account.id)   # a loan's monthly interest, months missed included
+        interest_service.accrue(account.id)   # interest due, missed periods included
 
     return jsonify({
         'success': True,
@@ -77,7 +77,7 @@ def get_current_user():
     for account in db_service.get_user_accounts(user.id):
         try:
             recurring_service.process_due_recurring(account.id)
-            loan_service.accrue_interest(account.id)
+            interest_service.accrue(account.id)
         except Exception:
             pass  # don't block page load if generation fails for one account
 

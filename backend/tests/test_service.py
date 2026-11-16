@@ -203,8 +203,9 @@ class TestCurrentBalance:
 
 class TestLoanAccounts:
     """
-    An account is a bank account (checking, savings, a card) or a loan, which can carry an APR (in
-    percent, kept as hundredths of a percent). Money owed on a loan is a negative balance, as on a card.
+    An account is a bank account (checking, savings, a card) or a loan, and either can carry a
+    yearly interest rate (apr, in percent, kept as hundredths of a percent; test_interest.py has
+    how often it hits). Money owed on a loan is a negative balance, as on a card.
     """
 
     def test_accounts_are_bank_accounts_without_an_apr_by_default(self, account, user):
@@ -231,10 +232,12 @@ class TestLoanAccounts:
         svc.update_account(account.id, {'apr': None})
         assert account.apr_bps is None
 
-    def test_a_loan_turned_back_into_a_bank_account_loses_its_apr(self, account):
+    def test_a_bank_account_can_have_an_apr_too(self, user, account):
+        savings = svc.create_account(user.id, {'account_id': 'savings-2', 'apr': 0.5})
+        assert (savings.kind, savings.to_dict()['apr']) == ('bank', 0.5)
         svc.update_account(account.id, {'kind': 'loan', 'apr': 5.25})
         svc.update_account(account.id, {'kind': 'bank'})
-        assert (account.kind, account.apr_bps) == ('bank', None)
+        assert (account.kind, account.apr_bps) == ('bank', 525)
 
     def test_an_apr_rounds_to_hundredths_of_a_percent(self, account):
         svc.update_account(account.id, {'kind': 'loan', 'apr': 6.8749})
@@ -250,10 +253,11 @@ class TestLoanAccounts:
         ({'kind': 'loan', 'apr': float('nan')}, 'APR must be a number.'),
         ({'kind': 'loan', 'apr': -0.01}, 'APR must be between 0% and 100%.'),
         ({'kind': 'loan', 'apr': 100.01}, 'APR must be between 0% and 100%.'),
-        ({'apr': 6.8}, 'Only a loan account has an APR.'),
-        ({'kind': 'bank', 'apr': 6.8}, 'Only a loan account has an APR.'),
+        ({'apr': 6.8, 'interest_frequency': 'weekly'}, 'How often must be monthly, quarterly or yearly.'),
+        ({'apr': 6.8, 'interest_frequency': None}, 'How often must be monthly, quarterly or yearly.'),
+        ({'interest_frequency': 'monthly'}, 'How often needs an APR.'),
     ], ids=['unknown-kind', 'null-kind', 'string-apr', 'bool-apr', 'nan-apr', 'negative-apr', 'apr-over-100',
-            'apr-on-a-bank-account', 'apr-with-bank'])
+            'unknown-frequency', 'no-frequency-with-a-rate', 'frequency-without-a-rate'])
     def test_rejects_invalid_kinds_and_aprs_when_creating_or_editing(self, user, account, data, error):
         with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
             svc.create_account(user.id, {'account_id': 'new-1', **data})

@@ -47,14 +47,14 @@ def clean_tables(app):
 def pin_today(monkeypatch):
     """
     Call with a date to make date.today() return it inside RecurringService (recurring
-    generation), LoanService (monthly interest) and AccountService (when interest starts).
+    generation), InterestService (interest due) and AccountService (when interest starts).
     """
     def pin(day):
         class PinnedDate(date):
             @classmethod
             def today(cls):
                 return day
-        for module in ('services.recurring_service', 'services.loan_service', 'services.account_service'):
+        for module in ('services.recurring_service', 'services.interest_service', 'services.account_service'):
             monkeypatch.setattr(f'{module}.date', PinnedDate)
         return day
     return pin

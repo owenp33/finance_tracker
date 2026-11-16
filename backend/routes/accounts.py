@@ -34,7 +34,8 @@ def get_accounts():
 def create_account():
     """
     Create an account for the current user from account_id and, optionally, account_name, kind
-    ('bank' or 'loan') and a loan's apr (percent).
+    ('bank' or 'loan'), apr (a yearly interest rate, percent) and interest_frequency (monthly,
+    quarterly or yearly).
     """
     try:
         account = account_service.create_account(get_jwt_identity(), json_body())
@@ -80,10 +81,10 @@ def delete_account(account_id):
 @owns_account
 def update_account(account_id):
     """
-    Update the account name, id string, kind ('bank' or 'loan'), a loan's apr (percent; null
-    clears it), and starting balance (opening_balance) or current balance (balance, which sets
-    the starting balance to it less the transactions), or mark it reviewed with
-    {"needs_attention": false}.
+    Update the account name, id string, kind ('bank' or 'loan'), apr (a yearly interest rate,
+    percent; null clears it), interest_frequency, and starting balance (opening_balance) or
+    current balance (balance, which sets the starting balance to it less the transactions), or
+    mark it reviewed with {"needs_attention": false}.
     """
     try:
         acc, error = account_service.update_account(account_id, json_body())

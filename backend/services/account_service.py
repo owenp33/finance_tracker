@@ -13,6 +13,7 @@ from models.account import AccountModel, ACCOUNT_KINDS
 from models.transaction import TransactionModel
 from services.db_service import DbService
 from services.loan_service import LoanService, ENTRY_IS_READ_ONLY, is_loan_entry
+from services.interest_service import INTEREST_FREQUENCIES, period_start
 
 db_service = DbService()
 loan_service = LoanService()
@@ -92,20 +93,25 @@ def _statement_date(value):
     return day
 
 
-def _interest_start(kind, apr_bps):
-    """
-    Where a loan's monthly interest starts when its APR is set: this month's 1st counts as done,
-    so the first charge is next month's (going forward; LoanService.accrue_interest). None
-    without an APR.
-    """
-    return date.today().replace(day=1) if kind == 'loan' and apr_bps is not None else None
+_NOT_GIVEN = object()
 
 
-def _loan_apr(kind, apr_bps):
-    """The APR to keep for an account of `kind`: only a loan has one. Raises ValueError for an APR on another kind."""
-    if apr_bps is not None and kind != 'loan':
-        raise ValueError('Only a loan account has an APR.')
-    return apr_bps
+def _interest_frequency(apr_bps, data, current=None):
+    """
+    How often an account's interest hits (InterestService): `interest_frequency` from `data`
+    (monthly, quarterly or yearly), else the `current` one, else monthly; None without a rate.
+    Raises ValueError for an unknown frequency, or one without a rate.
+    """
+    given = data.get('interest_frequency') if 'interest_frequency' in data else _NOT_GIVEN
+    if apr_bps is None:
+        if given is not _NOT_GIVEN and given is not None:
+            raise ValueError('How often needs an APR.')
+        return None
+    if given is _NOT_GIVEN:
+        return current or 'monthly'
+    if not isinstance(given, str) or given not in INTEREST_FREQUENCIES:
+        raise ValueError('How often must be monthly, quarterly or yearly.')
+    return given
 
 
 class AccountService:
@@ -125,9 +131,12 @@ class AccountService:
             name = None
         name = id_str if name is None else _account_label(name, AccountModel.acct_name, 'Display name')
         kind = _account_kind(data.get('kind', 'bank'))
-        apr_bps = _loan_apr(kind, _apr_bps(data.get('apr')))
-        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name,
-                                         kind=kind, apr_bps=apr_bps, interest_through=_interest_start(kind, apr_bps))
+        apr_bps = _apr_bps(data.get('apr'))
+        frequency = _interest_frequency(apr_bps, data)
+        # Interest starts going forward: the period it's set in counts as done
+        start = period_start(date.today(), frequency) if frequency else None
+        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name, kind=kind,
+                                         apr_bps=apr_bps, interest_frequency=frequency, interest_through=start)
 
     def update_account(self, account_id, data: dict):
         """
@@ -160,10 +169,8 @@ class AccountService:
         paying_down = db_service.get_series_paying_down(account.id) if kind != 'loan' else []
         if paying_down:
             raise ValueError(f'{paying_down[0].vendor} pays down this loan; choose another account for it first.')
-        if 'apr' in data:
-            apr_bps = _loan_apr(kind, _apr_bps(data['apr']))
-        else:
-            apr_bps = account.apr_bps if kind == 'loan' else None   # a bank account keeps no APR
+        apr_bps = _apr_bps(data['apr']) if 'apr' in data else account.apr_bps
+        frequency = _interest_frequency(apr_bps, data, account.interest_frequency)
         opening = account.opening_balance
         if 'opening_balance' in data:
             opening = _balance_dollars(data['opening_balance'], 'Starting balance')
@@ -178,13 +185,15 @@ class AccountService:
 
         account.acct_name   = name
         account.acct_id_str = id_str
-        charged_interest = account.kind == 'loan' and account.apr_bps is not None
-        account.kind        = kind
-        account.apr_bps     = apr_bps
-        # A loan whose APR is set keeps the months it has done (a new rate included); one that
-        # stops charging interest loses its start, and one that starts begins from this month
-        if not (charged_interest and account.interest_through is not None and apr_bps is not None):
-            account.interest_through = _interest_start(kind, apr_bps)
+        # Interest keeps the periods it has done through a new rate or type; stopping it clears its
+        # start, and starting it, or a new frequency, starts from the period today falls in
+        if frequency is None:
+            account.interest_through = None
+        elif account.interest_through is None or frequency != account.interest_frequency:
+            account.interest_through = period_start(date.today(), frequency)
+        account.kind               = kind
+        account.apr_bps            = apr_bps
+        account.interest_frequency = frequency
         if balance_cents is not None:
             db_service.set_balance(account.id, balance_cents)
         else:
@@ -192,7 +201,8 @@ class AccountService:
             old_opening_cents = account.opening_balance_cents
             account.opening_balance = opening
             db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
-        if {'needs_attention', 'account_name', 'account_id', 'kind', 'apr', 'opening_balance', 'balance'} & data.keys():
+        if {'needs_attention', 'account_name', 'account_id', 'kind', 'apr', 'interest_frequency', 'opening_balance',
+                'balance'} & data.keys():
             account.needs_attention = False
 
         db.session.commit()

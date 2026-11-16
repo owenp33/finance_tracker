@@ -43,7 +43,7 @@ class DbService:
     # ACCOUNT OPERATIONS ========================================================
 
     def create_account(self, user_id, acct_id_str, account_name="", needs_attention=False, kind='bank', apr_bps=None,
-                       interest_through=None):
+                       interest_frequency=None, interest_through=None):
         display_name = account_name if account_name else acct_id_str
         acc = AccountModel(
             user_id=user_id,
@@ -53,6 +53,7 @@ class DbService:
             needs_attention=needs_attention,
             kind=kind,
             apr_bps=apr_bps,
+            interest_frequency=interest_frequency,
             interest_through=interest_through,
         )
         db.session.add(acc)
@@ -316,16 +317,16 @@ class DbService:
 
     # LOAN ENTRY OPERATIONS =====================================================
 
-    def claim_interest_month(self, account_id, booked_through, month):
+    def claim_interest_period(self, account_id, booked_through, start):
         """
-        Move a loan's interest_through from `booked_through` to `month` in one statement, and say
-        whether it moved: it doesn't when another run already did, so a month is charged once.
+        Move an account's interest_through from `booked_through` to `start` in one statement, and
+        say whether it moved: it doesn't when another run already did, so a period is booked once.
         """
         db.session.flush()
         current = (AccountModel.interest_through.is_(None) if booked_through is None
                    else AccountModel.interest_through == booked_through)
         moved = db.session.execute(
-            update(AccountModel).where(AccountModel.id == account_id, current).values(interest_through=month)
+            update(AccountModel).where(AccountModel.id == account_id, current).values(interest_through=start)
         ).rowcount == 1
         account = db.session.get(AccountModel, account_id)
         if account is not None:
