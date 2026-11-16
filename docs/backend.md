@@ -132,19 +132,24 @@ three ways to change a stored balance, `adjust_balance`, `recompute_balance` and
 total in the same statement; see Invariants).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
-- `create_account(user_id, data)` takes `account_id` (required) and `account_name` (defaults to
-  the id string), validated the same way as editing (trimmed, non-empty text, at most 100).
+- `create_account(user_id, data)` takes `account_id` (required), `account_name` (defaults to
+  the id string), validated the same way as editing (trimmed, non-empty text, at most 100),
+  `kind` (`bank`, the default, or `loan`) and, for a loan, `apr`.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
-  `opening_balance` (the starting balance, in dollars) or `balance` (the current balance, in
-  dollars; not both), and `needs_attention`, which may only be set to `false`. Names and id
-  strings are trimmed and must be non-empty text within the column length (100). Either balance
+  `kind`, `apr`, `opening_balance` (the starting balance, in dollars) or `balance` (the current
+  balance, in dollars; not both), and `needs_attention`, which may only be set to `false`. Names
+  and id strings are trimmed and must be non-empty text within the column length (100). `kind` is
+  one of `ACCOUNT_KINDS` (`bank` covers checking, savings and cards; else "Account type must be
+  bank or loan."). Only a loan has an APR ("Only a loan account has an APR."): a number of
+  percent from 0 to `MAX_APR` (100), kept as hundredths of a percent (`apr_bps`, rounded), or
+  `null` while it isn't known; a loan made a bank account again loses it. Either balance
   must be a finite number within ±`MAX_BALANCE` ($10,000,000, which keeps `balance_cents` far
   from the 32-bit integer limit). Changing the starting balance moves the balance by the same
   amount; setting the current balance sets the starting balance to it less the account's
   transactions, transfers included (`DbService.set_balance`), which must also land within the
   limit. Invalid input raises `ValueError` before anything changes; the messages name the fields
   as the edit form shows them ("Display name", "Account ID", "Starting balance", "Current
-  balance"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
+  balance", "APR"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
 - `delete_account` unlinks the account's transfers, then deletes it; its transactions and
   recurring templates cascade.
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance in step
@@ -358,7 +363,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | Table | Key columns |
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
-| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention` |
+| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention`, `kind` (`bank` or `loan`; money owed is a negative balance, as on a card), `apr_bps` (a loan's APR in hundredths of a percent, 6.8% = 680; null when unknown or not a loan) |
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
@@ -368,7 +373,8 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
-the account's database id is `id`.
+the account's database id is `id`. Account responses give the APR as `apr`, in percent (6.8), and
+transaction responses say `on_loan_account` (true when the transaction's account is a loan).
 
 ---
 
@@ -409,8 +415,8 @@ Every change must keep these true.
   notes, and negated amount to the other. Unlink a pair before deleting either side (the foreign
   key is circular).
 - **Accounts created by an import** start with `needs_attention = True`. Editing the account's
-  name, id string, or starting balance, or sending `needs_attention: false` ("Looks good"),
-  clears it.
+  name, id string, kind, APR, or starting or current balance, or sending `needs_attention: false`
+  ("Looks good"), clears it.
 - **Passwords** are stored only as Werkzeug hashes (scrypt by default, 162 characters, hence the
   255-character column). Plaintext is never stored or compared.
 - **`MIN_PASSWORD_LENGTH`** (8) is defined in both `services/auth_service.py` and the frontend's
@@ -663,15 +669,17 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/balances` | `GET ?account_ids=&start_date=&end_date=` |
 
 Details worth knowing:
-- `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
-  over-100-character value is a 400.
-- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` or
-  `balance` (dollars; the current balance, which sets the starting balance to it less the
-  transactions), and `needs_attention: false` ("Looks good"). Any of them clears
-  `needs_attention`. A blank, non-text, or over-100-character name or id string is a 400, and so
-  is a balance that isn't a number or is beyond ±$10,000,000, a current balance that would put
-  the starting balance beyond it, or both balances at once. Account responses include `balance`
-  and `opening_balance`.
+- `POST /accounts` takes `account_id` and optionally `account_name`, `kind` (`bank` or `loan`)
+  and a loan's `apr` (percent); a blank, non-text, or over-100-character label, an unknown kind,
+  or an APR that isn't a number from 0 to 100 or is on a bank account is a 400.
+- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `kind`, `apr` (percent;
+  `null` clears it), `opening_balance` or `balance` (dollars; the current balance, which sets the
+  starting balance to it less the transactions), and `needs_attention: false` ("Looks good").
+  Any of them clears `needs_attention`. A blank, non-text, or over-100-character name or id
+  string is a 400, and so are an unknown kind, an APR as above, a balance that isn't a number or
+  is beyond ±$10,000,000, a current balance that would put the starting balance beyond it, or
+  both balances at once. Account responses include `balance`, `opening_balance`, `kind` and
+  `apr`.
 - `POST /accounts/<id>/recurring` takes `start_date`, `vendor`, `category`, `amount`, `frequency`,
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
@@ -813,6 +821,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 
 Recorded so nobody builds on them by accident; each is planned to be fixed.
 
+- **A loan account's transactions still count in totals.** Budget progress, the PDF's summary
+  pages and `/api/analytics` treat them like any account's; they should count only in balances.
 - **Input validation is incomplete.** Older routes still read bodies with `request.get_json()` and
   index fields directly, so a missing field or malformed date there is a generic 500 instead of a
   400. `AccountService.update_transaction` returns raw exception text as its 400 message.

@@ -8,7 +8,7 @@ Depends on db_service.py for raw data access.
 import math
 import numbers
 from extensions import db
-from models.account import AccountModel
+from models.account import AccountModel, ACCOUNT_KINDS
 from models.transaction import TransactionModel
 from services.db_service import DbService
 
@@ -51,33 +51,69 @@ def _money(cents):
     return f"{'-' if cents < 0 else ''}${abs(cents) / 100:,.2f}"
 
 
+def _account_kind(value):
+    """An account's kind, one of ACCOUNT_KINDS. Raises ValueError otherwise."""
+    if value not in ACCOUNT_KINDS:
+        raise ValueError('Account type must be bank or loan.')
+    return value
+
+
+MAX_APR = 100  # percent
+
+
+def _apr_bps(value):
+    """
+    An APR in percent as hundredths of a percent (6.8 → 680), or None (not known yet). Raises
+    ValueError unless it's None or a finite number from 0 to MAX_APR.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError('APR must be a number.')
+    if not 0 <= value <= MAX_APR:
+        raise ValueError(f'APR must be between 0% and {MAX_APR}%.')
+    return int(round(value * 100))
+
+
+def _loan_apr(kind, apr_bps):
+    """The APR to keep for an account of `kind`: only a loan has one. Raises ValueError for an APR on another kind."""
+    if apr_bps is not None and kind != 'loan':
+        raise ValueError('Only a loan account has an APR.')
+    return apr_bps
+
+
 class AccountService:
 
     # ACCOUNT OPERATIONS ========================================================
 
     def create_account(self, user_id, data: dict):
         """
-        Create an account from account_id (the bank's label, required) and account_name (defaults
-        to the id string). Both are trimmed and must be text within the column length; raises
-        ValueError otherwise.
+        Create an account from account_id (the bank's label, required), account_name (defaults
+        to the id string), kind ('bank', the default, or 'loan') and, for a loan, apr (in percent;
+        may be left out until it's known). Labels are trimmed and must be text within the column
+        length; raises ValueError for anything invalid.
         """
         id_str = _account_label(data.get('account_id', ''), AccountModel.acct_id_str, 'Account ID')
         name = data.get('account_name')
         if isinstance(name, str) and not name.strip():
             name = None
         name = id_str if name is None else _account_label(name, AccountModel.acct_name, 'Display name')
-        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name)
+        kind = _account_kind(data.get('kind', 'bank'))
+        apr_bps = _loan_apr(kind, _apr_bps(data.get('apr')))
+        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name,
+                                         kind=kind, apr_bps=apr_bps)
 
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account. Editing the name, id string, starting balance
-        (opening_balance, in dollars) or current balance (balance, in dollars), or sending
+        Apply field updates to an account. Editing the name, id string, kind, APR, starting
+        balance (opening_balance, in dollars) or current balance (balance, in dollars), or sending
         needs_attention=False ("Looks good"), marks an import-created account as reviewed. Names
-        and id strings are trimmed. Changing the starting balance moves the balance by the same
-        amount; setting the current balance sets the starting balance to it less the account's
-        transactions (transfers included), so the two always add up. One balance or the other,
-        not both. Returns (updated_account, error_message); raises ValueError for invalid input,
-        before changing anything.
+        and id strings are trimmed. Only a loan has an APR (in percent; None clears it), and a
+        loan made a bank account again loses it. Changing the starting balance moves the balance
+        by the same amount; setting the current balance sets the starting balance to it less the
+        account's transactions (transfers included), so the two always add up. One balance or the
+        other, not both. Returns (updated_account, error_message); raises ValueError for invalid
+        input, before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
@@ -94,6 +130,11 @@ class AccountService:
         id_str = account.acct_id_str
         if 'account_id' in data:
             id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
+        kind = _account_kind(data['kind']) if 'kind' in data else account.kind
+        if 'apr' in data:
+            apr_bps = _loan_apr(kind, _apr_bps(data['apr']))
+        else:
+            apr_bps = account.apr_bps if kind == 'loan' else None   # a bank account keeps no APR
         opening = account.opening_balance
         if 'opening_balance' in data:
             opening = _balance_dollars(data['opening_balance'], 'Starting balance')
@@ -108,6 +149,8 @@ class AccountService:
 
         account.acct_name   = name
         account.acct_id_str = id_str
+        account.kind        = kind
+        account.apr_bps     = apr_bps
         if balance_cents is not None:
             db_service.set_balance(account.id, balance_cents)
         else:
@@ -115,7 +158,7 @@ class AccountService:
             old_opening_cents = account.opening_balance_cents
             account.opening_balance = opening
             db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
-        if {'needs_attention', 'account_name', 'account_id', 'opening_balance', 'balance'} & data.keys():
+        if {'needs_attention', 'account_name', 'account_id', 'kind', 'apr', 'opening_balance', 'balance'} & data.keys():
             account.needs_attention = False
 
         db.session.commit()

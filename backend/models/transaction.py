@@ -38,6 +38,7 @@ class TransactionModel(db.Model):
             'id': self.id,
             'account_id': self.account_id,
             'account_name': self.account.acct_name if self.account else None,
+            'on_loan_account': bool(self.account and self.account.kind == 'loan'),
             'date': self.date.isoformat(),
             'vendor': self.vendor,
             'category': self.category,

@@ -30,7 +30,7 @@ class TestAccountReview:
 
     @pytest.mark.parametrize('changes', [
         {'account_name': 'Renamed'}, {'account_id': 'new-id'}, {'needs_attention': False},
-        {'opening_balance': 250}, {'balance': 250},
+        {'opening_balance': 250}, {'balance': 250}, {'kind': 'loan'}, {'kind': 'loan', 'apr': 6.8},
     ])
     def test_editing_or_marking_reviewed_clears_needs_attention(self, account, changes):
         account.needs_attention = True
@@ -199,6 +199,77 @@ class TestCurrentBalance:
         with pytest.raises(ValueError):
             svc.update_account(account.id, {'balance': 75, 'account_name': ''})
         assert (account.opening_balance, account.balance) == (50, 50)
+
+
+class TestLoanAccounts:
+    """
+    An account is a bank account (checking, savings, a card) or a loan, which can carry an APR (in
+    percent, kept as hundredths of a percent). Money owed on a loan is a negative balance, as on a card.
+    """
+
+    def test_accounts_are_bank_accounts_without_an_apr_by_default(self, account, user):
+        created = svc.create_account(user.id, {'account_id': 'savings-2'})
+        for acc in (account, created):
+            assert (acc.to_dict()['kind'], acc.to_dict()['apr']) == ('bank', None)
+
+    def test_creating_a_loan_with_its_apr(self, user):
+        loan = svc.create_account(user.id, {'account_id': 'aspire-1', 'account_name': 'ASPIRE loan',
+                                            'kind': 'loan', 'apr': 6.8})
+        assert (loan.kind, loan.apr_bps) == ('loan', 680)
+        assert (loan.to_dict()['kind'], loan.to_dict()['apr']) == ('loan', 6.8)
+
+    def test_a_loan_can_wait_for_its_apr(self, user):
+        loan = svc.create_account(user.id, {'account_id': 'aspire-1', 'kind': 'loan'})
+        assert (loan.kind, loan.to_dict()['apr']) == ('loan', None)
+
+    def test_turning_an_account_into_a_loan_then_changing_and_clearing_its_apr(self, account):
+        updated, error = svc.update_account(account.id, {'kind': 'loan', 'apr': 5.25})
+        assert error is None
+        assert (updated.kind, updated.apr_bps) == ('loan', 525)
+        svc.update_account(account.id, {'apr': 0})
+        assert account.apr_bps == 0
+        svc.update_account(account.id, {'apr': None})
+        assert account.apr_bps is None
+
+    def test_a_loan_turned_back_into_a_bank_account_loses_its_apr(self, account):
+        svc.update_account(account.id, {'kind': 'loan', 'apr': 5.25})
+        svc.update_account(account.id, {'kind': 'bank'})
+        assert (account.kind, account.apr_bps) == ('bank', None)
+
+    def test_an_apr_rounds_to_hundredths_of_a_percent(self, account):
+        svc.update_account(account.id, {'kind': 'loan', 'apr': 6.8749})
+        assert account.apr_bps == 687
+        svc.update_account(account.id, {'apr': 100})
+        assert account.apr_bps == 10_000
+
+    @pytest.mark.parametrize('data, error', [
+        ({'kind': 'card'}, 'Account type must be bank or loan.'),
+        ({'kind': None}, 'Account type must be bank or loan.'),
+        ({'kind': 'loan', 'apr': '6.8'}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': True}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': float('nan')}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': -0.01}, 'APR must be between 0% and 100%.'),
+        ({'kind': 'loan', 'apr': 100.01}, 'APR must be between 0% and 100%.'),
+        ({'apr': 6.8}, 'Only a loan account has an APR.'),
+        ({'kind': 'bank', 'apr': 6.8}, 'Only a loan account has an APR.'),
+    ], ids=['unknown-kind', 'null-kind', 'string-apr', 'bool-apr', 'nan-apr', 'negative-apr', 'apr-over-100',
+            'apr-on-a-bank-account', 'apr-with-bank'])
+    def test_rejects_invalid_kinds_and_aprs_when_creating_or_editing(self, user, account, data, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.create_account(user.id, {'account_id': 'new-1', **data})
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_account(account.id, data)
+
+    def test_a_rejected_edit_changes_nothing(self, account):
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'kind': 'loan', 'apr': 6.8, 'account_name': ''})
+        assert (account.kind, account.apr_bps, account.acct_name) == ('bank', None, 'Test Checking')
+
+    def test_transactions_say_whether_they_are_on_a_loan_account(self, account):
+        tx = svc.add_transaction(account.id, date(2026, 1, 31), 'ASPIRE', 'Loan', 75.00)
+        assert tx.to_dict()['on_loan_account'] is False
+        svc.update_account(account.id, {'kind': 'loan'})
+        assert tx.to_dict()['on_loan_account'] is True
 
 
 # ── Transaction CRUD ──────────────────────────────────────────────────────────

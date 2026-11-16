@@ -42,7 +42,7 @@ class DbService:
 
     # ACCOUNT OPERATIONS ========================================================
 
-    def create_account(self, user_id, acct_id_str, account_name="", needs_attention=False):
+    def create_account(self, user_id, acct_id_str, account_name="", needs_attention=False, kind='bank', apr_bps=None):
         display_name = account_name if account_name else acct_id_str
         acc = AccountModel(
             user_id=user_id,
@@ -50,6 +50,8 @@ class DbService:
             acct_name=display_name,
             balance_cents=0,
             needs_attention=needs_attention,
+            kind=kind,
+            apr_bps=apr_bps,
         )
         db.session.add(acc)
         db.session.commit()

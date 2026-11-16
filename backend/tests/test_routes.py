@@ -176,6 +176,39 @@ class TestAccountRoutes:
         assert resp.status_code == 400
         assert resp.json == {'success': False, 'error': error}
 
+    def test_creating_a_loan_account_returns_its_kind_and_apr(self, client, auth_headers):
+        resp = client.post('/api/accounts', headers=auth_headers,
+                           json={'account_id': 'aspire-1', 'account_name': 'ASPIRE loan', 'kind': 'loan', 'apr': 6.8})
+        assert resp.status_code == 201
+        assert (resp.json['account']['kind'], resp.json['account']['apr']) == ('loan', 6.8)
+
+    def test_editing_the_kind_and_apr(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'kind': 'loan', 'apr': 5.25}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['kind'], resp.json['account']['apr']) == ('loan', 5.25)
+        listed = client.get('/api/accounts', headers=auth_headers).json['accounts']
+        assert [(a['kind'], a['apr']) for a in listed] == [('loan', 5.25)]
+
+    @pytest.mark.parametrize('body, error', [
+        ({'kind': 'card'}, 'Account type must be bank or loan.'),
+        ({'apr': 6.8}, 'Only a loan account has an APR.'),
+        ({'kind': 'loan', 'apr': 'high'}, 'APR must be a number.'),
+    ], ids=['unknown-kind', 'apr-on-a-bank-account', 'string-apr'])
+    def test_invalid_kind_or_apr_returns_400(self, client, auth_headers, account, body, error):
+        created = client.post('/api/accounts', json={'account_id': 'new-1', **body}, headers=auth_headers)
+        edited = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        for resp in (created, edited):
+            assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_transactions_say_whether_they_are_on_a_loan_account(self, client, auth_headers, account):
+        loan = client.post('/api/accounts', json={'account_id': 'aspire-1', 'kind': 'loan'},
+                           headers=auth_headers).json['account']
+        for acc_id, vendor in [(account.id, 'Shop'), (loan['id'], 'ASPIRE')]:
+            client.post(f'/api/accounts/{acc_id}/transactions', headers=auth_headers,
+                        json={'date': '2026-01-31', 'vendor': vendor, 'category': 'Loan', 'amount': 75})
+        listed = client.get('/api/accounts/all-transactions', headers=auth_headers).json['transactions']
+        assert sorted((t['vendor'], t['on_loan_account']) for t in listed) == [('ASPIRE', True), ('Shop', False)]
+
 
 # ── Budget flags in responses ─────────────────────────────────────────────────
 
