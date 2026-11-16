@@ -92,6 +92,15 @@ def _statement_date(value):
     return day
 
 
+def _interest_start(kind, apr_bps):
+    """
+    Where a loan's monthly interest starts when its APR is set: this month's 1st counts as done,
+    so the first charge is next month's (going forward; LoanService.accrue_interest). None
+    without an APR.
+    """
+    return date.today().replace(day=1) if kind == 'loan' and apr_bps is not None else None
+
+
 def _loan_apr(kind, apr_bps):
     """The APR to keep for an account of `kind`: only a loan has one. Raises ValueError for an APR on another kind."""
     if apr_bps is not None and kind != 'loan':
@@ -118,7 +127,7 @@ class AccountService:
         kind = _account_kind(data.get('kind', 'bank'))
         apr_bps = _loan_apr(kind, _apr_bps(data.get('apr')))
         return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name,
-                                         kind=kind, apr_bps=apr_bps)
+                                         kind=kind, apr_bps=apr_bps, interest_through=_interest_start(kind, apr_bps))
 
     def update_account(self, account_id, data: dict):
         """
@@ -169,8 +178,13 @@ class AccountService:
 
         account.acct_name   = name
         account.acct_id_str = id_str
+        charged_interest = account.kind == 'loan' and account.apr_bps is not None
         account.kind        = kind
         account.apr_bps     = apr_bps
+        # A loan whose APR is set keeps the months it has done (a new rate included); one that
+        # stops charging interest loses its start, and one that starts begins from this month
+        if not (charged_interest and account.interest_through is not None and apr_bps is not None):
+            account.interest_through = _interest_start(kind, apr_bps)
         if balance_cents is not None:
             db_service.set_balance(account.id, balance_cents)
         else:

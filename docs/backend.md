@@ -153,6 +153,10 @@ total in the same statement; see Invariants).
 - `delete_account` unlinks the account's transfers, removes the loan entries mirroring its
   payments (moving their loans' balances back) and, for a loan, stops the series that pay it
   down, then deletes it; its transactions and recurring templates cascade.
+- Setting a loan's APR (when creating it, or on a loan without one) starts its monthly interest
+  from this month's 1st, counted as done (`interest_through`; see `LoanService.accrue_interest`),
+  so the first charge is next month's; a new rate keeps the months done; clearing the APR or
+  making the account a bank account clears it.
 - `update_account` refuses to make a loan that a series pays down anything else ("ASPIRE pays
   down this loan; choose another account for it first.").
 - `update_from_statement(account_id, data)` brings a loan in line with a statement: `date`
@@ -203,7 +207,16 @@ payment to a series, changes one or takes it out calls it: generation and adopti
 loan or the series' names change. `remove_for(payment)`, `remove_series_entries(rec)` and
 `remove_entries_mirroring_account(account_id)` run before a payment, a series or an account goes.
 Entries are read-only (`is_loan_entry`, `ENTRY_IS_READ_ONLY`: the transaction routes refuse to
-edit, delete or pair one). It uses `DbService` only, so both services above can use it.
+edit, delete or pair one). It also charges loans' monthly interest: `accrue_interest(account_id,
+today=None)` books, on each 1st after `interest_through` up to the latest one, an ordinary
+transaction (vendor and category "Interest", `INTEREST`; notes "6.70% APR on $75,217.00") of APR
+÷ 12 of everything owed at the end of the day before, earlier interest included, rounded half up;
+a month when nothing is owed is done without a charge. Missed months are caught up in order, each
+on what was owed then. A loan without `interest_through` starts going forward from the latest
+1st. Each month moves `interest_through` first, by compare-and-set
+(`DbService.claim_interest_month`), so two runs can't charge it twice and a deleted charge isn't
+booked again. It runs on login, on `GET /api/auth/me` and in the scheduler, after recurring
+generation. It uses `DbService` only, so both services above can use it.
 
 **`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
 Insights balance chart.
@@ -385,8 +398,9 @@ other as whole words: "ANTHROPIC.COM CA" and "Anthropic") or `None`; and
 `amount_close` accepts an amount moving money the same way within `AMOUNT_TOLERANCE_PERCENT`
 (50%) of the series'.
 
-**`scheduler`** (`scheduler.py`): background generation of recurring transactions; see
-[Recurring transactions](#recurring-transactions).
+**`scheduler`** (`scheduler.py`): background generation of recurring transactions (see
+[Recurring transactions](#recurring-transactions)) and loans' monthly interest
+(`LoanService.accrue_interest`).
 
 ---
 
@@ -397,7 +411,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | Table | Key columns |
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
-| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention`, `kind` (`bank` or `loan`; money owed is a negative balance, as on a card), `apr_bps` (a loan's APR in hundredths of a percent, 6.8% = 680; null when unknown or not a loan) |
+| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention`, `kind` (`bank` or `loan`; money owed is a negative balance, as on a card), `apr_bps` (a loan's APR in hundredths of a percent, 6.8% = 680; null when unknown or not a loan), `interest_through` (a loan's monthly interest is charged through this 1st; null without an APR) |
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index`, `loan_payment_id` (on a loan entry: the payment it mirrors; unique; `ON DELETE SET NULL`) |
 | `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes`, `loan_account_id` (the loan account the series pays down; `ON DELETE SET NULL`) |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
@@ -429,6 +443,8 @@ Every change must keep these true.
   cash flow, budgets and their flags, the PDF's summary pages, `/api/analytics` and finding
   series (`TransactionModel.on_loan_account`; in SQL, `AccountModel.kind != 'loan'`). Balances
   include them: the account's own balance, its PDF pages, `GET /api/balances` and so Net position.
+- **A loan's monthly interest is charged once a month.** `interest_through` only moves forward,
+  by compare-and-set, before the month's charge is booked.
 - **Loan entries follow their payments.** A payment has a loan entry exactly when it's in a
   series that pays down a loan and its amount isn't 0, and the entry has the opposite amount,
   the payment's date, vendor and category, on that loan (`LoanService.sync`). A new path that
@@ -704,7 +720,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | Prefix | Endpoints |
 |---|---|
 | (none) | `GET /health` (no auth), `GET /` (no auth; its endpoint list is out of date) |
-| `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
+| `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions and charges loans' monthly interest), `GET /me` (likewise) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `POST /<id>/statement`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
 | `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
@@ -819,7 +835,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
   scheduler (`tests/conftest.py`). No database server is needed.
 - Fixtures: `app`, `client`, `user`, `account`, `auth_headers` (a logged-in user's
   `Authorization` header), and `pin_today` (call it with a date to fix `date.today()` inside
-  `RecurringService`, so recurring tests don't depend on when they run).
+  `RecurringService`, `LoanService` and `AccountService`, so recurring and interest tests don't
+  depend on when they run).
 - Never import `wsgi` in a check script: it builds the real app, which runs the migrations and the
   scheduler's catch-up against whatever database `DATABASE_URL` points at. Use
   `create_app({'TESTING': True, ...})` instead. After each test, `clean_tables` empties every table and resets the
@@ -848,6 +865,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
 | `test_loan_entries.py` | Loan entries: a series paying down a loan, entries following their payments' edits, deletes and series membership, read-only entries, and the routes |
+| `test_loan_interest.py` | Monthly loan interest: the charge, catching up missed months, once a month, when it starts and stops, and login / page load |
 | `test_loan_statements.py` | Updating a loan from a statement: the adjustment it books, validation, and `POST /accounts/<id>/statement` |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |

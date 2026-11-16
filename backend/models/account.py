@@ -17,6 +17,7 @@ class AccountModel(db.Model):
     needs_attention = db.Column(db.Boolean, nullable=False, default=False)  # created by an import, not yet reviewed
     kind = db.Column(db.String(10), nullable=False, default='bank')  # one of ACCOUNT_KINDS
     apr_bps = db.Column(db.Integer)  # a loan's APR in hundredths of a percent (6.8% = 680); None when unknown or not a loan
+    interest_through = db.Column(db.Date)  # a loan's monthly interest is booked through this 1st (LoanService); None without an APR
 
     # Relationships: One account has many transactions
     transactions = db.relationship('TransactionModel', backref='account', cascade="all, delete-orphan")

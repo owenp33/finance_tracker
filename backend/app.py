@@ -27,6 +27,7 @@ def _run_migrations(db):
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
             "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'bank'",
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS apr_bps INTEGER',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_through DATE',
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',
