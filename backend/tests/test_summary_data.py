@@ -87,22 +87,30 @@ class TestMonthlyNet:
             ('2026-03', 0, 1000, -1000),
         ]
 
-    def test_the_3_month_average_takes_each_full_month_with_the_two_full_months_before_it(self):
-        # May partial (the period starts mid-month), Jun–Oct full, Nov so far:
-        # net 100, then 500, -600, 300, 900, 0 (nothing in October), then -200
-        txs = [
-            tx(date(2026, 5, 20), 10000),
-            tx(date(2026, 6, 1), 50000), tx(date(2026, 7, 1), -60000), tx(date(2026, 8, 1), 30000),
-            tx(date(2026, 9, 1), 90000), tx(date(2026, 11, 3), -20000),
-        ]
-        months = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']
-        rows = summary_data.monthly_net(txs, months, ['2026-05', '2026-11'])
+    # May partial (the period starts mid-month), Jun–Oct full, Nov so far:
+    # net 100, then 500, -600, 300, 900, 0 (nothing in October), then -200
+    NET_TXS = [
+        tx(date(2026, 5, 20), 10000),
+        tx(date(2026, 6, 1), 50000), tx(date(2026, 7, 1), -60000), tx(date(2026, 8, 1), 30000),
+        tx(date(2026, 9, 1), 90000), tx(date(2026, 11, 3), -20000),
+    ]
+    NET_MONTHS = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']
+
+    def test_the_3_month_average_sits_on_the_middle_month_of_three_full_months_in_a_row(self):
+        # Jun–Aug's on July, Jul–Sep's on August, Aug–Oct's on September; June's would take in
+        # May and October's November, both partial
+        rows = summary_data.monthly_net(self.NET_TXS, self.NET_MONTHS, ['2026-05', '2026-11'])
         assert [(r['net'], r['partial'], r['average']) for r in rows] == [
             (10000, True, None),
-            (50000, False, None), (-60000, False, None), (30000, False, 6667),
-            (90000, False, 20000), (0, False, 40000),
+            (50000, False, None), (-60000, False, 6667), (30000, False, 20000),
+            (90000, False, 40000), (0, False, None),
             (-20000, True, None),
         ]
+
+    def test_no_average_reaches_across_a_partial_month_in_the_middle(self):
+        # July partial (as this month is in a period that ends later): only Aug–Oct is three full months
+        rows = summary_data.monthly_net(self.NET_TXS, self.NET_MONTHS, ['2026-05', '2026-07', '2026-11'])
+        assert [r['average'] for r in rows] == [None, None, None, None, 40000, None, None]
 
 
 class TestCategoryPanels:

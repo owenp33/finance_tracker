@@ -28,12 +28,19 @@ test("each month's money in, money out and net, transfers left out and empty mon
   ]);
 });
 
-test('the 3-month average starts at the third full month and leaves partial months out', () => {
+test('the 3-month average sits on the middle month of three full months in a row', () => {
+  // Jun–Aug's on July, Jul–Sep's on August, Aug–Oct's on September; October's would take in
+  // November, which is partial, and June has no month before it
   expect(monthlyNet(NET_TRANSACTIONS, MONTHS, ['2026-11']).map(m => m.average)).toEqual([
-    null, null, 6667, 20000, 40000, null,
+    null, 6667, 20000, 40000, null, null,
   ]);
   // A partial first month (a period starting mid-month) isn't in any average either
   expect(monthlyNet(NET_TRANSACTIONS, MONTHS, ['2026-06', '2026-11']).map(m => m.average)).toEqual([
-    null, null, null, 20000, 40000, null,
+    null, null, 20000, 40000, null, null,
+  ]);
+  // Nor is a partial month in the middle (this month, in a period that ends later): no average
+  // reaches across it
+  expect(monthlyNet(NET_TRANSACTIONS, MONTHS, ['2026-07', '2026-11']).map(m => m.average)).toEqual([
+    null, null, null, 40000, null, null,
   ]);
 });

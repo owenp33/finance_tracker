@@ -1,14 +1,15 @@
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Cell, ReferenceLine, ResponsiveContainer } from 'recharts';
-import { monthRangeLabel } from '../../../utils/dates';
+import { monthRangeLabel, shiftPeriod } from '../../../utils/dates';
 import { formatCents, formatSignedCents, formatCompactDollars } from '../../../utils/money';
 import { monthTick, tickMonths } from './monthTicks';
 
 const HEIGHT = 260;
 
-// A month's numbers on hover or tap
-function NetTip({ active, payload }) {
+// A month's numbers on hover or tap, its average named by the three months it covers
+export function NetTip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
+  const averaged = monthRangeLabel(shiftPeriod(row.month, -1), shiftPeriod(row.month, 1));
   return (
     <div className="chart-tooltip" role="tooltip">
       <strong>{monthRangeLabel(row.month, row.month)}{row.partial ? ', partial' : ''}</strong>
@@ -16,15 +17,15 @@ function NetTip({ active, payload }) {
         <dt>Money in</dt><dd>{formatCents(row.income)}</dd>
         <dt>Money out</dt><dd>{formatCents(row.expenses)}</dd>
         <dt>Net</dt><dd>{formatSignedCents(row.net)}</dd>
-        {row.average !== null && <><dt>3-month average</dt><dd>{formatSignedCents(row.average)}</dd></>}
+        {row.average !== null && <><dt>Average of {averaged}</dt><dd>{formatSignedCents(row.average)}</dd></>}
       </dl>
     </div>
   );
 }
 
 // Net per month as bars around $0 (aqua above, orange below; a month only partly in the period
-// lighter), with the 3-month average of full months as a line on the same axis. `rows` are
-// monthlyNet's.
+// lighter), with the 3-month average as a line on the same axis, each point on the middle month
+// of the three. `rows` are monthlyNet's.
 function NetChart({ rows }) {
   const data = rows.map(row => ({
     ...row,

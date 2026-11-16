@@ -98,8 +98,9 @@ def _income_line(income):
 # As on the app's Insights Overview (Phase V, V5c)
 
 NET_TITLE = 'Net per month'
-NET_NOTE = 'Money in minus money out each month, transfers left out; a month only partly in the period is lighter.'
-AVERAGE_LABEL = '3-month average of full months'
+NET_NOTE = ('Money in minus money out each month, transfers left out; '
+            'a month only partly in the period is lighter and in no average.')
+AVERAGE_LABEL = '3-month average of each month and the months either side'
 NET_COLUMNS = [               # (header, share of the table width, alignment)
     ('Month', 0.28, 'left'), ('Money in', 0.18, 'right'), ('Money out', 0.18, 'right'),
     ('Net', 0.18, 'right'), ('3-month average', 0.18, 'right'),
@@ -111,8 +112,8 @@ ALL_TICKS_UP_TO = 8           # months; a longer run labels only its first month
 def render_net_per_month_pages(pdf, rows, period_label):
     """
     Net per month: bars around $0 (aqua above, orange below; a month only partly in the period
-    lighter) with the 3-month average of full months as a line, then the numbers as a table, on
-    as many pages as it needs. `rows` are summary_data.monthly_net's.
+    lighter) with the 3-month average as a line, each point on the middle month of the three, then
+    the numbers as a table, on as many pages as it needs. `rows` are summary_data.monthly_net's.
     """
     for number, chunk in enumerate(page_chunks(rows)):
         fig = plt.figure(figsize=(8.5, 11))

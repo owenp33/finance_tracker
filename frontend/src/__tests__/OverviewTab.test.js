@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InsightsView from '../components/InsightsView';
+import { NetTip } from '../components/insights/charts/NetChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 
 // jsdom has no layout, so each chart gets a fixed size instead of measuring its container
@@ -122,17 +123,36 @@ describe('net per month', () => {
     expect(screen.queryByText('Monthly Trends')).not.toBeInTheDocument();
   });
 
-  test('"View as table" lists each month with its 3-month average', async () => {
+  test('the note and the legend say where each average sits and what it leaves out', () => {
+    renderOverview(NET_TRANSACTIONS);
+    expect(within(net()).getByText(
+      'Money in minus money out each month, transfers left out; a month only partly in the period is lighter and in no average.'
+    )).toBeInTheDocument();
+    expect(within(net()).getByText('3-month average of each month and the months either side')).toBeInTheDocument();
+  });
+
+  test('"View as table" lists each month with its 3-month average, on the middle month', async () => {
     renderOverview(NET_TRANSACTIONS);
     await user.click(within(net()).getByText('View as table'));
     expect(cells(within(net()).getByRole('table'))).toEqual([
       ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
       ['Jun 2026', '$2,000.00', '$1,500.00', '+$500.00', '—'],
-      ['Jul 2026', '$2,000.00', '$2,600.00', '-$600.00', '—'],
-      ['Aug 2026', '$2,000.00', '$1,700.00', '+$300.00', '+$66.67'],
-      ['Sep 2026', '$2,000.00', '$1,100.00', '+$900.00', '+$200.00'],
-      ['Oct 2026', '$0.00', '$0.00', '$0.00', '+$400.00'],
+      ['Jul 2026', '$2,000.00', '$2,600.00', '-$600.00', '+$66.67'],
+      ['Aug 2026', '$2,000.00', '$1,700.00', '+$300.00', '+$200.00'],
+      ['Sep 2026', '$2,000.00', '$1,100.00', '+$900.00', '+$400.00'],
+      ['Oct 2026', '$0.00', '$0.00', '$0.00', '—'],
       ['Nov 2026 (partial)', '$0.00', '$200.00', '-$200.00', '—'],
+    ]);
+  });
+
+  test("a month's tooltip names the three months its average covers", () => {
+    const row = { month: '2026-01', income: 200000, expenses: 150000, net: 50000, partial: false, average: 6667 };
+    render(<NetTip active payload={[{ payload: row }]} />);
+    const tip = screen.getByRole('tooltip');
+    expect(tip.querySelector('strong')).toHaveTextContent('Jan 2026');
+    expect([...tip.querySelectorAll('dt, dd')].map(el => el.textContent)).toEqual([
+      'Money in', '$2,000.00', 'Money out', '$1,500.00', 'Net', '+$500.00',
+      'Average of Dec 2025–Feb 2026', '+$66.67',
     ]);
   });
 });

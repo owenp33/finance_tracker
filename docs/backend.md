@@ -256,8 +256,9 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   transaction's, since a month still to come holds nothing yet ("this year" ends Dec 31);
   partial are a chosen start after its 1st, a chosen end before its month's last day, and today's
   month and any after it. `monthly_net(transactions, months, partial)` → per month `{month,
-  income, expenses, net, partial, average}`, `average` being the 3-month moving average of net
-  over full months only (each full month with the two before it; else None).
+  income, expenses, net, partial, average}`, `average` being the 3-month average of net on the
+  middle month: each month's net with the months either side, when all three are full (else
+  None), so the first and last month have none and no average reaches across a partial month.
   `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → the top 8 categories by
   plain spending, then the rest as Other (`others` names them), each `{category, total, count,
   months: [{month, cents, partial}], average (full months; None without one), last (the last
@@ -282,7 +283,8 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   top vendors, and recurring costs.
   `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
   Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
-  month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
+  month at 35% opacity), the 3-month average as a line with gaps (each point on the middle month
+  of its three), a legend, then the table
   (Month, Money in, Money out, Net, 3-month average), continued on more pages like an account's.
   `ReportService` adds it only when the period covers at least `MIN_NET_MONTHS` (2) months: one
   month would repeat the summary page's totals. `render_spending_by_category_page(pdf, panels,

@@ -633,10 +633,10 @@ class TestTopVendorsPage:
 class TestNetPerMonthPages:
     """Net per month as the app's Insights Overview draws it: bars around $0, the average, a table."""
 
-    ROWS = [   # summary_data.monthly_net's: three full months, then this month so far
+    ROWS = [   # summary_data.monthly_net's: three full months (their average on the middle one), then this month so far
         {'month': '2025-12', 'income': 300000, 'expenses': 120000, 'net': 180000, 'partial': False, 'average': None},
-        {'month': '2026-01', 'income': 100000, 'expenses': 150050, 'net': -50050, 'partial': False, 'average': None},
-        {'month': '2026-02', 'income': 80000, 'expenses': 50000, 'net': 30000, 'partial': False, 'average': 53317},
+        {'month': '2026-01', 'income': 100000, 'expenses': 150050, 'net': -50050, 'partial': False, 'average': 53317},
+        {'month': '2026-02', 'income': 80000, 'expenses': 50000, 'net': 30000, 'partial': False, 'average': None},
         {'month': '2026-03', 'income': 0, 'expenses': 2500, 'net': -2500, 'partial': True, 'average': None},
     ]
 
@@ -659,25 +659,27 @@ class TestNetPerMonthPages:
 
     def test_the_3_month_average_is_a_line_with_gaps_where_there_is_none(self):
         chart = self.render(self.ROWS)[0].axes[0]
-        (line,) = [line for line in chart.lines if line.get_label() == '3-month average of full months']
-        assert [None if math.isnan(y) else y for y in line.get_ydata()] == [None, None, 533.17, None]
+        (line,) = [line for line in chart.lines
+                   if line.get_label() == '3-month average of each month and the months either side']
+        assert [None if math.isnan(y) else y for y in line.get_ydata()] == [None, 533.17, None, None]
 
     def test_a_heading_a_note_and_a_legend(self):
         (page,) = self.render(self.ROWS)
         assert [t.get_text() for t in page.texts] == [
             'Net per month', '2025-12-01 to 2026-03-12',
-            'Money in minus money out each month, transfers left out; a month only partly in the period is lighter.',
+            'Money in minus money out each month, transfers left out; '
+            'a month only partly in the period is lighter and in no average.',
         ]
         assert [t.get_text() for t in page.axes[0].get_legend().get_texts()] == [
-            'More in than out', 'More out than in', '3-month average of full months']
+            'More in than out', 'More out than in', '3-month average of each month and the months either side']
 
     def test_the_numbers_as_a_table_under_the_chart(self):
         (page,) = self.render(self.ROWS)
         assert _table_cells(page.axes[1]) == [
             ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
             ['Dec 2025', '$3,000.00', '$1,200.00', '+$1,800.00', '—'],
-            ['Jan 2026', '$1,000.00', '$1,500.50', '-$500.50', '—'],
-            ['Feb 2026', '$800.00', '$500.00', '+$300.00', '+$533.17'],
+            ['Jan 2026', '$1,000.00', '$1,500.50', '-$500.50', '+$533.17'],
+            ['Feb 2026', '$800.00', '$500.00', '+$300.00', '—'],
             ['Mar 2026 (partial)', '$0.00', '$25.00', '-$25.00', '—'],
         ]
 

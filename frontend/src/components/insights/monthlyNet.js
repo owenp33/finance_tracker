@@ -3,8 +3,9 @@ import { cashFlowByMonth } from '../../utils/moneyRules';
 // The Overview's net per month (Phase V, V5c), in cents: for each of `months` (categoryPanels
 // periodMonths), its money in, money out and net by the shared rules (moneyRules cashFlowByMonth;
 // a month without transactions at 0), whether the period only partly covers it, and the 3-month
-// moving average of net (`average`): each full month with the two full months before it, so it
-// starts at the third full month and partial months are in no average.
+// average of net (`average`) on the middle month: each month's with the months either side, when
+// all three are full (else null), so the first and last month have none and partial months are in
+// no average.
 export const monthlyNet = (transactions, months, partial) => {
   const byMonth = cashFlowByMonth(transactions);
   const partOnly = new Set(partial);
@@ -16,9 +17,11 @@ export const monthlyNet = (transactions, months, partial) => {
     partial:  partOnly.has(month),
     average:  null,
   }));
-  const full = rows.filter(row => !row.partial);
-  full.forEach((row, i) => {
-    if (i >= 2) row.average = Math.round((full[i].net + full[i - 1].net + full[i - 2].net) / 3);
+  rows.forEach((row, i) => {
+    const three = rows.slice(i - 1, i + 2);
+    if (i >= 1 && three.length === 3 && three.every(month => !month.partial)) {
+      row.average = Math.round((three[0].net + three[1].net + three[2].net) / 3);
+    }
   });
   return rows;
 };
