@@ -13,6 +13,8 @@ import { isFinished } from './recurring';
 // never count), except that a category's reimbursements over the last 90 days come off its
 // spending (Owen, 2026-11-15): the paybacks themselves are left out as irregular income, so
 // without that a paid-back purchase would count as spending to come.
+// A loan account (F2a) has no spending of its own: its forecast is the scheduled payments of the
+// series that pay it down, mirrored onto it, plus interest at its APR (loanInputs).
 
 // How far ahead the forecast reaches, and how many days back it learns from
 export const FORECAST_DAYS = 90;
@@ -86,17 +88,61 @@ export const forecastInputs = (transactions, recurring, occurrences, accountIds,
   return { occurrences: kept, averages };
 };
 
+// The loans among the accounts shown, for the forecast: each of `loans` ({id, name, apr (percent,
+// or null when unknown), startCents (its balance today, negative when owed)}) with its `entries`,
+// the projected `occurrences` of the series that pay it down (`recurring` templates'
+// loan_account_id), mirrored onto it as the opposite amount (a $75 payment is +$75 on the loan),
+// marked `loanEntry`.
+export const loanInputs = (loans, recurring, occurrences) => loans.map(loan => {
+  const paying = new Set(recurring.filter(r => r.loan_account_id === loan.id).map(r => r.id));
+  return {
+    ...loan,
+    entries: occurrences
+      .filter(o => paying.has(o.recurring_id))
+      .map(o => ({ ...o, account_id: loan.id, amount: -o.amount, loanEntry: true })),
+  };
+});
+
+// A loan's interest from `from` (today) through `to`, {date: cents}: each day after today, what's
+// owed (a negative balance; nothing when it isn't) times the APR over 365, simple interest rounded
+// on the running total, accruing before that day's payments (an entry due today counts, as other
+// items do). Positive cents, which add to what's owed.
+const loanInterest = ({ apr, startCents, entries }, from, to) => {
+  const interest = {};
+  if (!apr) return interest;
+  const paid = {};
+  entries.forEach(e => { paid[e.date] = (paid[e.date] || 0) + Math.round(e.amount * 100); });
+  let balance = startCents;
+  let exact = 0;              // the interest so far, unrounded
+  let booked = 0;             // the whole cents of it booked
+  for (let day = from, k = 0; day <= to; day = shiftDays(day, 1), k += 1) {
+    if (k > 0) {
+      exact += (Math.max(-balance, 0) * apr) / 36500;
+      const cents = Math.round(exact) - booked;
+      booked += cents;
+      balance -= cents;
+      if (cents) interest[day] = cents;
+    }
+    balance += paid[day] || 0;
+  }
+  return interest;
+};
+
 // The forecast from `from` (today) through `to`: the balance stepping from `startCents` by each
-// day's scheduled `occurrences` (an item due today included) and by its share of the `averages`,
-// a 90th of their total each day after today (rounded on the running total, so 90 days add up to
-// exactly the last 90 days' spending). A point for each day that changes, kind 'forecast', with
-// that day's `items` and `average` (its share, positive cents); then `to` itself
-// ('forecast-end') when it didn't change.
-export const forecastPoints = (startCents, { occurrences, averages }, from, to) => {
+// day's scheduled `occurrences` (an item due today included), by its share of the `averages`, a
+// 90th of their total each day after today (rounded on the running total, so 90 days add up to
+// exactly the last 90 days' spending), and for the `loans` shown (loanInputs) by their entries
+// and their interest. A point for each day that changes, kind 'forecast', with that day's
+// `items`, `average` (its share, positive cents) and `interest` (positive cents); then `to`
+// itself ('forecast-end') when it didn't change.
+export const forecastPoints = (startCents, { occurrences, averages, loans = [] }, from, to) => {
   const byDay = {};
-  occurrences
+  [...occurrences, ...loans.flatMap(loan => loan.entries)]
     .filter(o => o.date >= from && o.date <= to)
     .forEach(o => { (byDay[o.date] = byDay[o.date] || []).push(o); });
+  const interestByDay = {};
+  loans.forEach(loan => Object.entries(loanInterest(loan, from, to))
+    .forEach(([day, cents]) => { interestByDay[day] = (interestByDay[day] || 0) + cents; }));
   const averageTotal = Object.values(averages).reduce((sum, cents) => sum + cents, 0);
 
   const points = [];
@@ -106,12 +152,13 @@ export const forecastPoints = (startCents, { occurrences, averages }, from, to) 
     const items = byDay[day] || [];
     const average = Math.round((averageTotal * k) / FORECAST_DAYS) - averaged;
     averaged += average;
-    if (!items.length && average === 0) continue;
-    cents += items.reduce((sum, o) => sum + Math.round(o.amount * 100), 0) - average;
-    points.push({ date: day, cents, kind: 'forecast', items, average });
+    const interest = interestByDay[day] || 0;
+    if (!items.length && average === 0 && interest === 0) continue;
+    cents += items.reduce((sum, o) => sum + Math.round(o.amount * 100), 0) - average - interest;
+    points.push({ date: day, cents, kind: 'forecast', items, average, interest });
   }
   if (!points.length || points[points.length - 1].date < to) {
-    points.push({ date: to, cents, kind: 'forecast-end', items: [], average: 0 });
+    points.push({ date: to, cents, kind: 'forecast-end', items: [], average: 0, interest: 0 });
   }
   return points;
 };
@@ -125,8 +172,10 @@ export const forecastPoints = (startCents, { occurrences, averages }, from, to) 
 // or 'no-history': only charges from series with no spending over the last 90 days), average
 // (the spending averaged), scheduled (the charges due, negative), count (how many), forecast
 // (what it adds over the next 90 days, negative)}, the largest forecast first, ties by name.
-// `income`: the scheduled income due, {cents, count, series (how many pay it)}.
-export const forecastAssumptions = (transactions, recurring, occurrences, accountIds, today) => {
+// `income`: the scheduled income due, {cents, count, series (how many pay it)}. `loans`: for each
+// of `loans` (loanInputs), {id, name, apr, payments: {cents, count} (its entries due), interest
+// (what the forecast books over the next 90 days, positive)}.
+export const forecastAssumptions = (transactions, recurring, occurrences, accountIds, today, loans = []) => {
   const shares = categoryShares(transactions, recurring, today);
   const { occurrences: kept, averages } = forecastInputs(transactions, recurring, occurrences, accountIds, today);
   const { spending, reimbursements } = recentActivity(transactions, recurring, today);
@@ -167,5 +216,15 @@ export const forecastAssumptions = (transactions, recurring, occurrences, accoun
     count: paying.length,
     series: new Set(paying.map(o => o.recurring_id)).size,
   };
-  return { categories, income };
+  const loanRows = loans.map(loan => {
+    const entries = loan.entries.filter(e => e.date >= today && e.date <= end);
+    return {
+      id: loan.id,
+      name: loan.name,
+      apr: loan.apr,
+      payments: { cents: entries.reduce((sum, e) => sum + Math.round(e.amount * 100), 0), count: entries.length },
+      interest: Object.values(loanInterest(loan, today, end)).reduce((sum, cents) => sum + cents, 0),
+    };
+  });
+  return { categories, income, loans: loanRows };
 };

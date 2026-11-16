@@ -5,6 +5,8 @@ import { FORECAST_DAYS, forecastAssumptions } from '../../utils/forecast';
 const NOTE = 'A category is forecast by its recurring charges when at least 90% of its spending over the last 90 days, '
   + 'less reimbursements, in every account, was in recurring series; every other category by its average over the '
   + 'last 90 days, less reimbursements. Income is scheduled income only, and series that have ended are left out.';
+const LOAN_NOTE = ' A loan gets the payments of the series that pay it down, and interest at its APR on what\'s owed, '
+  + 'accruing daily.';
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -21,15 +23,27 @@ const basisLabel = (c) => {
 // "What the forecast assumes" (Phase F, F1b), collapsed under the balance chart: the scheduled
 // income, then each category of the accounts `accountIds` with what it spent over the last 90
 // days and the reimbursements taken off, its share in a series, how it's forecast and what it adds
-// over the next 90 days (utils/forecast.js forecastAssumptions), and a total, the forecast's change
-// from today
-function ForecastAssumptions({ transactions, recurring, occurrences, accountIds, today, label }) {
-  const { categories, income } = forecastAssumptions(transactions, recurring, occurrences, accountIds, today);
+// over the next 90 days (utils/forecast.js forecastAssumptions), each loan's payments and interest
+// (`loans`: loanInputs), and a total, the forecast's change from today
+function ForecastAssumptions({ transactions, recurring, occurrences, accountIds, today, label, loans = [] }) {
+  const { categories, income, loans: loanRows } = forecastAssumptions(transactions, recurring, occurrences, accountIds, today, loans);
   const reimbursed = (cents) => (cents ? formatCents(cents) : '—');
   const rows = [];
   if (income.count) {
     rows.push(['Scheduled income', '—', '—', '—', `${plural(income.count, 'payment')} from ${income.series} series`, formatSignedCents(income.cents)]);
   }
+  loanRows.forEach(loan => {
+    rows.push([
+      `${loan.name}: payments`, '—', '—', '—',
+      loan.payments.count ? `${plural(loan.payments.count, 'payment')} from its paying series` : 'No payments due',
+      formatSignedCents(loan.payments.cents),
+    ]);
+    rows.push([
+      `${loan.name}: interest`, '—', '—', '—',
+      loan.apr ? `${loan.apr.toFixed(2)}% APR on what's owed, daily` : 'No APR set, so no interest',
+      formatSignedCents(-loan.interest),
+    ]);
+  });
   categories.forEach(c => rows.push([
     c.category,
     c.basis === 'no-history' ? '—' : formatCents(c.spent),
@@ -43,12 +57,14 @@ function ForecastAssumptions({ transactions, recurring, occurrences, accountIds,
     formatCents(categories.reduce((sum, c) => sum + c.spent, 0)),
     reimbursed(categories.reduce((sum, c) => sum + c.reimbursed, 0)),
     '', '',
-    formatSignedCents(categories.reduce((sum, c) => sum + c.forecast, income.cents)),
+    formatSignedCents(categories.reduce((sum, c) => sum + c.forecast,
+      loanRows.reduce((sum, loan) => sum + loan.payments.cents - loan.interest, income.cents))),
   ]);
 
   return (
     <ViewAsTable
-      summary="What the forecast assumes" note={NOTE} caption={`What the forecast assumes, ${label}`}
+      summary="What the forecast assumes" note={loanRows.length ? NOTE + LOAN_NOTE : NOTE}
+      caption={`What the forecast assumes, ${label}`}
       columns={['Category', 'Spent over the last 90 days', 'Reimbursed', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days']}
       rows={rows}
     />

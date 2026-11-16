@@ -1,5 +1,5 @@
 import {
-  FORECAST_DAYS, lastNinetyDaysStart, categoryShares, forecastInputs, forecastPoints, forecastAssumptions,
+  FORECAST_DAYS, lastNinetyDaysStart, categoryShares, forecastInputs, forecastPoints, forecastAssumptions, loanInputs,
 } from '../utils/forecast';
 import { shiftDays } from '../utils/dates';
 
@@ -148,8 +148,8 @@ describe('forecast points', () => {
   test("averages spread evenly over each day after today, adding up to the last 90 days' spending", () => {
     const points = forecastPoints(100000, { occurrences: [], averages: { Grocery: 9000 } }, TODAY, END);
     expect(points).toHaveLength(90);
-    expect(points[0]).toEqual({ date: '2026-11-09', cents: 99900, kind: 'forecast', items: [], average: 100 });
-    expect(points[89]).toEqual({ date: '2027-02-06', cents: 91000, kind: 'forecast', items: [], average: 100 });
+    expect(points[0]).toEqual({ date: '2026-11-09', cents: 99900, kind: 'forecast', items: [], average: 100, interest: 0 });
+    expect(points[89]).toEqual({ date: '2027-02-06', cents: 91000, kind: 'forecast', items: [], average: 100, interest: 0 });
   });
 
   test('a daily share in fractions of a cent rounds day by day without drifting', () => {
@@ -163,9 +163,9 @@ describe('forecast points', () => {
     const dueToday = occurrence(1, 6, '2026-11-08', 'Bills', -10);
     const paycheck = occurrence(13, 7, '2026-11-10', 'Income', 1700);
     expect(forecastPoints(50000, { occurrences: [dueToday, paycheck], averages: { Grocery: 9000 } }, TODAY, '2026-11-10')).toEqual([
-      { date: '2026-11-08', cents: 49000, kind: 'forecast', items: [dueToday], average: 0 },
-      { date: '2026-11-09', cents: 48900, kind: 'forecast', items: [], average: 100 },
-      { date: '2026-11-10', cents: 218800, kind: 'forecast', items: [paycheck], average: 100 },
+      { date: '2026-11-08', cents: 49000, kind: 'forecast', items: [dueToday], average: 0, interest: 0 },
+      { date: '2026-11-09', cents: 48900, kind: 'forecast', items: [], average: 100, interest: 0 },
+      { date: '2026-11-10', cents: 218800, kind: 'forecast', items: [paycheck], average: 100, interest: 0 },
     ]);
   });
 
@@ -173,12 +173,69 @@ describe('forecast points', () => {
     const bill = occurrence(6, 6, '2026-11-09', 'Bills', -87.38);
     const later = occurrence(6, 6, '2027-02-07', 'Bills', -500);
     expect(forecastPoints(942168, { occurrences: [bill, later], averages: {} }, TODAY, END)).toEqual([
-      { date: '2026-11-09', cents: 933430, kind: 'forecast', items: [bill], average: 0 },
-      { date: '2027-02-06', cents: 933430, kind: 'forecast-end', items: [], average: 0 },
+      { date: '2026-11-09', cents: 933430, kind: 'forecast', items: [bill], average: 0, interest: 0 },
+      { date: '2027-02-06', cents: 933430, kind: 'forecast-end', items: [], average: 0, interest: 0 },
     ]);
     expect(forecastPoints(10000, { occurrences: [], averages: {} }, TODAY, END)).toEqual([
-      { date: '2027-02-06', cents: 10000, kind: 'forecast-end', items: [], average: 0 },
+      { date: '2027-02-06', cents: 10000, kind: 'forecast-end', items: [], average: 0, interest: 0 },
     ]);
+  });
+});
+
+describe('loans', () => {
+  // ASPIRE (template 5, on Checking) pays down the loan (account 9); another series doesn't
+  const RECURRING = [{ id: 5, loan_account_id: 9 }, { id: 6, loan_account_id: null }];
+  const payment = (recurringId, date, amount) => ({ recurring_id: recurringId, account_id: 6, date, vendor: `Series ${recurringId}`,
+                                                    category: 'Loan', amount });
+  const OCCURRENCES = [payment(5, '2026-11-17', -75), payment(6, '2026-11-17', -20), payment(5, '2026-12-17', -75)];
+  // $10,000 owed at 7.3%: 7.3% / 365 is 0.02% a day, $2.00 a day on $10,000
+  const LOAN = { id: 9, name: 'ASPIRE loan', apr: 7.3, startCents: -1000000 };
+
+  test("a loan gets its paying series' scheduled payments, mirrored as money paid in", () => {
+    const [loan] = loanInputs([LOAN], RECURRING, OCCURRENCES);
+    expect(loan).toMatchObject({ id: 9, name: 'ASPIRE loan', apr: 7.3, startCents: -1000000 });
+    expect(loan.entries.map(e => [e.date, e.account_id, e.amount, e.vendor, e.loanEntry])).toEqual([
+      ['2026-11-17', 9, 75, 'Series 5', true],
+      ['2026-12-17', 9, 75, 'Series 5', true],
+    ]);
+  });
+
+  test("interest accrues daily on what's owed at the APR over 365 days, from tomorrow, and a payment lowers it", () => {
+    const loans = loanInputs([LOAN], RECURRING, OCCURRENCES);
+    // Nov 16: $2.00; Nov 17: $2.0004 (rounded on the running total), then $75 paid; Nov 18: $1.9858 on less owed
+    expect(forecastPoints(-1000000, { occurrences: [], averages: {}, loans }, '2026-11-15', '2026-11-18')
+      .map(p => [p.date, p.cents, p.interest, p.items.length])).toEqual([
+      ['2026-11-16', -1000200, 200, 0],
+      ['2026-11-17', -992900, 200, 1],
+      ['2026-11-18', -993099, 199, 0],
+    ]);
+  });
+
+  test('a loan without an APR, or with nothing owed, accrues nothing', () => {
+    const run = (loan) => forecastPoints(loan.startCents, { occurrences: [], averages: {}, loans: loanInputs([loan], [], []) },
+                                         '2026-11-15', '2026-11-18');
+    expect(run({ ...LOAN, apr: null })).toEqual([{ date: '2026-11-18', cents: -1000000, kind: 'forecast-end', items: [], average: 0, interest: 0 }]);
+    expect(run({ ...LOAN, startCents: 5000 }).map(p => p.cents)).toEqual([5000]);
+  });
+
+  test("in net position a payment and its loan entry cancel out, leaving the loan's interest", () => {
+    // Checking's $5,000 and the loan's -$10,000; ASPIRE's Nov 17 charge leaves Checking, its entry pays the loan
+    const loans = loanInputs([LOAN], RECURRING, OCCURRENCES);
+    const points = forecastPoints(500000 - 1000000, { occurrences: [OCCURRENCES[0]], averages: {}, loans }, '2026-11-15', '2026-11-17');
+    expect(points.map(p => [p.date, p.cents])).toEqual([['2026-11-16', -500200], ['2026-11-17', -500400]]);
+    expect(points[1].items.map(i => [i.vendor, i.amount])).toEqual([['Series 5', -75], ['Series 5', 75]]);
+  });
+
+  test("what the forecast assumes gives each loan's payments and the interest the forecast books", () => {
+    const loans = loanInputs([LOAN, { ...LOAN, id: 10, name: 'No APR loan', apr: null }], RECURRING, OCCURRENCES);
+    const { loans: rows } = forecastAssumptions([], RECURRING, [], [9, 10], '2026-11-15', loans);
+    const booked = forecastPoints(-1000000, { occurrences: [], averages: {}, loans: [loans[0]] }, '2026-11-15', shiftDays('2026-11-15', FORECAST_DAYS))
+      .reduce((sum, p) => sum + p.interest, 0);
+    expect(rows).toEqual([
+      { id: 9, name: 'ASPIRE loan', apr: 7.3, payments: { cents: 15000, count: 2 }, interest: booked },
+      { id: 10, name: 'No APR loan', apr: null, payments: { cents: 0, count: 0 }, interest: 0 },
+    ]);
+    expect(booked).toBeGreaterThan(17000);    // about $2.00 a day for 90 days, a little less after each payment
   });
 });
 
@@ -195,6 +252,7 @@ describe('what the forecast assumes', () => {
         { category: 'Streaming', spent: 0, reimbursed: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
       ],
       income: { cents: 170000, count: 1, series: 1 },
+      loans: [],
     });
   });
 
@@ -215,6 +273,7 @@ describe('what the forecast assumes', () => {
         { category: 'Streaming', spent: 0, reimbursed: 0, share: null, basis: 'no-history', average: 0, scheduled: -1599, count: 1, forecast: -1599 },
       ],
       income: NONE,
+      loans: [],
     });
   });
 
@@ -224,6 +283,7 @@ describe('what the forecast assumes', () => {
     expect(forecastAssumptions(loan, ACTIVE, [pastTheEnd], [6], TODAY)).toEqual({
       categories: [{ category: 'Loan', spent: 25000, reimbursed: 0, share: 90, basis: 'scheduled', average: 0, scheduled: 0, count: 0, forecast: 0 }],
       income: NONE,
+      loans: [],
     });
     const utility = [
       tx(1, 6, '2026-10-01', 'Utility', -89.99, { recurring_id: 9 }),

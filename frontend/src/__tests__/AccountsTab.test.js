@@ -272,11 +272,57 @@ describe('the forecast', () => {
   });
 });
 
+describe("a loan's forecast", () => {
+  // ASPIRE loan (account 9): $10,000 owed at 7.3%, $2.00 of interest a day; ASPIRE (template 5, on
+  // Checking) pays it down on Nov 30
+  const LOAN = entry(9, 'ASPIRE loan', -1000000, []);
+  const LOAN_ACCOUNT = { id: 9, account_id: 'aspire', account_name: 'ASPIRE loan', balance: -10000, kind: 'loan', apr: 7.3 };
+  const ASPIRE = { recurring_id: 5, account_id: 6, date: '2026-11-30', vendor: 'ASPIRE', category: 'Loan', amount: -75 };
+  const open = async () => {
+    getBalances.mockResolvedValue([...BALANCES, LOAN]);
+    getProjection.mockResolvedValue([ASPIRE]);
+    await openTab({ accounts: [...ACCOUNTS, LOAN_ACCOUNT], recurring: [{ id: 5, loan_account_id: 9 }] });
+    await pick('ASPIRE loan');
+  };
+
+  test('it gets its scheduled payments and daily interest at its APR, and says so', async () => {
+    await open();
+    const forecastLine = () => tab().querySelector('.balance-forecast-line').textContent;
+    await waitFor(() => expect(forecastLine()).toMatch(/^Forecast for Feb 6, 2027: -\$10,1\d\d\.\d\d, from scheduled items, your average spending over the last 90 days and loan interest$/));
+    const rows = (await tableRows()).slice(1);
+    expect(rows.slice(0, 2)).toEqual([
+      ['Nov 9, 2026 (forecast)', '-$10,002.00', '-$2.00'],
+      ['Nov 10, 2026 (forecast)', '-$10,004.00', '-$2.00'],
+    ]);
+    expect(rows.find(row => row[0] === 'Nov 30, 2026 (forecast)')[2]).toBe('+$72.99');   // $75 paid, $2.01 of interest
+  });
+
+  test('"What the forecast assumes" lists its payments and interest, and the total matches the forecast', async () => {
+    await open();
+    await user.click(within(tab()).getByText('What the forecast assumes'));
+    const rows = await waitFor(() => cells(screen.getByRole('table', { name: 'What the forecast assumes, ASPIRE loan' })).slice(1));
+    expect(rows[0]).toEqual(['ASPIRE loan: payments', '—', '—', '—', '1 payment from its paying series', '+$75.00']);
+    expect(rows[1].slice(0, 5)).toEqual(['ASPIRE loan: interest', '—', '—', '—', "7.30% APR on what's owed, daily"]);
+    const interest = Number(rows[1][5].replace(/[^0-9.]/g, ''));
+    const forecast = Number(tab().querySelector('.balance-forecast-line').textContent.match(/-\$([\d,]+\.\d\d)/)[1].replace(',', ''));
+    expect(rows[2]).toEqual(['Total', '$0.00', '—', '', '', `-$${(forecast - 10000).toFixed(2)}`]);
+    expect(Math.round((10000 - 75 + interest) * 100)).toBe(Math.round(forecast * 100));
+  });
+});
+
 test("a forecast day's tooltip lists the items scheduled that day", () => {
   render(<BalanceTooltip active payload={[{ payload: { date: '2026-12-01', cents: 1095930, kind: 'forecast', items: [SCHEDULED[2]], average: 0 } }]}
     transactions={[]} accountIds={[5, 6, 7]} />);
   expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
     'Dec 1, 2026, forecast', '$10,959.30', 'HLWW School District+$1,700.00',
+  ]);
+});
+
+test("a forecast day's tooltip adds a loan's interest", () => {
+  render(<BalanceTooltip active payload={[{ payload: { date: '2026-11-09', cents: -1000200, kind: 'forecast', items: [], average: 0, interest: 200 } }]}
+    transactions={[]} accountIds={[9]} />);
+  expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
+    'Nov 9, 2026, forecast', '-$10,002.00', 'Loan interest-$2.00',
   ]);
 });
 

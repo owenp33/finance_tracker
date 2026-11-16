@@ -8,7 +8,7 @@ import { useProjection } from '../../hooks/useProjection';
 import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
-import { FORECAST_DAYS, forecastInputs, forecastPoints } from '../../utils/forecast';
+import { FORECAST_DAYS, forecastInputs, forecastPoints, loanInputs } from '../../utils/forecast';
 
 const NET = 'net';
 
@@ -26,8 +26,9 @@ const changeLabel = (change, from) => {
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
 // balance and its change over the range, a step line with a brush, a 90-day forecast (Phase F,
 // F1: utils/forecast.js) with what it assumes (F1b), and a table. `accounts` (GET
-// /api/accounts) give the current balances each history should end at (the plan's check);
-// `recurring` (every template) tells the forecast which series have ended.
+// /api/accounts) give the current balances each history should end at (the plan's check), and
+// which accounts are loans, with their APR (F2a); `recurring` (every template) tells the forecast
+// which series have ended, and which pay down a loan.
 function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
@@ -54,11 +55,24 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
   const points = rangePoints(series, from, today);
   const change = points[points.length - 1].cents - points[0].cents;
 
-  // The forecast: from today's balance, the shown accounts' scheduled items and average spending
+  // The forecast: from today's balance, the shown accounts' scheduled items and average spending,
+  // and for the loans shown their payments and interest, accruing on their balance today
   const shownIds = shown.map(b => b.id);
   const forecastEnd = shiftDays(today, FORECAST_DAYS);
+  const loans = loanInputs(
+    accounts.filter(a => a.kind === 'loan' && shownIds.includes(a.id)).map(a => ({
+      id: a.id, name: a.account_name, apr: a.apr ?? null,
+      startCents: balances.find(b => b.id === a.id).closing_cents,
+    })),
+    recurring, occurrences,
+  );
+  const withInterest = loans.some(loan => loan.apr);
   const forecast = forecastFailed ? []
-    : forecastPoints(series.closing_cents, forecastInputs(transactions, recurring, occurrences, shownIds, today), today, forecastEnd);
+    : forecastPoints(series.closing_cents, { ...forecastInputs(transactions, recurring, occurrences, shownIds, today), loans },
+                     today, forecastEnd);
+  const sources = withInterest
+    ? 'scheduled items, your average spending over the last 90 days and loan interest'
+    : 'scheduled items and your average spending over the last 90 days';
 
   const allPoints = [...points, ...forecast];
   const days = allPoints
@@ -103,8 +117,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
       <div className="balance-change">{changeLabel(change, from)}</div>
       {forecast.length > 0 && (
         <p className="balance-forecast-line">
-          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}, `
-            + 'from scheduled items and your average spending over the last 90 days'}
+          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}, from ${sources}`}
         </p>
       )}
       {mismatch && (
@@ -121,13 +134,18 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
       {forecast.length > 0 && (
         <ul className="timeline-legend">
           <li><span className="balance-key" aria-hidden="true" />Balance</li>
-          <li><span className="balance-key forecast" aria-hidden="true" />Forecast: scheduled items and average spending over the last 90 days</li>
+          <li>
+            <span className="balance-key forecast" aria-hidden="true" />
+            {withInterest
+              ? 'Forecast: scheduled items, average spending over the last 90 days and loan interest'
+              : 'Forecast: scheduled items and average spending over the last 90 days'}
+          </li>
         </ul>
       )}
       {forecast.length > 0 && (
         <ForecastAssumptions
           transactions={transactions} recurring={recurring} occurrences={occurrences}
-          accountIds={shownIds} today={today} label={label}
+          accountIds={shownIds} today={today} label={label} loans={loans}
         />
       )}
       <ViewAsTable
