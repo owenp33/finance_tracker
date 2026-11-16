@@ -29,6 +29,8 @@ def _run_migrations(db):
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS apr_bps INTEGER',
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
+            'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS loan_payment_id INTEGER UNIQUE REFERENCES transactions(id) ON DELETE SET NULL',
             # Over-budget flags are computed when read (BudgetFlagService); the stored copy is gone
             'ALTER TABLE transactions DROP COLUMN IF EXISTS over_budget',
         ]

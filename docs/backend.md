@@ -150,10 +150,15 @@ total in the same statement; see Invariants).
   limit. Invalid input raises `ValueError` before anything changes; the messages name the fields
   as the edit form shows them ("Display name", "Account ID", "Starting balance", "Current
   balance", "APR"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
-- `delete_account` unlinks the account's transfers, then deletes it; its transactions and
-  recurring templates cascade.
+- `delete_account` unlinks the account's transfers, removes the loan entries mirroring its
+  payments (moving their loans' balances back) and, for a loan, stops the series that pay it
+  down, then deletes it; its transactions and recurring templates cascade.
+- `update_account` refuses to make a loan that a series pays down anything else ("ASPIRE pays
+  down this loan; choose another account for it first.").
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance in step
-  with every change (over-budget flags are computed on read; see `BudgetFlagService`).
+  with every change (over-budget flags are computed on read; see `BudgetFlagService`). Editing
+  or deleting a payment moves or removes its loan entry; a loan entry itself can't be edited or
+  deleted (`ENTRY_IS_READ_ONLY`).
 - Transfers: `link_transfer`, `unlink_transfer` (clears the flag and the link on both sides),
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
@@ -171,7 +176,25 @@ occurrences still to come (`projected_occurrences`); see
 [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
-`AccountService.delete_transaction`.
+`AccountService.delete_transaction`. `update_recurring` also takes `loan_account_id`, the loan
+account the series pays down (see `LoanService`): one of the user's loan accounts other than the
+series' own ("Pays down must be one of your loan accounts.", "A series can't pay down the account
+it's paid from."), or `None`.
+
+**`LoanService`** (`loan_service.py`): loan entries. A series that pays down a loan account
+(`recurring.loan_account_id`) has, for every payment in it, one loan entry on the loan
+(`transactions.loan_payment_id` points at the payment): the opposite amount, on the payment's
+date, with its vendor and category (a $75 bill in Checking is +$75 on a loan whose balance is
+what's owed, negative). The payment stays a bill; the entry is on a loan account, so it counts in
+no total and nothing counts twice. The series decides: `sync(payment)` makes a payment's entry
+match it (none when it's in no such series or its amount is 0), and every path that adds a
+payment to a series, changes one or takes it out calls it: generation and adoption
+(`process_due_recurring`), `link_transaction`, `unlink_transaction`, `replace_occurrence`,
+`AccountService.update_transaction`, and `update_recurring` through `sync_series(rec)` when the
+loan or the series' names change. `remove_for(payment)`, `remove_series_entries(rec)` and
+`remove_entries_mirroring_account(account_id)` run before a payment, a series or an account goes.
+Entries are read-only (`is_loan_entry`, `ENTRY_IS_READ_ONLY`: the transaction routes refuse to
+edit, delete or pair one). It uses `DbService` only, so both services above can use it.
 
 **`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
 Insights balance chart.
@@ -366,8 +389,8 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
 | `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention`, `kind` (`bank` or `loan`; money owed is a negative balance, as on a card), `apr_bps` (a loan's APR in hundredths of a percent, 6.8% = 680; null when unknown or not a loan) |
-| `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
-| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
+| `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index`, `loan_payment_id` (on a loan entry: the payment it mirrors; unique; `ON DELETE SET NULL`) |
+| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes`, `loan_account_id` (the loan account the series pays down; `ON DELETE SET NULL`) |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
@@ -397,6 +420,11 @@ Every change must keep these true.
   cash flow, budgets and their flags, the PDF's summary pages, `/api/analytics` and finding
   series (`TransactionModel.on_loan_account`; in SQL, `AccountModel.kind != 'loan'`). Balances
   include them: the account's own balance, its PDF pages, `GET /api/balances` and so Net position.
+- **Loan entries follow their payments.** A payment has a loan entry exactly when it's in a
+  series that pays down a loan and its amount isn't 0, and the entry has the opposite amount,
+  the payment's date, vendor and category, on that loan (`LoanService.sync`). A new path that
+  adds, changes or removes a series payment must call `sync` (or `remove_for` first, for a
+  delete); entries are never edited directly.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
   delete, transfer pairing, deleting a recurring template with its generated transactions, and
@@ -693,8 +721,13 @@ Details worth knowing:
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
   after today instead of generating past ones); it generates any occurrences already due.
-  `PATCH /recurring/<id>` takes any of those fields; a new `vendor` or `category` is also
-  applied to the series (see Renaming a series). An invalid schedule is a 400.
+  `PATCH /recurring/<id>` takes any of those fields, and `loan_account_id` (a loan account's id,
+  or `null`: the loan the series pays down; anything else is a 400); a new `vendor` or `category`
+  is also applied to the series (see Renaming a series). An invalid schedule is a 400. Template
+  responses carry `loan_account_id`, transaction responses `loan_payment_id` (on a loan entry).
+- `PATCH` / `DELETE /transactions/<id>`, `PATCH /transactions/<id>/transfer` and
+  `POST /transactions/<id>/transfer/pair` on a loan entry are a 400 ("This is a loan entry: it
+  follows the payment it mirrors, so change that payment instead.").
 - `GET /recurring/<id>/suggestions` returns `{suggestions: [{date, kind, linked, candidates}]}`,
   oldest first (`kind` is `missing`, `duplicate`, or `history`; `linked` and `candidates` are
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
@@ -801,6 +834,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
+| `test_loan_entries.py` | Loan entries: a series paying down a loan, entries following their payments' edits, deletes and series membership, read-only entries, and the routes |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |

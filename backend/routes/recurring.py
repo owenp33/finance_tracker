@@ -27,7 +27,7 @@ def get_recurring(recurring_id):
 @jwt_required()
 @owns_recurring
 def update_recurring(recurring_id):
-    """Update a recurring transaction"""
+    """Update a recurring transaction; loan_account_id (a loan account's id, or null) is the loan it pays down."""
     data = request.get_json()
 
     update_fields = {}
@@ -49,6 +49,8 @@ def update_recurring(recurring_id):
         update_fields['number'] = int(data['number'])
     if 'notes' in data:
         update_fields['notes'] = data['notes']
+    if 'loan_account_id' in data:
+        update_fields['loan_account_id'] = data['loan_account_id']
 
     try:
         updated = recurring_service.update_recurring(recurring_id, **update_fields)

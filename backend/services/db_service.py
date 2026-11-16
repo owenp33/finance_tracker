@@ -303,7 +303,33 @@ class DbService:
         return RecurringModel.query.filter_by(account_id=account_id).all()
 
     def get_user_recurring(self, user_id):
-        return RecurringModel.query.join(AccountModel).filter(AccountModel.user_id == user_id).all()
+        return (RecurringModel.query
+                .join(AccountModel, RecurringModel.account_id == AccountModel.id)
+                .filter(AccountModel.user_id == user_id)
+                .all())
+
+    def get_series_paying_down(self, loan_account_id):
+        """The templates whose series pay down this loan account."""
+        return RecurringModel.query.filter_by(loan_account_id=loan_account_id).all()
+
+    # LOAN ENTRY OPERATIONS =====================================================
+
+    def get_loan_entry(self, payment_id):
+        """The loan entry mirroring this payment, or None."""
+        return TransactionModel.query.filter_by(loan_payment_id=payment_id).first()
+
+    def get_loan_entries_mirroring_account(self, account_id):
+        """The loan entries (on any account) that mirror payments made from this account."""
+        payments = select(TransactionModel.id).where(TransactionModel.account_id == account_id)
+        return TransactionModel.query.filter(TransactionModel.loan_payment_id.in_(payments)).all()
+
+    def get_loan_entries_mirroring_series(self, recurring_id):
+        """
+        The loan entries that mirror a series' payments, by query (not through the template's
+        collection, which would then still hold the payments when the template is deleted).
+        """
+        payments = select(TransactionModel.id).where(TransactionModel.recurring_id == recurring_id)
+        return TransactionModel.query.filter(TransactionModel.loan_payment_id.in_(payments)).all()
 
     # BUDGET OPERATIONS =========================================================
 

@@ -20,7 +20,9 @@ class AccountModel(db.Model):
 
     # Relationships: One account has many transactions
     transactions = db.relationship('TransactionModel', backref='account', cascade="all, delete-orphan")
-    recurring = db.relationship('RecurringModel', backref='account', cascade="all, delete-orphan")
+    # The templates on this account (not the ones that pay it down: RecurringModel.loan_account_id)
+    recurring = db.relationship('RecurringModel', backref='account', cascade="all, delete-orphan",
+                                foreign_keys='RecurringModel.account_id')
 
     @property
     def balance(self):
