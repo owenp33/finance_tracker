@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
 import AccountKindFields from './AccountKindFields';
+import InterestFields from './InterestFields';
 import LoanStatementForm from './LoanStatementForm';
 import TransactionList from './TransactionList';
 import { sortList } from './transactions/utils';
@@ -20,7 +21,7 @@ const typedCents = (text) => {
   return text.trim() === '' || !Number.isFinite(dollars) ? null : Math.round(dollars * 100);
 };
 
-// A loan's typed APR (percent), or null while it's blank: the server keeps it unknown
+// A typed yearly rate (percent), or null while it's blank: no interest
 const typedApr = (text) => (text.trim() === '' ? null : Number(text));
 
 // What a statement did, from the adjustment it booked (null when it already matched)
@@ -28,8 +29,11 @@ const statementResultText = (adjustment) => (adjustment
   ? `Booked a statement adjustment of ${formatSignedCents(adjustment.amount_cents)} on ${formatDate(adjustment.date, true)}.`
   : 'The statement matches the balance here, so nothing was booked.');
 
-// The kind and, for a loan, the APR, as account fields for the API
-const kindFields = (kind, aprText) => ({ kind, ...(kind === 'loan' ? { apr: typedApr(aprText) } : {}) });
+// The rate and how often it hits, as account fields for the API (both null without a rate)
+const interestFields = (aprText, frequency) => {
+  const apr = typedApr(aprText);
+  return { apr, interest_frequency: apr === null ? null : frequency };
+};
 
 function AccountsView({
   transactions,
@@ -48,12 +52,14 @@ function AccountsView({
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountKind, setNewAccountKind] = useState('bank');
   const [newAccountApr, setNewAccountApr] = useState('');
+  const [newAccountFrequency, setNewAccountFrequency] = useState('monthly');
   const [accountAdding, setAccountAdding] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [editingAccountName, setEditingAccountName] = useState('');
   const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
   const [editingKind, setEditingKind] = useState('bank');
   const [editingApr, setEditingApr] = useState('');
+  const [editingFrequency, setEditingFrequency] = useState('monthly');
   const [statementAccountId, setStatementAccountId] = useState(null);   // whose statement form is open
   const [statementResult, setStatementResult] = useState(null);         // {accountId, text}
   const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
@@ -105,6 +111,7 @@ function AccountsView({
     setNewAccountName('');
     setNewAccountKind('bank');
     setNewAccountApr('');
+    setNewAccountFrequency('monthly');
   };
 
   // Resolves to whether the statement went through (the form closes and says what it booked)
@@ -135,9 +142,10 @@ function AccountsView({
             <label htmlFor="new-account-name">Display Name</label>
             <input id="new-account-name" type="text" value={newAccountName} onChange={e => setNewAccountName(e.target.value)} placeholder="Chase Checking" />
           </div>
-          <AccountKindFields
-            idPrefix="new-account" kind={newAccountKind} onKind={setNewAccountKind}
-            apr={newAccountApr} onApr={setNewAccountApr}
+          <AccountKindFields idPrefix="new-account" kind={newAccountKind} onKind={setNewAccountKind} />
+          <InterestFields
+            idPrefix="new-account" kind={newAccountKind} apr={newAccountApr} onApr={setNewAccountApr}
+            frequency={newAccountFrequency} onFrequency={setNewAccountFrequency}
           />
           <div className="form-actions">
             <button
@@ -148,7 +156,8 @@ function AccountsView({
                 await onCreateAccount({
                   account_id: newAccountId.trim(),
                   account_name: newAccountName.trim() || newAccountId.trim(),
-                  ...kindFields(newAccountKind, newAccountApr),
+                  kind: newAccountKind,
+                  ...interestFields(newAccountApr, newAccountFrequency),
                 });
                 closeAddForm();
                 setAccountAdding(false);
@@ -218,9 +227,10 @@ function AccountsView({
                         placeholder="e.g., Chase Checking"
                       />
                     </div>
-                    <AccountKindFields
-                      idPrefix={`account-${a.id}`} kind={editingKind} onKind={setEditingKind}
-                      apr={editingApr} onApr={setEditingApr}
+                    <AccountKindFields idPrefix={`account-${a.id}`} kind={editingKind} onKind={setEditingKind} />
+                    <InterestFields
+                      idPrefix={`account-${a.id}`} kind={editingKind} apr={editingApr} onApr={setEditingApr}
+                      frequency={editingFrequency} onFrequency={setEditingFrequency}
                     />
                     <div className="form-group">
                       <label htmlFor={`account-${a.id}-opening`}>Starting balance</label>
@@ -265,7 +275,8 @@ function AccountsView({
                           const saved = await onEditAccount(a.id, {
                             account_id: editingAccountIdStr,
                             account_name: editingAccountName,
-                            ...kindFields(editingKind, editingApr),
+                            kind: editingKind,
+                            ...interestFields(editingApr, editingFrequency),
                             ...(editingBalanceSource === 'current'
                               ? { balance: Number(editingCurrentBalance) }
                               : { opening_balance: Number(editingOpeningBalance) }),
@@ -311,8 +322,8 @@ function AccountsView({
                               Starting balance {formatDollars(a.opening_balance)}
                             </span>
                           )}
-                          {a.kind === 'loan' && a.apr != null && (
-                            <span className="account-apr">APR {a.apr.toFixed(2)}%</span>
+                          {a.apr != null && (
+                            <span className="account-apr">{`${a.apr.toFixed(2)}% a year, ${a.interest_frequency ?? 'monthly'}`}</span>
                           )}
                         </small>
                         {a.needs_attention && (
@@ -347,6 +358,7 @@ function AccountsView({
                             setEditingAccountIdStr(a.account_id);
                             setEditingKind(a.kind ?? 'bank');
                             setEditingApr(a.apr == null ? '' : String(a.apr));
+                            setEditingFrequency(a.interest_frequency ?? 'monthly');
                             setEditingOpeningBalance(String(a.opening_balance ?? 0));
                             setEditingCurrentBalance(String(a.balance ?? 0));
                             setEditingBalanceSource('opening');

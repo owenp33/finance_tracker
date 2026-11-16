@@ -61,7 +61,8 @@ test('the edit form saves the starting balance with the name and id', async () =
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
   expect(onEditAccount).toHaveBeenCalledWith(1, {
-    account_id: 'checking-1234', account_name: 'Checking', kind: 'bank', opening_balance: 1500.25,
+    account_id: 'checking-1234', account_name: 'Checking', kind: 'bank', apr: null, interest_frequency: null,
+    opening_balance: 1500.25,
   });
   expect(screen.queryByLabelText('Starting balance')).not.toBeInTheDocument();
 });
@@ -103,7 +104,9 @@ test('saving after typing the current balance sends it, for the server to work o
   await userEvent.clear(currentField());
   await userEvent.type(currentField(), '2000');
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-  expect(onEditAccount).toHaveBeenCalledWith(1, { account_id: 'checking-1234', account_name: 'Checking', kind: 'bank', balance: 2000 });
+  expect(onEditAccount).toHaveBeenCalledWith(1, {
+    account_id: 'checking-1234', account_name: 'Checking', kind: 'bank', apr: null, interest_frequency: null, balance: 2000,
+  });
 });
 
 test('saving needs the balance typed in last', async () => {
@@ -128,70 +131,91 @@ test('the row shows the balance, and the starting balance when there is one', ()
 });
 
 describe('loan accounts', () => {
-  test('a new account can be a loan, with its APR', async () => {
+  const rate = () => screen.getByLabelText('APR (% a year)');
+  const howOften = () => screen.queryByLabelText('How often');
+
+  test('a new account can be a loan, with its yearly rate charged monthly by default', async () => {
     const onCreateAccount = jest.fn().mockResolvedValue({ id: 9 });
     renderAccounts([], jest.fn(), { onCreateAccount });
     await userEvent.click(screen.getByRole('button', { name: '+ Add Account' }));
     await userEvent.type(screen.getByLabelText(/^Account ID/), 'aspire-1');
     await userEvent.type(screen.getByLabelText('Display Name'), 'ASPIRE loan');
-    expect(screen.queryByLabelText('APR (%)')).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Type'), 'Loan');
-    await userEvent.type(screen.getByLabelText('APR (%)'), '6.8');
+    expect(howOften()).not.toBeInTheDocument();                     // no rate yet
+    await userEvent.type(rate(), '6.8');
+    expect(howOften()).toHaveValue('monthly');
+    expect(screen.getByText(/Charged on what's owed/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(onCreateAccount).toHaveBeenCalledWith({ account_id: 'aspire-1', account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8 });
+    expect(onCreateAccount).toHaveBeenCalledWith({
+      account_id: 'aspire-1', account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8, interest_frequency: 'monthly',
+    });
   });
 
-  test("a new bank account sends no APR, and a loan's APR can wait", async () => {
+  test('a savings account can earn interest, paid yearly', async () => {
+    const onCreateAccount = jest.fn().mockResolvedValue({ id: 9 });
+    renderAccounts([], jest.fn(), { onCreateAccount });
+    await userEvent.click(screen.getByRole('button', { name: '+ Add Account' }));
+    await userEvent.type(screen.getByLabelText(/^Account ID/), 'savings-1');
+    await userEvent.type(rate(), '0.5');
+    expect(screen.getByText(/Paid on a positive balance/)).toBeInTheDocument();
+    await userEvent.selectOptions(howOften(), 'Yearly');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(onCreateAccount).toHaveBeenCalledWith({
+      account_id: 'savings-1', account_name: 'savings-1', kind: 'bank', apr: 0.5, interest_frequency: 'yearly',
+    });
+  });
+
+  test('an account without a rate sends none', async () => {
     const onCreateAccount = jest.fn().mockResolvedValue({ id: 9 });
     renderAccounts([], jest.fn(), { onCreateAccount });
     await userEvent.click(screen.getByRole('button', { name: '+ Add Account' }));
     await userEvent.type(screen.getByLabelText(/^Account ID/), 'checking-9');
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(onCreateAccount).toHaveBeenLastCalledWith({ account_id: 'checking-9', account_name: 'checking-9', kind: 'bank' });
-
-    await userEvent.click(screen.getByRole('button', { name: '+ Add Account' }));
-    await userEvent.type(screen.getByLabelText(/^Account ID/), 'aspire-1');
-    await userEvent.selectOptions(screen.getByLabelText('Type'), 'Loan');
-    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(onCreateAccount).toHaveBeenLastCalledWith({ account_id: 'aspire-1', account_name: 'aspire-1', kind: 'loan', apr: null });
-  });
-
-  test('editing makes an account a loan with an APR', async () => {
-    const onEditAccount = renderAccounts([account()], jest.fn().mockResolvedValue(true));
-    await startEditing('Checking');
-    expect(screen.getByLabelText('Type')).toHaveValue('bank');
-    expect(screen.queryByLabelText('APR (%)')).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Type'), 'Loan');
-    await userEvent.type(screen.getByLabelText('APR (%)'), '5.25');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onEditAccount).toHaveBeenCalledWith(1, {
-      account_id: 'checking-1234', account_name: 'Checking', kind: 'loan', apr: 5.25, opening_balance: 0,
+    expect(onCreateAccount).toHaveBeenCalledWith({
+      account_id: 'checking-9', account_name: 'checking-9', kind: 'bank', apr: null, interest_frequency: null,
     });
   });
 
-  test("a loan's edit form starts from its APR, and a blank APR clears it", async () => {
-    const onEditAccount = renderAccounts([account({ account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8 })],
-      jest.fn().mockResolvedValue(true));
-    await startEditing('ASPIRE loan');
-    expect(screen.getByLabelText('Type')).toHaveValue('loan');
-    expect(screen.getByLabelText('APR (%)')).toHaveValue(6.8);
-    await userEvent.clear(screen.getByLabelText('APR (%)'));
+  test('editing makes an account a loan with a rate and how often it hits', async () => {
+    const onEditAccount = renderAccounts([account()], jest.fn().mockResolvedValue(true));
+    await startEditing('Checking');
+    expect(screen.getByLabelText('Type')).toHaveValue('bank');
+    expect(rate()).toHaveValue(null);
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'Loan');
+    await userEvent.type(rate(), '5.25');
+    await userEvent.selectOptions(howOften(), 'Quarterly');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onEditAccount).toHaveBeenCalledWith(1, expect.objectContaining({ kind: 'loan', apr: null }));
+    expect(onEditAccount).toHaveBeenCalledWith(1, {
+      account_id: 'checking-1234', account_name: 'Checking', kind: 'loan', apr: 5.25, interest_frequency: 'quarterly',
+      opening_balance: 0,
+    });
   });
 
-  test('a loan shows a badge and its APR, and only a loan offers Update from statement', () => {
+  test("an account's edit form starts from its rate and frequency, and a blank rate clears both", async () => {
+    const onEditAccount = renderAccounts([account({ account_name: 'Savings', apr: 0.5, interest_frequency: 'yearly' })],
+      jest.fn().mockResolvedValue(true));
+    await startEditing('Savings');
+    expect(rate()).toHaveValue(0.5);
+    expect(howOften()).toHaveValue('yearly');
+    await userEvent.clear(rate());
+    expect(howOften()).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEditAccount).toHaveBeenCalledWith(1, expect.objectContaining({ kind: 'bank', apr: null, interest_frequency: null }));
+  });
+
+  test('a row shows its rate and how often, a loan its badge, and only a loan offers Update from statement', () => {
     renderAccounts([
-      account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8, balance: -19850 }),
+      account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8, interest_frequency: 'monthly', balance: -19850 }),
       account({ id: 6, account_name: 'MOHELA loan', kind: 'loan', apr: null }),
-      account({ id: 2, account_name: 'Savings' }),
+      account({ id: 2, account_name: 'Savings', apr: 0.5, interest_frequency: 'yearly' }),
     ]);
     const aspire = accountItem('ASPIRE loan');
     expect(within(aspire).getByText('Loan')).toHaveClass('loan-badge');
-    expect(within(aspire).getByText('APR 6.80%')).toBeInTheDocument();
+    expect(within(aspire).getByText('6.80% a year, monthly')).toHaveClass('account-apr');
     expect(within(aspire).getByRole('button', { name: 'Update from statement' })).toBeInTheDocument();
-    expect(within(accountItem('MOHELA loan')).queryByText(/^APR/)).not.toBeInTheDocument();
+    expect(within(accountItem('MOHELA loan')).queryByText(/a year/)).not.toBeInTheDocument();
     const savings = accountItem('Savings');
+    expect(within(savings).getByText('0.50% a year, yearly')).toBeInTheDocument();
     expect(within(savings).queryByText('Loan')).not.toBeInTheDocument();
     expect(within(savings).queryByRole('button', { name: 'Update from statement' })).not.toBeInTheDocument();
   });
