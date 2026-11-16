@@ -3,6 +3,8 @@ import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
 import AccountKindFields from './AccountKindFields';
 import LoanStatementForm from './LoanStatementForm';
+import TransactionList from './TransactionList';
+import { sortList } from './transactions/utils';
 
 const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -166,6 +168,12 @@ function AccountsView({
           accounts.map(a => {
             const cfg = getTransferConfig(a.id);
             const accountTransfers = transactions.filter(t => t.is_transfer && t.account_id === a.id);
+            // A loan's row lists everything on it (its payments' loan entries are bills paid from
+            // another account, not transfers); any other account's row lists its transfers
+            const isLoan = a.kind === 'loan';
+            const loanTransactions = isLoan ? sortList(transactions.filter(t => t.account_id === a.id), 'date-desc') : [];
+            const expandable = isLoan ? loanTransactions.length > 0 : accountTransfers.length > 0;
+            const expanded = expandable && expandedAccountIds.has(a.id);
             const visibleTransfers = applyTransferSort(accountTransfers, cfg.sort);
             const transferYears = new Set(accountTransfers.map(t => t.date.slice(0, 4)));
             const showYear = transferYears.size > 1;
@@ -274,10 +282,11 @@ function AccountsView({
                       <button
                         className="account-expand-btn"
                         onClick={() => toggleAccountExpand(a.id)}
-                        disabled={accountTransfers.length === 0}
-                        title={accountTransfers.length === 0 ? 'No transfers' : (expandedAccountIds.has(a.id) ? 'Collapse' : 'Expand transfers')}
+                        disabled={!expandable}
+                        title={!expandable ? (isLoan ? 'No transactions' : 'No transfers')
+                          : expanded ? 'Collapse' : (isLoan ? 'Show its transactions' : 'Expand transfers')}
                       >
-                        {expandedAccountIds.has(a.id) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                        {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
                       <div className="account-info">
                         <strong>
@@ -287,7 +296,12 @@ function AccountsView({
                         </strong>
                         <small>
                           {a.account_id}
-                          {accountTransfers.length > 0 && (
+                          {isLoan && loanTransactions.length > 0 && (
+                            <span className="account-transfer-count">
+                              {loanTransactions.length} transaction{loanTransactions.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {!isLoan && accountTransfers.length > 0 && (
                             <span className="account-transfer-count">
                               {accountTransfers.length} transfer{accountTransfers.length !== 1 ? 's' : ''}
                             </span>
@@ -360,7 +374,16 @@ function AccountsView({
                       <p className="account-statement-result">{statementResult.text}</p>
                     )}
 
-                    {accountTransfers.length > 0 && expandedAccountIds.has(a.id) && (() => {
+                    {isLoan && expanded && (
+                      <div className="account-loan-transactions">
+                        <TransactionList
+                          transactions={loanTransactions} accounts={accounts}
+                          onEdit={onEdit} onDelete={onDelete} showAll
+                        />
+                      </div>
+                    )}
+
+                    {!isLoan && expanded && (() => {
                       const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
                       const allSelected  = accountTransfers.every(t => selectedTransferIds.has(t.id));
                       const someSelected = acctSelected.length > 0;

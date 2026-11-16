@@ -9,14 +9,16 @@ const account = (overrides) => ({
   transaction_count: 0, recurring_count: 0, needs_attention: false, kind: 'bank', apr: null, ...overrides,
 });
 
-const renderAccounts = (accounts, onEditAccount = jest.fn(), { onCreateAccount = jest.fn(), onLoanStatement = jest.fn() } = {}) => {
+const renderAccounts = (accounts, onEditAccount = jest.fn(), { onCreateAccount = jest.fn(), onLoanStatement = jest.fn(), transactions = [] } = {}) => {
   render(
-    <AccountsView
-      transactions={[]} accounts={accounts}
-      onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={jest.fn()}
-      onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
-      onLoanStatement={onLoanStatement}
-    />
+    <CategoryColorProvider>
+      <AccountsView
+        transactions={transactions} accounts={accounts}
+        onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={jest.fn()}
+        onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
+        onLoanStatement={onLoanStatement}
+      />
+    </CategoryColorProvider>
   );
   return onEditAccount;
 };
@@ -217,6 +219,31 @@ describe('loan accounts', () => {
     renderAccounts([account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', balance: -19850 })], jest.fn(), { onLoanStatement });
     await fillStatement('19850');
     expect(screen.getByText('The statement matches the balance here, so nothing was booked.')).toBeInTheDocument();
+  });
+
+  test("a loan's row lists all its transactions, newest first: the loan entries and anything else on it", async () => {
+    const tx = (id, accountId, date, vendor, amount, extra = {}) => ({
+      id, account_id: accountId, date, vendor, category: 'Loan', notes: '', amount, amount_cents: Math.round(amount * 100),
+      is_transfer: false, is_reimbursement: false, over_budget: false, recurring_id: null, loan_payment_id: null, ...extra,
+    });
+    renderAccounts([
+      account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, balance: -75142 }),
+      account({ id: 6, account_name: 'Checking' }),
+    ], jest.fn(), { transactions: [
+      tx(1, 16, '2026-09-30', 'ASPIRE', 75, { loan_payment_id: 11 }),
+      tx(2, 16, '2026-11-15', 'Statement adjustment', -75217),
+      tx(3, 16, '2026-10-31', 'ASPIRE', 75, { loan_payment_id: 12 }),
+      tx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),       // the payment, in Checking
+    ] });
+    const loan = accountItem('Student Loan');
+    expect(within(loan).getByText('3 transactions')).toBeInTheDocument();
+    await userEvent.click(within(loan).getByTitle('Show its transactions'));
+    const rows = [...loan.querySelectorAll('.transaction-item')];
+    expect(rows.map(row => row.querySelector('strong').textContent)).toEqual(['Statement adjustment', 'ASPIRE', 'ASPIRE']);
+    expect(within(rows[1]).getByText('Loan entry')).toBeInTheDocument();
+    expect(within(rows[0]).queryByText('Loan entry')).not.toBeInTheDocument();
+    // A bank account still expands to its transfers only, and has none here
+    expect(within(accountItem('Checking')).getByTitle('No transfers')).toBeDisabled();
   });
 
   test('the statement form stays open when the update fails', async () => {

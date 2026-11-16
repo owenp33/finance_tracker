@@ -2292,7 +2292,8 @@ body {
   font-weight: 500;
 }
 
-.account-transfers {
+.account-transfers,
+.account-loan-transactions {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #f0f0f0;
