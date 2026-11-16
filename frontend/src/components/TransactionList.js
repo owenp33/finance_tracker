@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info, Check, Unlink } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
+import { isLoanEntry } from './transactions/utils';
 
 const formatDate = (dateStr, includeYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -163,7 +164,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
             </>
           ) : (
             <>
-              {onToggle && (
+              {onToggle && !isLoanEntry(t) && (
                 <input
                   type="checkbox"
                   className="tx-checkbox"
@@ -191,6 +192,12 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                       Reimbursement
                     </span>
                   )}
+                  {isLoanEntry(t) && (
+                    <span className="tx-loan-chip"
+                          title="Follows a payment in its recurring series: change that payment instead">
+                      Loan entry
+                    </span>
+                  )}
                   {unrelatedTo?.[t.id] && (
                     <span className="tx-unrelated-chip"
                           title={`Marked unrelated to ${unrelatedTo[t.id].map(s => s.vendor).join(', ')}`}>
@@ -211,7 +218,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                   </div>
                 </div>
                 <div className="tx-hover-actions">
-                  {renderActions ? renderActions(t) : (
+                  {isLoanEntry(t) ? null : renderActions ? renderActions(t) : (
                     <>
                       {unrelatedTo?.[t.id]?.map(series => (
                         <button

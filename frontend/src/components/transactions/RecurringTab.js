@@ -61,12 +61,18 @@ function RecurringTab({
       return n;
     });
 
+  // The loan accounts a series could pay down (any but its own account)
+  const loanAccounts = (r) => accounts.filter(a => a.kind === 'loan' && a.id !== r.account_id);
+  const accountName = (id) => accounts.find(a => a.id === id)?.account_name;
+
   const startEditRecurring = (r) => {
     setEditingRecurringId(r.id);
     setRecurringEditFields({
       vendor: r.vendor, category: r.category, amount: r.amount,
       frequency: r.frequency, frequency_unit: r.frequency_unit, next_date: r.next_date,
       notes: r.notes || '', number: r.number ?? -1,
+      // Sent only when there's a loan to choose (or one to stop paying down)
+      ...(loanAccounts(r).length > 0 || r.loan_account_id != null ? { loan_account_id: r.loan_account_id ?? null } : {}),
     });
   };
 
@@ -139,6 +145,32 @@ function RecurringTab({
             <label>Notes <small>(optional)</small></label>
             <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} />
           </div>
+          {'loan_account_id' in recurringEditFields && (() => {
+            // Each payment in the series gets (or loses) a loan entry when the loan changes
+            const chosen = recurringEditFields.loan_account_id;
+            const payments = transactions.filter(t => t.recurring_id === r.id && t.amount_cents !== 0).length;
+            const plural = payments !== 1 ? 's' : '';
+            let note = null;
+            if (chosen !== (r.loan_account_id ?? null) && payments > 0) {
+              note = chosen != null
+                ? `Books a loan entry on ${accountName(chosen)} for each of the ${payments} payment${plural} in this series`
+                : `Removes the ${payments} loan entr${payments !== 1 ? 'ies' : 'y'} from ${accountName(r.loan_account_id)}`;
+            }
+            return (
+              <div className="form-group">
+                <label htmlFor={`recurring-${r.id}-loan`}>Pays down</label>
+                <select
+                  id={`recurring-${r.id}-loan`}
+                  value={chosen ?? ''}
+                  onChange={e => setRF('loan_account_id', e.target.value === '' ? null : Number(e.target.value))}
+                >
+                  <option value="">No loan</option>
+                  {loanAccounts(r).map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                </select>
+                {note && <p className="recurring-series-note">{note}</p>}
+              </div>
+            );
+          })()}
           <div className="form-group recurring-number-group">
             {(() => {
               const minNumber = Math.max(1, r.idx - 1);
@@ -177,9 +209,11 @@ function RecurringTab({
                 const when = displayDate
                   ? `${finishedSeries ? 'Last' : 'Next'}: ${formatDate(displayDate, finishedSeries || dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear())}`
                   : 'No occurrences';
+                const loan = r.loan_account_id != null ? accountName(r.loan_account_id) : null;
                 return (
                   <span>
                     {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {when}
+                    {loan && ` · Pays down ${loan}`}
                   </span>
                 );
               })()}

@@ -48,6 +48,10 @@ export const unrelatedSeriesByTransaction = (templates) => {
   return map;
 };
 
+// A loan entry: it mirrors a payment in a series that pays down a loan, and follows that payment
+// (the server refuses to edit, delete or pair one on its own)
+export const isLoanEntry = (t) => t.loan_payment_id != null;
+
 export function getMonthRange(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const first = `${year}-${String(month).padStart(2, '0')}-01`;

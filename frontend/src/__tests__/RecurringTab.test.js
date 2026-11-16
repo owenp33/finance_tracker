@@ -317,6 +317,59 @@ test('a template with no transactions shows no note', async () => {
   expect(screen.queryByText(/Also updates/)).not.toBeInTheDocument();
 });
 
+// ── Paying down a loan ───────────────────────────────────────────────────────
+
+describe('paying down a loan', () => {
+  const ACCOUNTS = [
+    { id: 1, account_name: 'Checking', kind: 'bank' },
+    { id: 5, account_name: 'ASPIRE loan', kind: 'loan' },
+    { id: 2, account_name: 'Savings', kind: 'bank' },
+  ];
+  const aspire = (overrides) => template({ vendor: 'ASPIRE', category: 'Loan', amount: -75, account_id: 1,
+                                           loan_account_id: null, ...overrides });
+  const PAYMENTS = ['2026-09-30', '2026-10-31'].map((date, i) => ({
+    id: 11 + i, date, vendor: 'ASPIRE', category: 'Loan', amount: -75, amount_cents: -7500, account_id: 1,
+    recurring_id: 1, recurring_index: i + 1,
+  }));
+  const paysDown = () => screen.getByLabelText('Pays down');
+
+  test('a template can pay down one of your loan accounts, and saving sends it', async () => {
+    const { onEditRecurring } = renderTab([aspire()], {
+      accounts: ACCOUNTS, transactions: PAYMENTS, onEditRecurring: jest.fn().mockResolvedValue(),
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect([...paysDown().options].map(o => o.textContent)).toEqual(['No loan', 'ASPIRE loan']);
+    expect(paysDown()).toHaveValue('');
+    await userEvent.selectOptions(paysDown(), 'ASPIRE loan');
+    expect(screen.getByText('Books a loan entry on ASPIRE loan for each of the 2 payments in this series'))
+      .toHaveClass('recurring-series-note');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEditRecurring).toHaveBeenCalledWith(1, expect.objectContaining({ loan_account_id: 5 }));
+  });
+
+  test('a template paying down a loan says so, and stopping removes its entries', async () => {
+    const { onEditRecurring } = renderTab([aspire({ loan_account_id: 5 })], {
+      accounts: ACCOUNTS, transactions: PAYMENTS, onEditRecurring: jest.fn().mockResolvedValue(),
+    });
+    expect(screen.getByText(/· Pays down ASPIRE loan$/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(paysDown()).toHaveValue('5');
+    expect(screen.queryByText(/loan entr/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(paysDown(), 'No loan');
+    expect(screen.getByText('Removes the 2 loan entries from ASPIRE loan')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEditRecurring).toHaveBeenCalledWith(1, expect.objectContaining({ loan_account_id: null }));
+  });
+
+  test('without a loan account there is no choice, and saving leaves it alone', async () => {
+    const { onEditRecurring } = renderTab([template()], { onEditRecurring: jest.fn().mockResolvedValue() });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.queryByLabelText('Pays down')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEditRecurring.mock.calls[0][1]).not.toHaveProperty('loan_account_id');
+  });
+});
+
 // ── Find recurring ───────────────────────────────────────────────────────────
 
 const payment = (id, date, overrides) => ({
