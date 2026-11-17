@@ -2941,6 +2941,16 @@ body {
   margin: 6px 0 10px;
 }
 
+/* The Dashboard's goal card (F2d): its own row above this month's cards */
+.goal-card {
+  grid-column: 1 / -1;
+}
+
+.goal-card .link-btn {
+  margin-top: 8px;
+  padding: 0;
+}
+
 /* The active goal's saving, beside this month's category budgets (F2c) */
 .budget-goal-saving {
   margin: 0 0 12px;

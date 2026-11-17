@@ -2,8 +2,10 @@ import { render, screen, within, fireEvent, act } from '@testing-library/react';
 import DashboardView from '../components/DashboardView';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getProjection } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 const tx = (id, date, amount, overrides) => ({
   id, account_id: 1, account_name: 'Checking', date, vendor: `Vendor ${id}`, category: 'Groceries', notes: '',
@@ -52,15 +54,18 @@ const SIX_BUDGETS = [
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date(2026, 10, 5, 12));   // Nov 5, 2026
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
 });
 afterEach(() => jest.useRealTimers());
 
 // Renders the Dashboard, then lets this month's projection arrive
-const renderDashboard = async ({ transactions = TRANSACTIONS, budgetData = BUDGETS, onError = jest.fn() } = {}) => {
+const renderDashboard = async ({ transactions = TRANSACTIONS, budgetData = BUDGETS, onError = jest.fn(),
+                                 accounts = [], recurring = [], onNavigate = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
       <DashboardView
-        transactions={transactions} budgetData={budgetData} onNavigate={jest.fn()} onError={onError}
+        transactions={transactions} budgetData={budgetData} onNavigate={onNavigate} onError={onError}
+        accounts={accounts} recurring={recurring}
       />
     </CategoryColorProvider>
   );
@@ -214,5 +219,52 @@ describe('the next 30 days', () => {
   test('with nothing scheduled, it says so', async () => {
     await renderDashboard();
     expect(within(agenda()).getByText('Nothing scheduled in the next 30 days.')).toBeInTheDocument();
+  });
+});
+
+describe('the goal card', () => {
+  const ACCOUNTS = [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3000 },
+                    { id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -75217 }];
+  const RECURRING = [{ id: 5, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1, loan_account_id: 16 }];
+  const goalRow = (id, position, accountId, name, kind, balanceCents, targetCents, monthlyCents = 50000) => ({
+    id, position, account_id: accountId, account_name: name, account_kind: kind, balance: balanceCents / 100,
+    balance_cents: balanceCents, target: targetCents / 100, target_cents: targetCents,
+    remaining_cents: Math.max(targetCents - balanceCents, 0), monthly: monthlyCents / 100, monthly_cents: monthlyCents,
+    reached: balanceCents >= targetCents, active: false,
+  });
+  const goalCard = () => document.querySelector('.goal-card');
+  const texts = () => ['h3', '.value', '.stat-sub'].map(sel => goalCard().querySelector(sel).textContent);
+  const open = (goals, extra = {}) => {
+    getGoals.mockResolvedValue(goals);
+    return renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, ...extra });
+  };
+
+  test("the active goal: where it stands, what to leave this month, and when it's reached", async () => {
+    // $4,500 to go at $500 a month: 9 months from November
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 300000, 750000), goalRow(2, 2, 16, 'Student Loan', 'loan', -7521700, 0)]);
+    expect(texts()).toEqual(['Savings goal', '$3,000 of $7,500', 'Leave $500.00 in Savings this month · reached by Aug 2027']);
+  });
+
+  test("a loan goal: what's owed, the extra to pay this month, and when it's paid off", async () => {
+    await open([goalRow(2, 1, 16, 'Student Loan', 'loan', -7521700, 0)]);
+    expect(texts()).toEqual(['Student Loan goal', '$75,217 owed', 'Pay $500.00 extra this month · paid off by Jul 2046']);
+  });
+
+  test('with every goal reached, it says so; without goals, it offers to set one', async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 800000, 750000)]);
+    expect(texts()).toEqual(['Goals', 'All reached', 'Every goal is reached and held']);
+  });
+
+  test('without goals, it offers to set one on Budgeting, and the link goes there', async () => {
+    const onNavigate = jest.fn();
+    await open([], { onNavigate });
+    expect(texts()).toEqual(['Goals', '—', 'No goals yet']);
+    fireEvent.click(within(goalCard()).getByRole('button', { name: 'Set a goal →' }));
+    expect(onNavigate).toHaveBeenCalledWith('budgeting');
+  });
+
+  test("a goal not reached at this pace says so", async () => {
+    await open([goalRow(2, 1, 16, 'Student Loan', 'loan', -7521700, 0, 0)].map(g => ({ ...g, monthly: null, monthly_cents: null })));
+    expect(texts()[2]).toBe('Nothing goes toward it this month · not reached at this pace');
   });
 });

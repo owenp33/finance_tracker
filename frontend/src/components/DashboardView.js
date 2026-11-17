@@ -1,7 +1,10 @@
 import TransactionList from './TransactionList';
 import BudgetPace from './BudgetPace';
 import Agenda from './Agenda';
+import GoalCard from './goals/GoalCard';
 import { useProjection } from '../hooks/useProjection';
+import { useGoalPlan } from '../hooks/useGoalPlan';
+import { activeSaving } from '../utils/goals';
 import { todayISO, sameDayLastMonth, dayRangeLabel, monthEndLabel } from '../utils/dates';
 import { formatCents, formatWholeDollars } from '../utils/money';
 import { cashFlow } from '../utils/moneyRules';
@@ -29,13 +32,15 @@ function StatCard({ title, value, valueClass, sub }) {
   );
 }
 
-// `onError` reports a failed request (this month's projection)
-function DashboardView({ transactions, budgetData = [], onNavigate, onError }) {
+// `onError` reports a failed request (this month's projection, the goals). `accounts` and
+// `recurring` (every template) feed the goal card (Phase F, F2d).
+function DashboardView({ transactions, budgetData = [], onNavigate, onError, accounts = [], recurring = [] }) {
   const today = todayISO();
   const period = today.slice(0, 7);
   // The recurring items scheduled in the next 30 days: the agenda's, and (always covering the rest
   // of this month) the budget pace's bills still due and paces by recurring
   const occurrences = useProjection(AGENDA_DAYS, onError);
+  const goalPlan = useGoalPlan({ accounts, transactions, recurring, onError });
 
   // This month so far, against the same days of last month (a partial month never against a whole one)
   const lastMonthDay = sameDayLastMonth(today);
@@ -60,8 +65,9 @@ function DashboardView({ transactions, budgetData = [], onNavigate, onError }) {
   return (
     <div className="dashboard-view">
 
-      {/* This month's summary */}
+      {/* This month's summary, the active goal first */}
       <div className="stats-grid">
+        <GoalCard goals={goalPlan.goals} active={activeSaving(goalPlan.goals, goalPlan.plans)} onNavigate={onNavigate} />
         {budgetData.length > 0 ? (
           <StatCard
             title="Left to spend this month"

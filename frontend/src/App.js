@@ -385,6 +385,8 @@ function App() {
             budgetData={budgetData}
             onNavigate={changeView}
             onError={setError}
+            accounts={accounts}
+            recurring={recurringTransactions}
           />
         )}
         {view === 'transactions' && (
