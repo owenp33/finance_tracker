@@ -1,4 +1,4 @@
-import { GOAL_MONTHS_CAP, monthlyRoom, regularPayments, goalPlan } from '../utils/goals';
+import { GOAL_MONTHS_CAP, monthlyRoom, regularPayments, goalPlan, activeSaving, movedThisMonth } from '../utils/goals';
 
 const TODAY = '2026-11-16';     // the next 90 days: through Feb 14, 2027
 
@@ -78,5 +78,25 @@ describe('goal plan', () => {
     ]);
     expect(plan([LOAN_GOAL], 0)[0].months).toBeNull();         // $75 a month is less than the interest
     expect(GOAL_MONTHS_CAP).toBe(600);
+  });
+});
+
+describe('the active goal and what moved this month', () => {
+  test('the active goal comes with its plan; none when every goal is reached', () => {
+    const goals = [{ id: 1, reached: true }, { id: 2, reached: false }, { id: 3, reached: false }];
+    const plans = [{ id: 1, status: 'held' }, { id: 2, status: 'active' }, { id: 3, status: 'waiting' }];
+    expect(activeSaving(goals, plans)).toEqual({ goal: goals[1], plan: plans[1] });
+    expect(activeSaving([goals[0]], [plans[0]])).toBeNull();
+    expect(activeSaving(null, [])).toBeNull();
+  });
+
+  test("an account's change this month is its transactions dated this month, transfers and interest included", () => {
+    const tx = (accountId, date, cents, extra = {}) => ({ account_id: accountId, date, amount_cents: cents, ...extra });
+    const transactions = [
+      tx(7, '2026-11-01', 170000), tx(7, '2026-11-12', -50000, { is_transfer: true }), tx(7, '2026-11-30', 1500),
+      tx(7, '2026-10-31', 99900),                       // last month
+      tx(6, '2026-11-05', -2000),                       // another account
+    ];
+    expect(movedThisMonth(transactions, 7, '2026-11')).toBe(121500);
   });
 });

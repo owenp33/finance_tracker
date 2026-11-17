@@ -1,29 +1,15 @@
 import { useState } from 'react';
 import GoalRow from './GoalRow';
 import AddGoalForm from './AddGoalForm';
-import { useGoals } from '../../hooks/useGoals';
-import { useProjection } from '../../hooks/useProjection';
-import { FORECAST_DAYS } from '../../utils/forecast';
-import { monthlyRoom, goalPlan } from '../../utils/goals';
-import { todayISO } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
 
-// A stable stand-in when no one listens for errors (the hooks refetch when it changes)
-const IGNORE_ERROR = () => {};
-
 // The Goals section on Budgeting (Phase F, F2b): goals in order, each with its progress, status,
-// monthly amount (its own, or the room: utils/goals.js) and when it's reached; adding, editing,
-// reordering and deleting them. `accounts` (GET /api/accounts) give names and loans' rates, and
-// `recurring` (every template) loans' regular payments; the room comes from the next 90 days'
-// projection and `transactions`.
-function GoalsSection({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
-  const { goals, addGoal, editGoal, removeGoal, reorder } = useGoals(onError, accounts);
-  const occurrences = useProjection(FORECAST_DAYS, onError);
+// monthly amount (its own, or the room) and when it's reached; adding, editing, reordering and
+// deleting them. `goalPlan` is hooks/useGoalPlan's (the Budgeting page shares it with the saving
+// line); `accounts` (GET /api/accounts) fill the add form.
+function GoalsSection({ accounts = [], goalPlan }) {
+  const { goals, plans, room, addGoal, editGoal, removeGoal, reorder } = goalPlan;
   const [adding, setAdding] = useState(false);
-
-  const today = todayISO();
-  const room = monthlyRoom(transactions, recurring, occurrences, accounts.map(a => a.id), today);
-  const plans = goals ? goalPlan(goals, { roomCents: room, accounts, recurring, today }) : [];
 
   const move = (index, step) => {
     const ids = goals.map(g => g.id);

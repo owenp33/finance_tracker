@@ -2941,6 +2941,16 @@ body {
   margin: 6px 0 10px;
 }
 
+/* The active goal's saving, beside this month's category budgets (F2c) */
+.budget-goal-saving {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e7f6ef;
+  color: #12795a;
+  font-size: 0.88rem;
+}
+
 .goal-form input,
 .goal-form select {
   padding: 6px 10px;

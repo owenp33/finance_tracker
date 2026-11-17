@@ -91,3 +91,15 @@ export const goalPlan = (goals, { roomCents, accounts, recurring, today }) => {
     return row;
   });
 };
+
+// The active goal (the first not reached) with its plan, or null when there's none
+export const activeSaving = (goals, plans) => {
+  const index = (plans ?? []).findIndex(plan => plan.status === 'active');
+  return goals && index >= 0 ? { goal: goals[index], plan: plans[index] } : null;
+};
+
+// How far an account's balance moved in a month ('YYYY-MM'): its transactions dated then, transfers,
+// loan entries and interest included (what went toward a goal on it so far)
+export const movedThisMonth = (transactions, accountId, period) => transactions
+  .filter(t => t.account_id === accountId && t.date.startsWith(period))
+  .reduce((sum, t) => sum + t.amount_cents, 0);

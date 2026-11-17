@@ -52,10 +52,10 @@ beforeEach(() => {
 
 afterEach(() => jest.useRealTimers());
 
-const renderView = async (transactions = []) => {
+const renderView = async (transactions = [], { accounts = [], recurring = [] } = {}) => {
   render(
     <CategoryColorProvider>
-      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} />
+      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} accounts={accounts} recurring={recurring} />
     </CategoryColorProvider>
   );
   await screen.findAllByRole('img', { name: /:/ });
@@ -268,5 +268,56 @@ describe('bills still due', () => {
     await screen.findByText('$380.00 of $400.00');
     expect(due('Groceries')).toBeNull();
     expect(within(pace('Groceries')).queryByText(/due/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the active goal's saving", () => {
+  // A goal on Savings with its own $500 a month; $300 went into Savings on Oct 5
+  const ACCOUNTS = [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3300 },
+                    { id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -75142 }];
+  const goalRow = (id, accountId, name, kind, balanceCents, targetCents) => ({
+    id, position: 1, account_id: accountId, account_name: name, account_kind: kind, balance: balanceCents / 100,
+    balance_cents: balanceCents, target: targetCents / 100, target_cents: targetCents,
+    remaining_cents: Math.max(targetCents - balanceCents, 0), monthly: 500, monthly_cents: 50000, reached: false, active: true,
+  });
+  const SAVED = [
+    { id: 21, account_id: 7, date: '2026-10-05', vendor: 'To savings', category: 'Transfer', notes: '', amount: 300,
+      amount_cents: 30000, is_transfer: true, is_reimbursement: false },
+    { id: 22, account_id: 7, date: '2026-09-05', vendor: 'To savings', category: 'Transfer', notes: '', amount: 999,
+      amount_cents: 99900, is_transfer: true, is_reimbursement: false },
+  ];
+  const saving = () => document.querySelector('.budget-goal-saving');
+  const unallocated = () => [...screen.getByText('Unallocated').closest('.budget-summary-card').querySelectorAll('.budget-summary-value, .budget-summary-sub')]
+    .map(e => e.textContent);
+
+  beforeEach(() => localStorage.setItem('budget_monthly_income', '3000'));
+  afterEach(() => localStorage.clear());
+
+  test("it shows beside the budgets with what's gone to it so far, and Unallocated leaves it out", async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    expect(saving().textContent).toBe('Goal: Savings · $500.00 this month (yours) · $300.00 so far');
+    // $3,000 income − $750 budgeted − $500 to the goal
+    expect(unallocated()).toEqual(['$1750.00', 'after $500.00 to Savings']);
+  });
+
+  test("a loan goal's saving is an extra payment, and what's gone to it is how far it's paid down", async () => {
+    getGoals.mockResolvedValue([goalRow(2, 16, 'Student Loan', 'loan', -7514200, 0)]);
+    const entry = { id: 31, account_id: 16, date: '2026-10-31', vendor: 'ASPIRE', category: 'Loan', notes: '', amount: 75,
+                    amount_cents: 7500, is_transfer: false, is_reimbursement: false, loan_payment_id: 30, on_loan_account: true };
+    await renderView([entry], { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    expect(saving().textContent).toBe('Goal: Student Loan · $500.00 extra this month (yours) · $75.00 paid down so far');
+  });
+
+  test("other months show no saving, and Unallocated is income less that month's budgets", async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: '←' }));
+    await screen.findByText('$380.00 of $400.00');
+    expect(saving()).toBeNull();
+    expect(unallocated()).toEqual(['$2600.00', 'remaining to allocate']);
   });
 });

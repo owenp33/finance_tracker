@@ -3,6 +3,9 @@ import BudgetRow from './BudgetRow';
 import AddBudgetForm from './AddBudgetForm';
 import ViewAsTable from './ViewAsTable';
 import GoalsSection from './goals/GoalsSection';
+import GoalSavingRow from './goals/GoalSavingRow';
+import { useGoalPlan } from '../hooks/useGoalPlan';
+import { activeSaving, movedThisMonth } from '../utils/goals';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -42,8 +45,9 @@ const paceTableRow = (item, pace, monthEnd) => {
 // A stable stand-in when no one listens for errors (GoalsSection's hooks refetch when it changes)
 const IGNORE_ERROR = () => {};
 
-// The Budgeting view: the Goals section (Phase F, F2b), then the month's category budgets.
-// `accounts` and `recurring` (every template) feed the goals; `onError` takes their errors.
+// The Budgeting view: the Goals section (Phase F, F2b), then the month's category budgets, with the
+// active goal's saving beside them this month (F2c), which Unallocated leaves out. `accounts` and
+// `recurring` (every template) feed the goals; `onError` takes their errors.
 function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring = [], onError = IGNORE_ERROR }) {
   const [period, setPeriod] = useState(getCurrentPeriod);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -72,11 +76,17 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
   const today = todayISO();
   const occurrences = useMonthProjection(today, setError);
 
+  // The goals, and this month the active goal's saving
+  const goalPlan = useGoalPlan({ accounts, transactions, recurring, onError });
+  const isThisMonth = period === today.slice(0, 7);
+  const saving = isThisMonth ? activeSaving(goalPlan.goals, goalPlan.plans) : null;
+  const savingCents = saving ? saving.plan.monthlyCents : 0;
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const totalAllocated = progress.reduce((sum, item) => sum + item.allocated, 0);
   const totalSpent = progress.reduce((sum, item) => sum + item.spent, 0);
-  const unallocated = monthlyIncome - totalAllocated;
+  const unallocated = monthlyIncome - totalAllocated - savingCents / 100;
   const incomeSet = monthlyIncome > 0;
 
   // Each row's pace, worked out as the Dashboard does (rowPace); this month's also says where the
@@ -128,7 +138,7 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
   return (
     <div className="budgeting-view">
 
-      <GoalsSection accounts={accounts} transactions={transactions} recurring={recurring} onError={onError} />
+      <GoalsSection accounts={accounts} goalPlan={goalPlan} />
 
       <div className="period-nav">
         <button className="btn btn-ghost" onClick={() => setPeriod(p => getPrevPeriod(p))}>←</button>
@@ -188,7 +198,13 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
           <div className={`budget-summary-value${incomeSet ? (unallocated >= 0 ? ' green' : ' red') : ''}`}>
             ${Math.abs(unallocated).toFixed(2)}{incomeSet && unallocated < 0 && ' over'}
           </div>
-          {incomeSet && <div className="budget-summary-sub">remaining to allocate</div>}
+          {incomeSet && (
+            <div className="budget-summary-sub">
+              {saving && savingCents > 0
+                ? `after ${formatCents(savingCents)} to ${saving.goal.account_name}`
+                : 'remaining to allocate'}
+            </div>
+          )}
         </div>
       </div>
 
@@ -218,6 +234,11 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
             }}
             onCancel={() => setShowAddForm(false)}
           />
+        )}
+
+        {saving && (
+          <GoalSavingRow goal={saving.goal} plan={saving.plan}
+                         movedCents={movedThisMonth(transactions, saving.goal.account_id, period)} />
         )}
 
         {loading ? (

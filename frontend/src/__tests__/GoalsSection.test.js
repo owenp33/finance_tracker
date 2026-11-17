@@ -1,6 +1,7 @@
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GoalsSection from '../components/goals/GoalsSection';
+import { useGoalPlan } from '../hooks/useGoalPlan';
 import { getGoals, createGoal, updateGoal, deleteGoal, reorderGoals } from '../api/goals';
 import { getProjection } from '../api/recurring';
 
@@ -38,8 +39,14 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
+// The section as the Budgeting page gives it: the plan from useGoalPlan
+function Goals({ onError }) {
+  const goalPlan = useGoalPlan({ accounts: ACCOUNTS, transactions: [], recurring: RECURRING, onError });
+  return <GoalsSection accounts={ACCOUNTS} goalPlan={goalPlan} />;
+}
+
 const renderGoals = async (onError = jest.fn()) => {
-  render(<GoalsSection accounts={ACCOUNTS} transactions={[]} recurring={RECURRING} onError={onError} />);
+  render(<Goals onError={onError} />);
   await waitFor(() => expect(screen.queryByText('Loading goals…')).not.toBeInTheDocument());
   return onError;
 };
@@ -131,6 +138,6 @@ test('without room, the active goal is not reached at this pace', async () => {
 test('a failed load is reported', async () => {
   getGoals.mockRejectedValue(new Error('Could not load goals'));
   const onError = jest.fn();
-  render(<GoalsSection accounts={ACCOUNTS} transactions={[]} recurring={RECURRING} onError={onError} />);
+  render(<Goals onError={onError} />);
   await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load goals'));
 });
