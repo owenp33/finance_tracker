@@ -419,6 +419,9 @@ function App() {
           <BudgetingView
             transactions={transactions}
             onBudgetChange={handleBudgetChange}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            onError={setError}
           />
         )}
         {view === 'insights' && (

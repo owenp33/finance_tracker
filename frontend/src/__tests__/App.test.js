@@ -8,12 +8,14 @@ import { getAccounts } from '../api/accounts';
 import { getAllTransactions } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
 import { getProjection, getAccountRecurring } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
 jest.mock('../api/transactions');
 jest.mock('../api/budgets');
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 const EXPIRED = 'Your session has expired. Please log in again.';
 const USER = { id: 1, username: 'owen' };
@@ -34,6 +36,7 @@ beforeEach(() => {
   getAllTransactions.mockResolvedValue([]);
   getBudgetProgress.mockResolvedValue([]);
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
 });
 
 const renderApp = () => render(<CategoryColorProvider><App /></CategoryColorProvider>);

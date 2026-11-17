@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import BudgetRow from './BudgetRow';
 import AddBudgetForm from './AddBudgetForm';
 import ViewAsTable from './ViewAsTable';
+import GoalsSection from './goals/GoalsSection';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -38,7 +39,12 @@ const paceTableRow = (item, pace, monthEnd) => {
   ];
 };
 
-function BudgetingView({ transactions, onBudgetChange }) {
+// A stable stand-in when no one listens for errors (GoalsSection's hooks refetch when it changes)
+const IGNORE_ERROR = () => {};
+
+// The Budgeting view: the Goals section (Phase F, F2b), then the month's category budgets.
+// `accounts` and `recurring` (every template) feed the goals; `onError` takes their errors.
+function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring = [], onError = IGNORE_ERROR }) {
   const [period, setPeriod] = useState(getCurrentPeriod);
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -121,6 +127,8 @@ function BudgetingView({ transactions, onBudgetChange }) {
 
   return (
     <div className="budgeting-view">
+
+      <GoalsSection accounts={accounts} transactions={transactions} recurring={recurring} onError={onError} />
 
       <div className="period-nav">
         <button className="btn btn-ghost" onClick={() => setPeriod(p => getPrevPeriod(p))}>←</button>

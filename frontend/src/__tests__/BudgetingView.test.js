@@ -4,9 +4,11 @@ import BudgetingView from '../components/BudgetingView';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBudgetProgress, getBudgets, setScheduledPace } from '../api/budgets';
 import { getProjection } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/budgets');
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 // A row of GET /api/budgets/progress, as the backend sends it
 const progressRow = (id, category, allocated, spent, carriedOver = 0, scheduledPace = false) => {
@@ -44,6 +46,7 @@ beforeEach(() => {
   getBudgets.mockResolvedValue([]);
   getBudgetProgress.mockImplementation(async (period) => (period === '2026-09' ? SEPTEMBER : OCTOBER));
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
   setScheduledPace.mockResolvedValue({ success: true });
 });
 
