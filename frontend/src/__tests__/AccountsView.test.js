@@ -16,11 +16,12 @@ const account = (overrides) => ({
 });
 
 const renderAccounts = (accounts, onEditAccount = jest.fn(),
-                        { onCreateAccount = jest.fn(), transactions = [], onDeleteTransferBulk = jest.fn() } = {}) => {
+                        { onCreateAccount = jest.fn(), transactions = [], onDeleteTransferBulk = jest.fn(),
+                          onEdit = jest.fn(), onPairTransfer = jest.fn() } = {}) => {
   render(
     <AccountsView
       transactions={transactions} accounts={accounts}
-      onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={onDeleteTransferBulk}
+      onEdit={onEdit} onDelete={jest.fn()} onPairTransfer={onPairTransfer} onDeleteTransferBulk={onDeleteTransferBulk}
       onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
     />
   );
@@ -299,6 +300,68 @@ test('the transactions page has no Flagged tab (over budget shows as a chip inst
   );
   expect(screen.queryByRole('button', { name: /^Flagged/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^Accounts/ })).toBeInTheDocument();
+});
+
+describe("a bank account's transfers", () => {
+  const tx = (id, accountId, date, vendor, amount, extra = {}) => ({
+    id, account_id: accountId, date, vendor, category: 'Transfer', notes: '', amount, amount_cents: Math.round(amount * 100),
+    is_transfer: true, is_reimbursement: false, over_budget: false, recurring_id: null, loan_payment_id: null,
+    transfer_peer_id: null, transfer_peer_account: null, ...extra,
+  });
+  const ACCOUNTS = [account({ id: 6, account_name: 'Checking' }), account({ id: 7, account_name: 'Savings' })];
+  const TRANSACTIONS = [
+    tx(1, 6, '2026-10-05', 'To savings', -300, { transfer_peer_id: 9, transfer_peer_account: 'Savings', notes: 'monthly' }),
+    tx(2, 6, '2026-09-20', 'Venmo', 45),
+    tx(3, 6, '2026-10-02', 'Target', -20, { is_transfer: false, category: 'Grocery' }),      // not a transfer: not listed
+    tx(9, 7, '2026-10-05', 'To savings', 300, { transfer_peer_id: 1, transfer_peer_account: 'Checking' }),
+  ];
+  const open = async (handlers = {}) => {
+    renderAccounts(ACCOUNTS, jest.fn(), { transactions: TRANSACTIONS, ...handlers });
+    const checking = accountItem('Checking');
+    await userEvent.click(within(checking).getByTitle('Expand transfers'));
+    return checking.querySelector('.account-transfers');
+  };
+
+  test('are listed by vendor, newest first, each with the other account or "Unlinked"', async () => {
+    const list = await open();
+    expect(within(list).getByText('Transfers (2)')).toBeInTheDocument();
+    expect([...list.querySelectorAll('.transfer-vendor-group')].map(group =>
+      [group.querySelector('.transfer-vendor-name').textContent, group.querySelector('.transfer-vendor-flows').textContent]))
+      .toEqual([['To savings', '$300.00 out'], ['Venmo', '$45.00 in']]);
+    expect([...list.querySelectorAll('.account-transfer-row')].map(row =>
+      ['.account-transfer-amount', '.account-transfer-direction', '.account-transfer-peer', '.account-transfer-date']
+        .map(sel => row.querySelector(sel).textContent))).toEqual([
+      ['-$300.00', 'To', 'Savings', 'Oct 5'],
+      ['+$45.00', 'From', 'Unlinked', 'Sep 20'],
+    ]);
+  });
+
+  test('a row is edited in place: date, vendor, amount and notes', async () => {
+    const onEdit = jest.fn();
+    const list = await open({ onEdit });
+    const [first] = list.querySelectorAll('.account-transfer-row');
+    await userEvent.click(within(first).getByTitle('Edit'));
+    const amount = within(first).getByPlaceholderText('Amount');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '-350');
+    await userEvent.click(within(first).getByRole('button', { name: 'Save' }));
+    expect(onEdit).toHaveBeenCalledWith(1, { date: '2026-10-05', vendor: 'To savings', amount: '-350', notes: 'monthly',
+                                             account_id: 6, category: 'Transfer' });
+  });
+
+  test('selected rows can be moved to another account or deleted', async () => {
+    const onPairTransfer = jest.fn();
+    const onDeleteTransferBulk = jest.fn();
+    const list = await open({ onPairTransfer, onDeleteTransferBulk });
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Transfers (2)' }));
+    expect(within(list).getByText('2 of 2 selected')).toBeInTheDocument();
+    expect(within(list).getByText('Move 2 to:')).toBeInTheDocument();
+    await userEvent.selectOptions(list.querySelector('.transfer-bulk-bar select'), '7');
+    await userEvent.click(within(list).getByRole('button', { name: 'Move' }));
+    expect(onPairTransfer.mock.calls).toEqual([[1, 7], [2, 7]]);
+    await userEvent.click(within(list).getByRole('button', { name: 'Delete 2' }));
+    expect(onDeleteTransferBulk).toHaveBeenCalledWith([1, 2]);
+  });
 });
 
 describe('goal progress on the row', () => {

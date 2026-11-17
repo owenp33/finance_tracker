@@ -2563,17 +2563,17 @@ body {
   color: #444;
 }
 
-/* A loan entry has no actions, so its chip and date stay on hover */
-.account-transfer-row.loan-entry .tx-loan-chip {
+/* A locked row (a loan entry) has no actions, so its badge and date stay on hover */
+.account-transfer-row.locked .tx-loan-chip {
   margin-right: 8px;
 }
 
-.account-transfer-row.loan-entry:hover .account-transfer-date {
+.account-transfer-row.locked:hover .account-transfer-date {
   opacity: 1;
 }
 
-/* Dates differ in width, so a fixed one keeps the loan entries' chips in a column */
-.account-transfer-row.loan-entry .account-transfer-date {
+/* Dates differ in width, so a fixed one keeps locked rows' badges in a column */
+.account-transfer-row.locked .account-transfer-date {
   min-width: 84px;
   text-align: right;
 }
