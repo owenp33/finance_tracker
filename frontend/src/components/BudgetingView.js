@@ -138,8 +138,6 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
   return (
     <div className="budgeting-view">
 
-      <GoalsSection accounts={accounts} goalPlan={goalPlan} />
-
       <div className="period-nav">
         <button className="btn btn-ghost" onClick={() => setPeriod(p => getPrevPeriod(p))}>←</button>
         <span className="period-label">{formatPeriod(period)}</span>
@@ -272,6 +270,9 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
           </>
         )}
       </div>
+
+      {/* Goals aren't per month; they sit below the month's budgets (Owen, 2026-11-16) */}
+      <GoalsSection accounts={accounts} goalPlan={goalPlan} />
 
     </div>
   );

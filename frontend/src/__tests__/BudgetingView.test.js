@@ -293,6 +293,16 @@ describe("the active goal's saving", () => {
   beforeEach(() => localStorage.setItem('budget_monthly_income', '3000'));
   afterEach(() => localStorage.clear());
 
+  test('the Goals section sits below Category Allocations', async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    const allocations = document.querySelector('.category-allocations-card');
+    const goals = document.querySelector('.goals-section');
+    expect(allocations.compareDocumentPosition(goals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(allocations.contains(goals)).toBe(false);
+  });
+
   test("it shows beside the budgets with what's gone to it so far, and Unallocated leaves it out", async () => {
     getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
     await renderView(SAVED, { accounts: ACCOUNTS });
