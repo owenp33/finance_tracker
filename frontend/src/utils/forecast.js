@@ -91,7 +91,7 @@ export const forecastInputs = (transactions, recurring, occurrences, accountIds,
 };
 
 // Months between interest hits, by how often interest hits (as the server's InterestService)
-const INTEREST_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
+export const INTEREST_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
 
 // The first day of the period `day` (YYYY-MM-DD) falls in: its month's 1st, its quarter's first
 // 1st (Jan, Apr, Jul, Oct), or Jan 1
