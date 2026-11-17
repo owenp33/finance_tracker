@@ -2941,6 +2941,15 @@ body {
   margin: 6px 0 10px;
 }
 
+/* Where the forecast takes a goal on the account shown (F2e); a held goal it dips under is a warning */
+.balance-goal-note {
+  margin: 2px 0;
+  color: #12795a;
+  font-size: 0.85rem;
+}
+
+.balance-goal-note.warning { color: #b5441c; }
+
 /* The Dashboard's goal card (F2d): its own row above this month's cards */
 .goal-card {
   grid-column: 1 / -1;

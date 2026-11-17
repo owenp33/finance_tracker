@@ -5,9 +5,11 @@ import { BalanceTooltip } from '../components/insights/charts/BalanceChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBalances } from '../api/balances';
 import { getProjection } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/balances');
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 // jsdom has no layout, so the chart gets a fixed size instead of measuring its container
 jest.mock('recharts', () => {
@@ -65,6 +67,7 @@ beforeEach(() => {
   user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   getBalances.mockResolvedValue(BALANCES);
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
 });
 afterEach(() => jest.useRealTimers());
 
@@ -308,6 +311,55 @@ describe("a loan's forecast", () => {
       ['ASPIRE loan: interest', '—', '—', '—', '7.30% a year, charged monthly', '-$182.23'],
       ['Total', '$0.00', '—', '', '', '-$107.23'],     // -$10,107.23, the forecast line's, less today's -$10,000.00
     ]);
+  });
+});
+
+describe('goals on the chart', () => {
+  // A GET /api/goals row
+  const goalRow = (accountId, name, balanceCents, targetCents) => ({
+    id: accountId, position: 1, account_id: accountId, account_name: name, account_kind: 'bank',
+    balance_cents: balanceCents, target_cents: targetCents, remaining_cents: Math.max(targetCents - balanceCents, 0),
+    monthly_cents: null, reached: balanceCents >= targetCents, active: balanceCents < targetCents,
+  });
+  const note = () => tab().querySelector('.balance-goal-note');
+
+  test("an account's goal is a dashed line, and the note says when the forecast reaches it", async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    getGoals.mockResolvedValue([goalRow(7, "Owen's Savings", 300000, 400000)]);
+    await openTab();
+    await pick("Owen's Savings");
+    // $3,000.00 plus the $1,700.00 paycheck on Dec 1
+    await waitFor(() => expect(note().textContent).toBe('The forecast reaches the $4,000.00 goal on Dec 1, 2026.'));
+    expect(tab().querySelector('.balance-goal-line')).not.toBeNull();
+  });
+
+  test("a goal the forecast doesn't reach in 90 days says so", async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    getGoals.mockResolvedValue([goalRow(7, "Owen's Savings", 300000, 750000)]);
+    await openTab();
+    await pick("Owen's Savings");
+    await waitFor(() => expect(note().textContent).toBe("The forecast doesn't reach the $7,500.00 goal in the next 90 days."));
+  });
+
+  test('a goal already reached warns when the forecast dips under it', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    getGoals.mockResolvedValue([goalRow(6, "Owen's Checking", 727413, 720000)]);
+    await openTab();
+    await pick("Owen's Checking");
+    // $7,274.13 less Allina's $87.38 on Nov 9
+    await waitFor(() => expect(note().textContent).toBe('The forecast dips under the $7,200.00 goal on Nov 9, 2026.'));
+    expect(note()).toHaveClass('warning');
+  });
+
+  test('a goal held through the forecast says so, and net position draws no goal', async () => {
+    getProjection.mockResolvedValue(SCHEDULED);
+    getGoals.mockResolvedValue([goalRow(6, "Owen's Checking", 727413, 500000)]);
+    await openTab();
+    expect(note()).toBeNull();                                   // net position: goals are per account
+    expect(tab().querySelector('.balance-goal-line')).toBeNull();
+    await pick("Owen's Checking");
+    await waitFor(() => expect(note().textContent).toBe('The forecast stays at or above the $5,000.00 goal through Feb 6, 2027.'));
+    expect(note()).not.toHaveClass('warning');
   });
 });
 

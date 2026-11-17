@@ -1,4 +1,4 @@
-import { GOAL_MONTHS_CAP, monthlyRoom, regularPayments, goalPlan, activeSaving, movedThisMonth } from '../utils/goals';
+import { GOAL_MONTHS_CAP, monthlyRoom, regularPayments, goalPlan, activeSaving, movedThisMonth, forecastAgainstGoal } from '../utils/goals';
 
 const TODAY = '2026-11-16';     // the next 90 days: through Feb 14, 2027
 
@@ -98,5 +98,24 @@ describe('the active goal and what moved this month', () => {
       tx(6, '2026-11-05', -2000),                       // another account
     ];
     expect(movedThisMonth(transactions, 7, '2026-11')).toBe(121500);
+  });
+});
+
+describe('the forecast against a goal', () => {
+  const forecast = [
+    { date: '2026-11-20', cents: 700000, kind: 'forecast' },
+    { date: '2026-12-01', cents: 870000, kind: 'forecast' },
+    { date: '2027-01-15', cents: 690000, kind: 'forecast' },
+    { date: '2027-02-14', cents: 690000, kind: 'forecast-end' },
+  ];
+
+  test('a goal not reached yet: the first day the forecast gets there, if it does', () => {
+    expect(forecastAgainstGoal({ reached: false, target_cents: 750000 }, forecast)).toEqual({ reachesOn: '2026-12-01', dipsOn: null });
+    expect(forecastAgainstGoal({ reached: false, target_cents: 900000 }, forecast)).toEqual({ reachesOn: null, dipsOn: null });
+  });
+
+  test('a goal reached and held: the first day the forecast dips under it, if it does', () => {
+    expect(forecastAgainstGoal({ reached: true, target_cents: 690000 }, forecast)).toEqual({ reachesOn: null, dipsOn: null });
+    expect(forecastAgainstGoal({ reached: true, target_cents: 695000 }, forecast)).toEqual({ reachesOn: null, dipsOn: '2027-01-15' });
   });
 });

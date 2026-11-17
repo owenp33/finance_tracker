@@ -103,3 +103,14 @@ export const activeSaving = (goals, plans) => {
 export const movedThisMonth = (transactions, accountId, period) => transactions
   .filter(t => t.account_id === accountId && t.date.startsWith(period))
   .reduce((sum, t) => sum + t.amount_cents, 0);
+
+// Where a balance forecast (utils/forecast.js forecastPoints) takes a goal: for a goal not reached
+// yet, the first forecast day at or past its target (`reachesOn`); for one reached and held, the
+// first forecast day under it (`dipsOn`); null when that doesn't happen within the forecast
+export const forecastAgainstGoal = (goal, forecast) => {
+  const days = forecast.filter(point => point.kind === 'forecast');
+  if (goal.reached) {
+    return { reachesOn: null, dipsOn: days.find(point => point.cents < goal.target_cents)?.date ?? null };
+  }
+  return { reachesOn: days.find(point => point.cents >= goal.target_cents)?.date ?? null, dipsOn: null };
+};

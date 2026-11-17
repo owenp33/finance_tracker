@@ -60,7 +60,8 @@ export function BalanceTooltip({ active, payload, transactions, accountIds }) {
 // A step line of a balance over a range (`points`: utils/balances.js rangePoints), on a time axis,
 // with a $0 line when it crosses zero and a brush underneath to zoom; then, dashed from today's
 // balance, the `forecast` (utils/forecast.js forecastPoints) with a "Today" line between them
-function BalanceChart({ points, forecast = [], today, transactions, accountIds }) {
+// `goals` (GET /api/goals rows of the account shown) are dashed lines at their targets (Phase F, F2e)
+function BalanceChart({ points, forecast = [], today, transactions, accountIds, goals = [] }) {
   const last = points.length - 1;
   const data = [
     ...points.map((p, i) => ({
@@ -99,6 +100,13 @@ function BalanceChart({ points, forecast = [], today, transactions, accountIds }
         {forecast.length > 0 && (
           <ReferenceLine x={dayNumber(today)} stroke="#9ca3af" strokeDasharray="2 3" label={{ value: 'Today', position: 'top', fill: '#6b7280', fontSize: 11 }} />
         )}
+        {goals.map(goal => (
+          <ReferenceLine
+            key={goal.id} y={goal.target_cents / 100} className="balance-goal-line" stroke="#12795a" strokeDasharray="6 4"
+            ifOverflow="extendDomain"
+            label={{ value: `Goal ${formatCompactDollars(goal.target_cents / 100)}`, position: 'insideTopLeft', fill: '#12795a', fontSize: 11 }}
+          />
+        ))}
         <Line type="stepAfter" dataKey="dollars" className="balance-line" dot={false} connectNulls={false} isAnimationActive={false} />
         {forecast.length > 0 && (
           <Line
