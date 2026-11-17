@@ -1,4 +1,7 @@
-import { GOAL_MONTHS_CAP, monthlyRoom, regularPayments, goalPlan, activeSaving, movedThisMonth, forecastAgainstGoal } from '../utils/goals';
+import {
+  GOAL_MONTHS_CAP, PAYOFF_SHOWN_MONTHS, monthlyRoom, regularPayments, goalPlan, loanPayoff, activeSaving, movedThisMonth,
+  forecastAgainstGoal,
+} from '../utils/goals';
 
 const TODAY = '2026-11-16';     // the next 90 days: through Feb 14, 2027
 
@@ -78,6 +81,49 @@ describe('goal plan', () => {
     ]);
     expect(plan([LOAN_GOAL], 0)[0].months).toBeNull();         // $75 a month is less than the interest
     expect(GOAL_MONTHS_CAP).toBe(600);
+  });
+
+  describe("a loan's payoff, with and without the extra", () => {
+    const payoff = (loanGoal, loanPlan) => loanPayoff(loanGoal, loanPlan, { accounts: ACCOUNTS, recurring: RECURRING, today: TODAY });
+
+    test("runs until the plan pays it off; without the extra, what's owed grows when the interest is more than the payments", () => {
+      const [, loanPlan] = plan([SAVINGS_GOAL, LOAN_GOAL], 260000);       // paid off 33 months from now
+      const result = payoff(LOAN_GOAL, loanPlan);
+      expect(result).toMatchObject({ regularCents: 7500, extraCents: 260000, extraFrom: '2027-02', reachMonth: '2029-08',
+                                     withoutReachMonth: null, growing: true });
+      expect(result.months).toHaveLength(34);
+      // Now; then Dec 1's interest of $419.96 less the $75.00 payment, Jan likewise; the extra starts in February
+      expect(result.months.slice(0, 4)).toEqual([
+        { month: '2026-11', withExtra: 7521700, without: 7521700 },
+        { month: '2026-12', withExtra: 7556196, without: 7556196 },
+        { month: '2027-01', withExtra: 7590885, without: 7590885 },
+        { month: '2027-02', withExtra: 7365767, without: 7625767 },
+      ]);
+      expect(result.months[33]).toEqual({ month: '2029-08', withExtra: 0, without: 8767888 });   // $50.38 over shows as $0 owed
+      expect([result.interestWith, result.interestWithout]).toEqual([780762, 1493688]);
+    });
+
+    test('regular payments that pay it off on their own say when', () => {
+      // $1,000.00 owed, no interest, $75.00 a month from its series plus $100.00 of its own: 6 months; without it, 14
+      const small = { ...LOAN_GOAL, balance_cents: -100000, remaining_cents: 100000, monthly_cents: 10000 };
+      const accounts = [{ id: 16, kind: 'loan', apr: null }];
+      const [smallPlan] = goalPlan([small], { roomCents: 260000, accounts, recurring: RECURRING, today: TODAY });
+      const result = loanPayoff(small, smallPlan, { accounts, recurring: RECURRING, today: TODAY });
+      expect(result).toMatchObject({ extraCents: 10000, extraFrom: '2026-12', reachMonth: '2027-05', withoutReachMonth: '2028-01',
+                                     growing: false, interestWith: 0, interestWithout: 0 });
+      expect(result.months.map(m => m.withExtra)).toEqual([100000, 82500, 65000, 47500, 30000, 12500, 0]);
+      expect(result.months.map(m => m.without)).toEqual([100000, 92500, 85000, 77500, 70000, 62500, 55000]);
+    });
+
+    test('with nothing extra going toward it, both paths are the regular payments, shown over 10 years', () => {
+      const [, loanPlan] = plan([SAVINGS_GOAL, LOAN_GOAL], -3000);         // Savings isn't reached at this pace
+      const result = payoff(LOAN_GOAL, loanPlan);
+      expect(result).toMatchObject({ extraCents: 0, extraFrom: null, reachMonth: null, withoutReachMonth: null, growing: true,
+                                     interestWith: 6773193, interestWithout: 6773193 });
+      expect(PAYOFF_SHOWN_MONTHS).toBe(120);
+      expect(result.months).toHaveLength(121);
+      expect(result.months[120]).toEqual({ month: '2036-11', withExtra: 13394893, without: 13394893 });
+    });
   });
 });
 

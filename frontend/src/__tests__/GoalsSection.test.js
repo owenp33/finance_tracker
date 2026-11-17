@@ -4,9 +4,16 @@ import GoalsSection from '../components/goals/GoalsSection';
 import { useGoalPlan } from '../hooks/useGoalPlan';
 import { getGoals, createGoal, updateGoal, deleteGoal, reorderGoals } from '../api/goals';
 import { getProjection } from '../api/recurring';
+import { PayoffTip } from '../components/goals/LoanPayoffChart';
 
 jest.mock('../api/goals');
 jest.mock('../api/recurring');
+// jsdom has no layout, so the payoff chart gets a fixed size instead of measuring its container
+jest.mock('recharts', () => {
+  const actual = jest.requireActual('recharts');
+  const { cloneElement } = jest.requireActual('react');
+  return { ...actual, ResponsiveContainer: ({ children, height }) => cloneElement(children, { width: 800, height }) };
+});
 
 // GET /api/goals rows, in order
 const goal = (id, position, accountId, accountName, kind, balanceCents, targetCents, extra = {}) => ({
@@ -140,4 +147,67 @@ test('a failed load is reported', async () => {
   const onError = jest.fn();
   render(<Goals onError={onError} />);
   await waitFor(() => expect(onError).toHaveBeenCalledWith('Could not load goals'));
+});
+
+describe("a loan goal's payoff", () => {
+  const payoff = () => row('Student Loan').querySelector('.loan-payoff');
+  const notes = () => [...payoff().querySelectorAll('.payoff-note')].map(p => p.textContent);
+
+  test("shows what's owed with the extra and with the regular payments only, until it's paid off", async () => {
+    await renderGoals();
+    await waitFor(() => expect(screen.getByText(/^Room each month: \$1,133\.33/)).toBeInTheDocument());
+    expect(row('Savings').querySelector('.loan-payoff')).toBeNull();
+    expect([...payoff().querySelectorAll('.payoff-legend li')].map(li => li.textContent))
+      .toEqual(['With $1,133.33 extra a month', 'Regular payments only ($75.00 a month)']);
+    // The extra starts the month after Savings is reached (Mar 2027); paid off 83 months from now
+    expect(notes()).toEqual([
+      'With $1,133.33 extra a month from Apr 2027: paid off by Oct 2033, with $19,907.28 in interest.',
+      'With only its regular payments ($75.00 a month): $111,511.97 owed in Oct 2033, with $42,519.97 in interest by then, '
+        + 'and growing: the interest is more than the payments.',
+    ]);
+    expect(payoff().querySelector('.payoff-line-extra')).not.toBeNull();
+    expect(payoff().querySelector('.payoff-line-regular')).not.toBeNull();
+    expect(payoff().querySelector('.payoff-end-label').textContent).toBe('$112k');     // where the regular payments leave it
+    const table = within(payoff()).getByRole('table', { name: "What's owed on Student Loan, month by month" });
+    const cells = within(table).getAllByRole('row').map(r => [...r.children].map(c => c.textContent));
+    expect(cells[0]).toEqual(['Month', 'With the extra', 'Regular payments only']);
+    expect(cells[1]).toEqual(['Nov 2026 (now)', '$75,217.00', '$75,217.00']);
+    expect(cells.at(-1)).toEqual(['Oct 2033', '$0.00', '$111,511.97']);
+    expect(cells).toHaveLength(85);
+  });
+
+  test('with nothing extra going toward it, one line: the regular payments, over 10 years', async () => {
+    getProjection.mockResolvedValue([]);      // no room, so Savings isn't reached and the loan's turn never comes
+    await renderGoals();
+    await waitFor(() => expect(screen.getByText(/^Room each month: none/)).toBeInTheDocument());
+    expect(payoff().querySelector('.payoff-legend')).toBeNull();
+    expect(notes()).toEqual([
+      'With only its regular payments ($75.00 a month): $133,948.93 owed in Nov 2036, with $67,731.93 in interest by then, '
+        + 'and growing: the interest is more than the payments.',
+    ]);
+    expect(payoff().querySelector('.payoff-line-only')).not.toBeNull();
+    expect(payoff().querySelector('.payoff-line-extra')).toBeNull();
+    const table = within(payoff()).getByRole('table', { name: "What's owed on Student Loan, month by month" });
+    expect([...within(table).getAllByRole('row')[0].children].map(c => c.textContent)).toEqual(['Month', 'Owed']);
+  });
+
+  test("a paid-off loan's goal has no payoff chart", async () => {
+    getGoals.mockResolvedValue([{ ...LOAN_GOAL, balance_cents: 0, remaining_cents: 0, reached: true }]);
+    await renderGoals();
+    expect(row('Student Loan').querySelector('.loan-payoff')).toBeNull();
+  });
+
+  test("the chart's tooltip gives the month and what's owed on each path", () => {
+    const point = { month: '2028-03', withExtra: 4120310, without: 8011200 };
+    const tip = (labels) => {
+      const { container, unmount } = render(<PayoffTip active payload={[{ payload: point }]} labels={labels} />);
+      const text = [container.querySelector('strong').textContent,
+                    ...[...container.querySelectorAll('.payoff-tip div')].map(d => d.textContent)];
+      unmount();
+      return text;
+    };
+    expect(tip({ extra: 'With the extra', regular: 'Regular payments only' }))
+      .toEqual(['Mar 2028', 'With the extra: $41,203.10 owed', 'Regular payments only: $80,112.00 owed']);
+    expect(tip({ extra: null, regular: 'Regular payments only' })).toEqual(['Mar 2028', '$80,112.00 owed']);
+  });
 });
