@@ -3,6 +3,8 @@ import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
 import AccountKindFields from './AccountKindFields';
 import InterestFields from './InterestFields';
+import AccountGoalProgress from './goals/AccountGoalProgress';
+import { useGoals } from '../hooks/useGoals';
 import TransactionList from './TransactionList';
 import { sortList } from './transactions/utils';
 
@@ -23,6 +25,9 @@ const typedCents = (text) => {
 // A typed yearly rate (percent), or null while it's blank: no interest
 const typedApr = (text) => (text.trim() === '' ? null : Number(text));
 
+// A stable stand-in when no one listens for errors (useGoals refetches when it changes)
+const IGNORE_ERROR = () => {};
+
 // The rate and how often it hits, as account fields for the API (both null without a rate)
 const interestFields = (aprText, frequency) => {
   const apr = typedApr(aprText);
@@ -39,7 +44,10 @@ function AccountsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  onError = IGNORE_ERROR,
 }) {
+  // Each account's goals show their progress on its row (Phase F, F2f)
+  const { goals } = useGoals(onError, accounts);
   const [showAddAccountForm, setShowAddAccountForm] = useState(false);
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountName, setNewAccountName] = useState('');
@@ -308,6 +316,7 @@ function AccountsView({
                             <span className="account-apr">{`${a.apr.toFixed(2)}% a year, ${a.interest_frequency ?? 'monthly'}`}</span>
                           )}
                         </small>
+                        <AccountGoalProgress goals={(goals ?? []).filter(goal => goal.account_id === a.id)} />
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
                             Created by an import. Check its name, account ID, and starting balance, then

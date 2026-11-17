@@ -29,6 +29,7 @@ function TransactionsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  onError,
 }) {
   const [tab, setTab] = useState('all');
 
@@ -110,6 +111,7 @@ function TransactionsView({
           onCreateAccount={onCreateAccount}
           onEditAccount={onEditAccount}
           onDeleteAccount={onDeleteAccount}
+          onError={onError}
         />
       )}
     </div>

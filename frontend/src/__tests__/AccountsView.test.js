@@ -3,6 +3,12 @@ import userEvent from '@testing-library/user-event';
 import AccountsView from '../components/AccountsView';
 import TransactionsView from '../components/TransactionsView';
 import { CategoryColorProvider } from '../CategoryColorContext';
+import { getGoals } from '../api/goals';
+
+jest.mock('../api/goals');
+// Goals load after the first render; tests not about them leave the load pending, so no update
+// arrives after a test ends. The goal tests below give their own rows.
+beforeEach(() => getGoals.mockReturnValue(new Promise(() => {})));
 
 const account = (overrides) => ({
   id: 1, account_id: 'checking-1234', account_name: 'Checking', balance: 100, opening_balance: 0,
@@ -268,4 +274,38 @@ test('the transactions page has no Flagged tab (over budget shows as a chip inst
   );
   expect(screen.queryByRole('button', { name: /^Flagged/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^Accounts/ })).toBeInTheDocument();
+});
+
+describe('goal progress on the row', () => {
+  // GET /api/goals rows
+  const goalRow = (id, accountId, kind, balanceCents, targetCents, active) => ({
+    id, position: id, account_id: accountId, account_kind: kind, balance_cents: balanceCents, target_cents: targetCents,
+    remaining_cents: Math.max(targetCents - balanceCents, 0), monthly_cents: null, reached: balanceCents >= targetCents, active,
+  });
+  const ACCOUNTS = [
+    account({ id: 1, account_name: 'Checking' }),
+    account({ id: 2, account_name: 'Savings', balance: 3000 }),
+    account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -75217 }),
+  ];
+  const progress = (name) => {
+    const goal = accountItem(name).querySelector('.account-goal');
+    return goal && [goal.querySelector('.account-goal-text').textContent, goal.querySelector('.goal-status').textContent];
+  };
+
+  test("each account with a goal shows how far along it is and the goal's status", async () => {
+    getGoals.mockResolvedValue([goalRow(1, 2, 'bank', 300000, 750000, true), goalRow(2, 16, 'loan', -7521700, 0, false)]);
+    renderAccounts(ACCOUNTS);
+    expect(await screen.findByText('Goal $7,500: 40% there, $4,500 to go')).toBeInTheDocument();
+    expect(progress('Savings')).toEqual(['Goal $7,500: 40% there, $4,500 to go', 'Active']);
+    expect(accountItem('Savings').querySelector('.goal-bar-fill')).toHaveStyle({ width: '40%' });
+    expect(progress('Student Loan')).toEqual(['Goal: paid off, $75,217 to go', 'Waiting']);
+    expect(progress('Checking')).toBeNull();
+  });
+
+  test('a reached goal says so', async () => {
+    getGoals.mockResolvedValue([goalRow(1, 2, 'bank', 800000, 750000, false)]);
+    renderAccounts(ACCOUNTS);
+    expect(await screen.findByText('Goal $7,500: reached')).toBeInTheDocument();
+    expect(progress('Savings')).toEqual(['Goal $7,500: reached', 'Reached']);
+  });
 });

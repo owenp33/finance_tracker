@@ -415,6 +415,7 @@ function App() {
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
+            onError={setError}
           />
         )}
         {view === 'budgeting' && (
