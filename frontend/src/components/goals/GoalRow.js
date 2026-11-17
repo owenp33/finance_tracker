@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatCents } from '../../utils/money';
 import { monthRangeLabel } from '../../utils/dates';
+import LoanPayoff from './LoanPayoff';
 
 const STATUS = { active: 'Active', waiting: 'Waiting', held: 'Reached' };
 
@@ -30,9 +31,10 @@ const planText = (goal, plan, before) => {
   return parts.join(' · ');
 };
 
-// One goal in the Goals section: its place, account, status, progress and plan, with editing its
-// target and monthly amount (blank: the suggestion), moving it up or down, and deleting it
-function GoalRow({ goal, plan, before, isFirst, isLast, onEdit, onMove, onDelete }) {
+// One goal in the Goals section: its place, account, status, progress and plan, a loan goal's payoff
+// (`payoff`, utils/goals.js loanPayoff; null otherwise), with editing its target and monthly amount
+// (blank: the suggestion), moving it up or down, and deleting it
+function GoalRow({ goal, plan, payoff, before, isFirst, isLast, onEdit, onMove, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState('');
   const [monthly, setMonthly] = useState('');
@@ -64,6 +66,7 @@ function GoalRow({ goal, plan, before, isFirst, isLast, onEdit, onMove, onDelete
           </div>
         )}
         <div className="goal-plan">{planText(goal, plan, before)}</div>
+        {payoff && <LoanPayoff goal={goal} payoff={payoff} />}
         {editing && (
           <div className="goal-form">
             <div className="form-group">

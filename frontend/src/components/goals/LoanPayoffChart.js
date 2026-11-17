@@ -1,0 +1,92 @@
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
+import { formatCents, formatCompactDollars } from '../../utils/money';
+import { monthRangeLabel } from '../../utils/dates';
+import { monthTick } from '../insights/charts/monthTicks';
+
+const MAX_TICKS = 8;
+const EXTRA_COLOR = '#2a78d6';     // --chart-blue
+const REGULAR_COLOR = '#6b7280';   // muted ink: the path to compare against
+
+// The months to label: every month of a short run; of a longer one the first, then the Januaries far
+// enough from it not to collide, every few years so there are at most 8
+const payoffTicks = (months) => {
+  if (months.length <= MAX_TICKS) return months;
+  const gap = months.length / MAX_TICKS;
+  const januaries = months.filter((month, i) => month.endsWith('-01') && i >= gap);
+  const step = Math.ceil((januaries.length + 1) / MAX_TICKS);
+  return [months[0], ...januaries.filter((month, i) => (i + 1) % step === 0)];
+};
+
+// A short run names each month ("Dec", "Jan 2027"); a longer one its first month, then years
+const tickLabel = (short) => (month, index) => (short || index === 0 ? monthTick(month, index) : month.slice(0, 4));
+
+// The tooltip: the month and what's owed on each path (`labels.extra` null: one path)
+export function PayoffTip({ active, payload, labels }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="chart-tooltip payoff-tip">
+      <strong>{monthRangeLabel(point.month, point.month)}</strong>
+      {labels.extra ? (
+        <>
+          <div>{`${labels.extra}: ${formatCents(point.withExtra)} owed`}</div>
+          <div>{`${labels.regular}: ${formatCents(point.without)} owed`}</div>
+        </>
+      ) : (
+        <div>{`${formatCents(point.without)} owed`}</div>
+      )}
+    </div>
+  );
+}
+
+// The regular payments' last value, at the end of its line
+const EndLabel = ({ x, y, index, value, last }) => (index === last && value > 0 ? (
+  <text x={x} y={y} dy={-8} textAnchor="end" className="payoff-end-label">{formatCompactDollars(value)}</text>
+) : null);
+
+// What's owed on a loan month by month (Phase F, F2g): with the goal's extra (solid) and with the
+// regular payments only (dashed, its end labelled); one solid line when nothing extra goes toward it.
+// `months` are utils/goals.js loanPayoff's (cents); `labels` name the paths for the tooltip;
+// `targetOwed` (cents) draws a dashed goal line when the goal isn't $0 owed.
+function LoanPayoffChart({ months, labels, targetOwed }) {
+  const short = months.length <= MAX_TICKS;
+  const last = months.length - 1;
+  return (
+    <div className="payoff-chart">
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={months} margin={{ top: 18, right: 16, bottom: 0, left: 0 }}>
+          <CartesianGrid vertical={false} stroke="#eef0f3" />
+          <XAxis
+            dataKey="month" ticks={payoffTicks(months.map(m => m.month))} interval={0}
+            tickFormatter={tickLabel(short)} tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
+          <YAxis
+            domain={[0, 'auto']} tickCount={4} width={56} tickFormatter={formatCompactDollars}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
+          <Tooltip content={<PayoffTip labels={labels} />} cursor={{ stroke: '#9ca3af', strokeWidth: 1 }} isAnimationActive={false} />
+          {targetOwed > 0 && (
+            <ReferenceLine
+              y={targetOwed / 100} className="payoff-goal-line" stroke="#12795a" strokeDasharray="6 4"
+              label={{ value: `Goal ${formatCompactDollars(targetOwed / 100)} owed`, position: 'insideTopLeft', fill: '#12795a', fontSize: 11 }}
+            />
+          )}
+          {labels.extra && (
+            <Line
+              dataKey={point => point.withExtra / 100} name={labels.extra} className="payoff-line-extra"
+              stroke={EXTRA_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} isAnimationActive={false}
+            />
+          )}
+          <Line
+            dataKey={point => point.without / 100} name={labels.regular}
+            className={labels.extra ? 'payoff-line-regular' : 'payoff-line-only'}
+            stroke={labels.extra ? REGULAR_COLOR : EXTRA_COLOR} strokeWidth={2} strokeDasharray={labels.extra ? '5 4' : undefined}
+            dot={false} activeDot={{ r: 4 }} isAnimationActive={false} label={<EndLabel last={last} />}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export default LoanPayoffChart;

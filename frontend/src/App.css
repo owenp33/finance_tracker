@@ -2971,6 +2971,50 @@ body {
 
 .balance-goal-note.warning { color: #b5441c; }
 
+/* A loan goal's payoff under its row (F2g): what's owed with the extra and with the regular
+   payments only. The lines' colours are set on the chart; these keys match them. */
+.loan-payoff {
+  margin-top: 8px;
+}
+
+.payoff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.payoff-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.payoff-key {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid var(--chart-blue);
+}
+
+.payoff-key.regular {
+  border-top: 2px dashed #6b7280;
+}
+
+.payoff-end-label {
+  fill: #4b5563;
+  font-size: 11px;
+}
+
+.payoff-note {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
 /* An account's goal progress on its row in Transactions → Accounts (F2f) */
 .account-goal {
   display: flex;

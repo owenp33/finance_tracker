@@ -40,23 +40,39 @@ const bankMonths = (goal, monthlyCents, startsIn) => {
   return months > GOAL_MONTHS_CAP ? null : months;
 };
 
-// A loan goal's months from now until reached, month by month as the server books it: interest on
-// the 1st of each of its periods (the rate's share of what's owed), then its regular payments, plus
-// `monthlyCents` once its turn starts (`startsIn`). Null when it isn't paid down at this pace.
-const loanMonths = (goal, monthlyCents, startsIn, account, regular, today) => {
+// Past this many months, a loan's payoff chart that never reaches its goal stops (10 years)
+export const PAYOFF_SHOWN_MONTHS = 120;
+
+// A loan walked month by month from next month, as the server books it: interest on the 1st of each
+// of its periods (the rate's share of what's owed), then its regular payments, plus `extraCents` from
+// month `startsIn + 1` (never when `startsIn` is null). Each month's {month ('YYYY-MM'), cents (the
+// balance at its end, negative while owed), interest}, for `months` months or until the balance
+// reaches `stopAt`.
+const loanWalk = ({ startCents, account, regular, extraCents, startsIn, today, months, stopAt = null }) => {
   const bps = account?.apr != null ? Math.round(account.apr * 100) : 0;
-  const months = INTEREST_MONTHS[account?.interest_frequency ?? 'monthly'];
-  const thisMonth = Number(today.slice(5, 7));
-  let owed = goal.balance_cents;
-  for (let m = 1; m <= GOAL_MONTHS_CAP; m += 1) {
-    const calendarMonth = ((thisMonth - 1 + m) % 12) + 1;
-    if (bps && (calendarMonth - 1) % months === 0) {
-      owed -= Math.floor((Math.max(-owed, 0) * bps * months + 60000) / 120000);
-    }
-    owed += regular + (m > startsIn ? monthlyCents : 0);
-    if (owed >= goal.target_cents) return m;
+  const period = INTEREST_MONTHS[account?.interest_frequency ?? 'monthly'];
+  const thisMonth = today.slice(0, 7);
+  const calendarNow = Number(today.slice(5, 7));
+  const path = [];
+  let cents = startCents;
+  for (let m = 1; m <= months; m += 1) {
+    const calendarMonth = ((calendarNow - 1 + m) % 12) + 1;
+    const interest = bps && (calendarMonth - 1) % period === 0
+      ? Math.floor((Math.max(-cents, 0) * bps * period + 60000) / 120000)
+      : 0;
+    cents += regular - interest + (startsIn !== null && m > startsIn ? extraCents : 0);
+    path.push({ month: shiftPeriod(thisMonth, m), cents, interest });
+    if (stopAt !== null && cents >= stopAt) break;
   }
-  return null;
+  return path;
+};
+
+// A loan goal's months from now until reached (loanWalk), with `monthlyCents` once its turn starts
+// (`startsIn`); null when it isn't paid down at this pace
+const loanMonths = (goal, monthlyCents, startsIn, account, regular, today) => {
+  const path = loanWalk({ startCents: goal.balance_cents, account, regular, extraCents: monthlyCents, startsIn, today,
+                          months: GOAL_MONTHS_CAP, stopAt: goal.target_cents });
+  return path.length > 0 && path[path.length - 1].cents >= goal.target_cents ? path.length : null;
 };
 
 // Each goal's plan, in order: {id, status ('held' | 'active' | 'waiting'), monthlyCents (what goes
@@ -90,6 +106,41 @@ export const goalPlan = (goals, { roomCents, accounts, recurring, today }) => {
     startsIn = months;
     return row;
   });
+};
+
+// A loan goal's payoff (F2g), for its chart: what's owed each month from now (cents, never below 0;
+// the first is now) with the goal's monthly amount on top of its regular payments once its turn
+// starts (`withExtra`) and with the regular payments only (`without`), through the month the plan
+// reaches it, else PAYOFF_SHOWN_MONTHS; the interest each path is charged over those months; the
+// month the regular payments alone would reach it (null when not within GOAL_MONTHS_CAP); and whether
+// what's owed without the extra ends higher than now (`growing`). `plan` is the goal's goalPlan row:
+// nothing extra goes toward it when its turn never comes (`startsIn` null).
+export const loanPayoff = (goal, plan, { accounts, recurring, today }) => {
+  const account = accounts.find(a => a.id === goal.account_id);
+  const regular = regularPayments(goal.account_id, recurring);
+  const extraCents = plan.startsIn === null ? 0 : plan.monthlyCents;
+  const walk = { startCents: goal.balance_cents, account, regular, startsIn: plan.startsIn, today,
+                 months: plan.months ?? PAYOFF_SHOWN_MONTHS };
+  const withExtra = loanWalk({ ...walk, extraCents });
+  const without = loanWalk({ ...walk, extraCents: 0 });
+  const owed = (cents) => Math.max(-cents, 0);
+  const interest = (path) => path.reduce((sum, point) => sum + point.interest, 0);
+  const thisMonth = today.slice(0, 7);
+  const withoutMonths = loanMonths(goal, 0, 0, account, regular, today);
+  return {
+    regularCents: regular,
+    extraCents,
+    extraFrom: extraCents > 0 ? shiftPeriod(thisMonth, plan.startsIn + 1) : null,
+    months: [
+      { month: thisMonth, withExtra: owed(goal.balance_cents), without: owed(goal.balance_cents) },
+      ...withExtra.map((point, i) => ({ month: point.month, withExtra: owed(point.cents), without: owed(without[i].cents) })),
+    ],
+    interestWith: interest(withExtra),
+    interestWithout: interest(without),
+    reachMonth: plan.reachMonth,
+    withoutReachMonth: withoutMonths === null ? null : shiftPeriod(thisMonth, withoutMonths),
+    growing: without.length > 0 && owed(without[without.length - 1].cents) > owed(goal.balance_cents),
+  };
 };
 
 // The active goal (the first not reached) with its plan, or null when there's none

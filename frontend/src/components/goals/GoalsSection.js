@@ -4,11 +4,11 @@ import AddGoalForm from './AddGoalForm';
 import { formatCents } from '../../utils/money';
 
 // The Goals section on Budgeting (Phase F, F2b): goals in order, each with its progress, status,
-// monthly amount (its own, or the room) and when it's reached; adding, editing, reordering and
-// deleting them. `goalPlan` is hooks/useGoalPlan's (the Budgeting page shares it with the saving
+// monthly amount (its own, or the room) and when it's reached, a loan goal with its payoff chart
+// (F2g); adding, editing, reordering and deleting them. `goalPlan` is hooks/useGoalPlan's (the Budgeting page shares it with the saving
 // line); `accounts` (GET /api/accounts) fill the add form.
 function GoalsSection({ accounts = [], goalPlan }) {
-  const { goals, plans, room, addGoal, editGoal, removeGoal, reorder } = goalPlan;
+  const { goals, plans, room, payoffs, addGoal, editGoal, removeGoal, reorder } = goalPlan;
   const [adding, setAdding] = useState(false);
 
   const move = (index, step) => {
@@ -50,7 +50,7 @@ function GoalsSection({ accounts = [], goalPlan }) {
         <ol className="goal-list">
           {goals.map((goal, i) => (
             <GoalRow
-              key={goal.id} goal={goal} plan={plans[i]} before={goals[i - 1]?.account_name}
+              key={goal.id} goal={goal} plan={plans[i]} payoff={payoffs[i]} before={goals[i - 1]?.account_name}
               isFirst={i === 0} isLast={i === goals.length - 1}
               onEdit={editGoal} onMove={(step) => move(i, step)} onDelete={() => remove(goal)}
             />
