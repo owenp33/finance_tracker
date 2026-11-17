@@ -10,6 +10,7 @@ from models.recurring_alias import RecurringAliasModel
 from models.series_dismissal import SeriesDismissalModel
 from models.budget import BudgetModel
 from models.scheduled_pace import ScheduledPaceModel
+from models.goal import GoalModel
 
 __all__ = [
     'User',
@@ -21,4 +22,5 @@ __all__ = [
     'SeriesDismissalModel',
     'BudgetModel',
     'ScheduledPaceModel',
+    'GoalModel',
 ]

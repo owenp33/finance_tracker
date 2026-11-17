@@ -311,6 +311,17 @@ class DbService:
                 .filter(AccountModel.user_id == user_id)
                 .all())
 
+    # GOAL OPERATIONS ===========================================================
+
+    def get_goal(self, goal_id):
+        from models.goal import GoalModel
+        return db.session.get(GoalModel, goal_id)
+
+    def get_user_goals(self, user_id):
+        """The user's goals in their order."""
+        from models.goal import GoalModel
+        return GoalModel.query.filter_by(user_id=int(user_id)).order_by(GoalModel.position, GoalModel.id).all()
+
     def get_series_paying_down(self, loan_account_id):
         """The templates whose series pay down this loan account."""
         return RecurringModel.query.filter_by(loan_account_id=loan_account_id).all()

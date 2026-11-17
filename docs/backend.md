@@ -69,7 +69,7 @@ HTTP request
 `import`, `budgets`, and `export` under `/api/<name>`.
 
 **Middleware**
-- `middleware/ownership.py`: `owns_account`, `owns_transaction`, `owns_recurring`, `owns_budget`.
+- `middleware/ownership.py`: `owns_account`, `owns_transaction`, `owns_recurring`, `owns_budget`, `owns_goal`.
   Each loads the resource named in the URL and rejects the request unless it belongs to the
   token's user: 403 for someone else's resource, 404 for a missing one (`owns_account` answers 403
   in both cases).
@@ -241,6 +241,19 @@ category-month involved: one query for budgets, one for the expenses and reimbur
 `transaction_dicts(user_id, transactions)` serializes transactions with `over_budget` filled in,
 and every route that returns transactions uses it. The walk itself is the pure function
 `over_budget_in_month(expenses, reimbursed_cents, allocated_cents)`.
+
+**`GoalService`** (`goal_service.py`): goals, target balances on the user's accounts (savings up
+to an amount, a loan down to $0 owed), run in order. `list_goals(user_id)` gives each goal with its
+account's balance, `remaining_cents` (target less balance, never below 0), `reached` (the balance
+is at or past the target; held from then on) and `active` (the first goal in order that isn't
+reached, so a held goal that falls under its target pushes again, ahead of the rest); nothing
+about that is stored. `create_goal(user_id, data)` (`account_id`, one of the user's accounts,
+"Choose one of your accounts."; `target` in dollars, checked like a balance by
+`account_service.balance_dollars`, and a loan's at most 0, "A loan's target can't be above $0
+(paid off)."; optional `monthly`, the user's own amount, above 0, "Monthly amount must be a number
+above $0.") adds it at the end; `update_goal` changes the target and/or monthly (None goes back to
+the app's suggestion, which the frontend works out); `reorder(user_id, goal_ids)` takes every goal's
+id once ("Send every goal once, in the new order."); `delete_goal` moves the later ones up.
 
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers and loan
@@ -417,6 +430,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 | `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
+| `goals` | `user_id`, `account_id`, `target_cents`, `monthly_cents` (the user's own monthly amount; null for the app's suggestion), `position` (1, 2, ...: the order goals run in); deleted with the user or the account |
 | `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
@@ -728,6 +742,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/import` | `POST /preview`, `POST /confirm` |
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
 | `/balances` | `GET ?account_ids=&start_date=&end_date=` |
+| `/goals` | `GET`, `POST`, `PATCH` / `DELETE /<id>`, `PUT /order` |
 
 Details worth knowing:
 - `POST /accounts` takes `account_id` and optionally `account_name`, `kind` (`bank` or `loan`),
@@ -805,6 +820,11 @@ Details worth knowing:
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---
+- `GET /goals` returns `{goals: [...]}` in order (see `GoalService.list_goals`); `POST /goals`
+  takes `{account_id, target, monthly?}` and returns `{goal}` (201); `PATCH /goals/<id>` takes
+  `target` and/or `monthly` (`null` for the app's suggestion) and returns `{goal}`; `PUT
+  /goals/order` takes `{goal_ids}` and returns `{goals}`; invalid input is a 400, another user's
+  goal a 403.
 
 ## Schema changes
 
@@ -864,6 +884,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_interest.py` | Interest on any account: a loan charged, a bank account paid, each frequency, catching up missed periods, once a period, setting the rate and frequency, and login / page load |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
+| `test_goals.py` | Goals: reached and active from the balances and the order, a loan's goal, the monthly amount, editing, reordering, deleting, validation, and the routes |
 | `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors, recurring costs and account pages |
 | `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors, recurring costs |

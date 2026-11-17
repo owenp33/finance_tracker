@@ -41,7 +41,7 @@ MAX_BALANCE = 10_000_000
 BALANCE_LIMIT_TEXT = f'between -${MAX_BALANCE:,} and ${MAX_BALANCE:,}'
 
 
-def _balance_dollars(value, label):
+def balance_dollars(value, label):
     """A balance in dollars (`label` names it in errors). Raises ValueError unless it's a finite number within ±MAX_BALANCE."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
         raise ValueError(f'{label} must be a number.')
@@ -159,10 +159,10 @@ class AccountService:
         frequency = _interest_frequency(apr_bps, data, account.interest_frequency)
         opening = account.opening_balance
         if 'opening_balance' in data:
-            opening = _balance_dollars(data['opening_balance'], 'Starting balance')
+            opening = balance_dollars(data['opening_balance'], 'Starting balance')
         balance_cents = None
         if 'balance' in data:
-            balance_cents = int(round(_balance_dollars(data['balance'], 'Current balance') * 100))
+            balance_cents = int(round(balance_dollars(data['balance'], 'Current balance') * 100))
             # The transactions add up to the stored balance less the starting balance
             implied = balance_cents - (account.balance_cents - account.opening_balance_cents)
             if abs(implied) > MAX_BALANCE * 100:
