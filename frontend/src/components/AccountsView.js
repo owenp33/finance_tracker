@@ -3,7 +3,6 @@ import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
 import AccountKindFields from './AccountKindFields';
 import InterestFields from './InterestFields';
-import LoanStatementForm from './LoanStatementForm';
 import TransactionList from './TransactionList';
 import { sortList } from './transactions/utils';
 
@@ -24,11 +23,6 @@ const typedCents = (text) => {
 // A typed yearly rate (percent), or null while it's blank: no interest
 const typedApr = (text) => (text.trim() === '' ? null : Number(text));
 
-// What a statement did, from the adjustment it booked (null when it already matched)
-const statementResultText = (adjustment) => (adjustment
-  ? `Booked a statement adjustment of ${formatSignedCents(adjustment.amount_cents)} on ${formatDate(adjustment.date, true)}.`
-  : 'The statement matches the balance here, so nothing was booked.');
-
 // The rate and how often it hits, as account fields for the API (both null without a rate)
 const interestFields = (aprText, frequency) => {
   const apr = typedApr(aprText);
@@ -44,7 +38,6 @@ function AccountsView({
   onDeleteTransferBulk,
   onCreateAccount,
   onEditAccount,
-  onLoanStatement,
   onDeleteAccount,
 }) {
   const [showAddAccountForm, setShowAddAccountForm] = useState(false);
@@ -60,8 +53,6 @@ function AccountsView({
   const [editingKind, setEditingKind] = useState('bank');
   const [editingApr, setEditingApr] = useState('');
   const [editingFrequency, setEditingFrequency] = useState('monthly');
-  const [statementAccountId, setStatementAccountId] = useState(null);   // whose statement form is open
-  const [statementResult, setStatementResult] = useState(null);         // {accountId, text}
   const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
   const [editingCurrentBalance, setEditingCurrentBalance] = useState('');
   const [editingBalanceSource, setEditingBalanceSource] = useState('opening');   // the one typed in last
@@ -112,15 +103,6 @@ function AccountsView({
     setNewAccountKind('bank');
     setNewAccountApr('');
     setNewAccountFrequency('monthly');
-  };
-
-  // Resolves to whether the statement went through (the form closes and says what it booked)
-  const submitStatement = async (a, statement) => {
-    const result = await onLoanStatement(a.id, statement);
-    if (!result) return false;
-    setStatementAccountId(null);
-    setStatementResult({ accountId: a.id, text: statementResultText(result.adjustment) });
-    return true;
   };
 
   return (
@@ -337,12 +319,6 @@ function AccountsView({
                         {formatDollars(a.balance)}
                       </div>
                       <div className="account-actions">
-                        {a.kind === 'loan' && (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => { setStatementAccountId(a.id); setStatementResult(null); }}
-                          >Update from statement</button>
-                        )}
                         {a.needs_attention && (
                           <button
                             className="btn btn-secondary btn-sm"
@@ -375,16 +351,6 @@ function AccountsView({
                       </div>
                     </div>
 
-                    {statementAccountId === a.id && (
-                      <LoanStatementForm
-                        account={a}
-                        onSubmit={statement => submitStatement(a, statement)}
-                        onCancel={() => setStatementAccountId(null)}
-                      />
-                    )}
-                    {statementResult?.accountId === a.id && (
-                      <p className="account-statement-result">{statementResult.text}</p>
-                    )}
 
                     {isLoan && expanded && (
                       <div className="account-loan-transactions">

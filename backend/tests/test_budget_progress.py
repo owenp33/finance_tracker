@@ -90,7 +90,7 @@ class TestProgress:
         _db.session.commit()
         budget_svc.create_budget(user.id, 'Loan', '2026-10', 100.0)
         spend(account, date(2026, 10, 31), 'Loan', -75.0)
-        spend(loan, date(2026, 10, 15), 'Loan', -12.5)                          # e.g. a statement adjustment
+        spend(loan, date(2026, 10, 15), 'Loan', -12.5)                          # e.g. an interest charge
         spend(loan, date(2026, 10, 20), 'Loan', 40.0, is_reimbursement=True)    # would lower the spending
         assert progress(client, auth_headers)['Loan']['spent_cents'] == 7500
 

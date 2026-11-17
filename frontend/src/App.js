@@ -294,19 +294,6 @@ function App() {
     }
   };
 
-  // Resolves to {adjustment} (null when the statement already matched), or null after an error,
-  // so the statement form can stay open. The adjustment is a new transaction, so reload them too.
-  const handleLoanStatement = async (id, statement) => {
-    try {
-      const { adjustment } = await accountsAPI.updateFromStatement(id, statement);
-      await refreshAll();
-      return { adjustment };
-    } catch (err) {
-      setError(err.message);
-      return null;
-    }
-  };
-
   // Budgets decide which transactions the server marks over budget, so reload both. Stable
   // (useCallback), since useBudgetData depends on it.
   const handleBudgetChange = useCallback(async () => {
@@ -425,7 +412,6 @@ function App() {
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
-            onLoanStatement={handleLoanStatement}
             onDeleteAccount={handleDeleteAccount}
           />
         )}

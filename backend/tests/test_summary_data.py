@@ -216,7 +216,7 @@ class TestLoanAccounts:
     BANK = [tx(date(2026, 9, 1), 200000, category='Paycheck', vendor='Employer'), spend(date(2026, 9, 30), 'Loan', 75)]
     LOAN = [
         tx(date(2026, 9, 30), 7500, category='Loan', vendor='ASPIRE', loan=True),            # the payment's entry
-        tx(date(2026, 9, 15), -1250, category='Loan', vendor='Statement adjustment', loan=True),
+        tx(date(2026, 9, 15), -1250, category='Loan', vendor='Interest', loan=True),
         tx(date(2026, 9, 20), 3000, reimbursement=True, category='Loan', loan=True),
     ]
 

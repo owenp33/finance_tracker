@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AccountsView from '../components/AccountsView';
 import TransactionsView from '../components/TransactionsView';
@@ -9,14 +9,13 @@ const account = (overrides) => ({
   transaction_count: 0, recurring_count: 0, needs_attention: false, kind: 'bank', apr: null, ...overrides,
 });
 
-const renderAccounts = (accounts, onEditAccount = jest.fn(), { onCreateAccount = jest.fn(), onLoanStatement = jest.fn(), transactions = [] } = {}) => {
+const renderAccounts = (accounts, onEditAccount = jest.fn(), { onCreateAccount = jest.fn(), transactions = [] } = {}) => {
   render(
     <CategoryColorProvider>
       <AccountsView
         transactions={transactions} accounts={accounts}
         onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={jest.fn()}
         onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
-        onLoanStatement={onLoanStatement}
       />
     </CategoryColorProvider>
   );
@@ -203,7 +202,7 @@ describe('loan accounts', () => {
     expect(onEditAccount).toHaveBeenCalledWith(1, expect.objectContaining({ kind: 'bank', apr: null, interest_frequency: null }));
   });
 
-  test('a row shows its rate and how often, a loan its badge, and only a loan offers Update from statement', () => {
+  test('a row shows its rate and how often, and a loan its badge; a balance is set by editing, not by a statement', () => {
     renderAccounts([
       account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8, interest_frequency: 'monthly', balance: -19850 }),
       account({ id: 6, account_name: 'MOHELA loan', kind: 'loan', apr: null }),
@@ -212,37 +211,12 @@ describe('loan accounts', () => {
     const aspire = accountItem('ASPIRE loan');
     expect(within(aspire).getByText('Loan')).toHaveClass('loan-badge');
     expect(within(aspire).getByText('6.80% a year, monthly')).toHaveClass('account-apr');
-    expect(within(aspire).getByRole('button', { name: 'Update from statement' })).toBeInTheDocument();
+    expect(within(aspire).queryByRole('button', { name: 'Update from statement' })).not.toBeInTheDocument();
     expect(within(accountItem('MOHELA loan')).queryByText(/a year/)).not.toBeInTheDocument();
     const savings = accountItem('Savings');
     expect(within(savings).getByText('0.50% a year, yearly')).toBeInTheDocument();
     expect(within(savings).queryByText('Loan')).not.toBeInTheDocument();
     expect(within(savings).queryByRole('button', { name: 'Update from statement' })).not.toBeInTheDocument();
-  });
-
-  const fillStatement = async (owed) => {
-    await userEvent.click(screen.getByRole('button', { name: 'Update from statement' }));
-    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Statement date'), { target: { value: '2026-02-28' } });
-    await userEvent.type(screen.getByLabelText('Balance owed'), owed);
-    await userEvent.click(screen.getByRole('button', { name: 'Update' }));
-  };
-
-  test('a statement sends the balance owed as money owed, and says what it booked', async () => {
-    const onLoanStatement = jest.fn().mockResolvedValue({ adjustment: { date: '2026-02-28', amount_cents: -5000 } });
-    renderAccounts([account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', balance: -19850 })], jest.fn(), { onLoanStatement });
-    await fillStatement('19900');
-    expect(onLoanStatement).toHaveBeenCalledWith(5, { date: '2026-02-28', balance: -19900 });
-    expect(screen.queryByLabelText('Balance owed')).not.toBeInTheDocument();
-    expect(within(accountItem('ASPIRE loan')).getByText('Booked a statement adjustment of -$50.00 on Feb 28, 2026.'))
-      .toHaveClass('account-statement-result');
-  });
-
-  test('a statement that matches books nothing, and says so', async () => {
-    const onLoanStatement = jest.fn().mockResolvedValue({ adjustment: null });
-    renderAccounts([account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan', balance: -19850 })], jest.fn(), { onLoanStatement });
-    await fillStatement('19850');
-    expect(screen.getByText('The statement matches the balance here, so nothing was booked.')).toBeInTheDocument();
   });
 
   test("a loan's row lists all its transactions, newest first: the loan entries and anything else on it", async () => {
@@ -255,7 +229,7 @@ describe('loan accounts', () => {
       account({ id: 6, account_name: 'Checking' }),
     ], jest.fn(), { transactions: [
       tx(1, 16, '2026-09-30', 'ASPIRE', 75, { loan_payment_id: 11 }),
-      tx(2, 16, '2026-11-15', 'Statement adjustment', -75217),
+      tx(2, 16, '2026-11-01', 'Interest', -419.96),
       tx(3, 16, '2026-10-31', 'ASPIRE', 75, { loan_payment_id: 12 }),
       tx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),       // the payment, in Checking
     ] });
@@ -263,19 +237,13 @@ describe('loan accounts', () => {
     expect(within(loan).getByText('3 transactions')).toBeInTheDocument();
     await userEvent.click(within(loan).getByTitle('Show its transactions'));
     const rows = [...loan.querySelectorAll('.transaction-item')];
-    expect(rows.map(row => row.querySelector('strong').textContent)).toEqual(['Statement adjustment', 'ASPIRE', 'ASPIRE']);
+    expect(rows.map(row => row.querySelector('strong').textContent)).toEqual(['Interest', 'ASPIRE', 'ASPIRE']);
     expect(within(rows[1]).getByText('Loan entry')).toBeInTheDocument();
     expect(within(rows[0]).queryByText('Loan entry')).not.toBeInTheDocument();
     // A bank account still expands to its transfers only, and has none here
     expect(within(accountItem('Checking')).getByTitle('No transfers')).toBeDisabled();
   });
 
-  test('the statement form stays open when the update fails', async () => {
-    const onLoanStatement = jest.fn().mockResolvedValue(null);
-    renderAccounts([account({ id: 5, account_name: 'ASPIRE loan', kind: 'loan' })], jest.fn(), { onLoanStatement });
-    await fillStatement('19900');
-    expect(screen.getByLabelText('Balance owed')).toHaveValue(19900);
-  });
 });
 
 test('the Accounts tab counts accounts that need attention', () => {

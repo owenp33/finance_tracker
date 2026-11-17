@@ -196,6 +196,12 @@ class TestAccountRoutes:
         assert (resp.json['account']['kind'], resp.json['account']['apr'], resp.json['account']['interest_frequency']) \
             == ('bank', 0.5, 'yearly')
 
+    def test_a_balance_is_set_on_the_account_not_by_a_statement(self, client, auth_headers, account):
+        # Setting the current balance moves the starting balance and books nothing; there's no statement route
+        resp = client.post(f'/api/accounts/{account.id}/statement', json={'date': '2026-02-28', 'balance': -100},
+                           headers=auth_headers)
+        assert resp.status_code == 404
+
     @pytest.mark.parametrize('body, error', [
         ({'kind': 'card'}, 'Account type must be bank or loan.'),
         ({'apr': 6.8, 'interest_frequency': 'weekly'}, 'How often must be monthly, quarterly or yearly.'),

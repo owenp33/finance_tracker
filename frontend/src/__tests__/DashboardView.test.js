@@ -98,7 +98,7 @@ describe("this month's cards", () => {
     await renderDashboard({ transactions: [
       ...TRANSACTIONS,
       tx(11, '2026-11-02', 75, { category: 'Loan', vendor: 'ASPIRE', on_loan_account: true }),
-      tx(12, '2026-11-03', -12.5, { category: 'Loan', vendor: 'Statement adjustment', on_loan_account: true }),
+      tx(12, '2026-11-03', -12.5, { category: 'Loan', vendor: 'Interest', on_loan_account: true }),
     ] });
     expect(card('Income this month')).toEqual(['$1,280.00', '$280 more than Oct 1–5']);
     expect(card('Expenses this month')).toEqual(['$389.40', '$45 less than Oct 1–5']);

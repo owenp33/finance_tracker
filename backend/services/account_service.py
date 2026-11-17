@@ -7,7 +7,7 @@ Depends on db_service.py for raw data access.
 """
 import math
 import numbers
-from datetime import date, timedelta
+from datetime import date
 from extensions import db
 from models.account import AccountModel, ACCOUNT_KINDS
 from models.transaction import TransactionModel
@@ -77,20 +77,6 @@ def _apr_bps(value):
     if not 0 <= value <= MAX_APR:
         raise ValueError(f'APR must be between 0% and {MAX_APR}%.')
     return int(round(value * 100))
-
-
-STATEMENT_ADJUSTMENT = 'Statement adjustment'   # the vendor and category of what a statement books
-
-
-def _statement_date(value):
-    """A statement's date ('YYYY-MM-DD', today or earlier). Raises ValueError otherwise."""
-    try:
-        day = date.fromisoformat(value)
-    except (TypeError, ValueError):
-        raise ValueError('Statement date must be a date (YYYY-MM-DD).') from None
-    if day > date.today():
-        raise ValueError("Statement date can't be in the future.")
-    return day
 
 
 _NOT_GIVEN = object()
@@ -207,28 +193,6 @@ class AccountService:
 
         db.session.commit()
         return account, None
-
-    def update_from_statement(self, account_id, data: dict):
-        """
-        Bring a loan in line with a statement: `date` ('YYYY-MM-DD', not in the future) and
-        `balance` (in dollars, negative when owed, like the account's). The difference from the
-        app's balance at the end of that day (the starting balance plus the transactions dated
-        then or earlier) is booked on that date as a "Statement adjustment": interest, fees, or
-        anything else the app didn't know about. Returns the adjustment, or None when the
-        statement already matches. Raises ValueError for anything invalid, before changing anything.
-        """
-        account = db_service.get_account(account_id)
-        if account.kind != 'loan':
-            raise ValueError('Only a loan account can be updated from a statement.')
-        day = _statement_date(data.get('date'))
-        statement_cents = int(round(_balance_dollars(data.get('balance'), 'Statement balance') * 100))
-
-        through_day = db_service.get_transaction_totals_before([account.id], day + timedelta(days=1))
-        difference = statement_cents - (account.opening_balance_cents + through_day.get(account.id, 0))
-        if difference == 0:
-            return None
-        return self.add_transaction(account.id, day, STATEMENT_ADJUSTMENT, STATEMENT_ADJUSTMENT, difference / 100,
-                                    notes=f'Statement balance {_money(statement_cents)}')
 
     def delete_account(self, account_id):
         """
