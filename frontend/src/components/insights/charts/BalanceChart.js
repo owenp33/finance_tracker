@@ -34,7 +34,7 @@ export function BalanceTooltip({ active, payload, transactions, accountIds }) {
       ? [
         ...point.items.map((o, i) => ({ id: `${o.recurring_id}-${i}`, vendor: o.vendor, amount_cents: Math.round(o.amount * 100) })),
         ...(point.average > 0 ? [{ id: 'average', vendor: 'Average spending over the last 90 days', amount_cents: -point.average }] : []),
-        ...(point.interest > 0 ? [{ id: 'interest', vendor: 'Loan interest', amount_cents: -point.interest }] : []),
+        ...(point.interest ? [{ id: 'interest', vendor: 'Interest', amount_cents: point.interest }] : []),
       ]
       : [];
   const title = point.kind === 'start' ? `${formatDate(point.date, true)}, start of range`

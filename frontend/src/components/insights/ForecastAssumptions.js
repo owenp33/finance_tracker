@@ -5,8 +5,8 @@ import { FORECAST_DAYS, forecastAssumptions } from '../../utils/forecast';
 const NOTE = 'A category is forecast by its recurring charges when at least 90% of its spending over the last 90 days, '
   + 'less reimbursements, in every account, was in recurring series; every other category by its average over the '
   + 'last 90 days, less reimbursements. Income is scheduled income only, and series that have ended are left out.';
-const LOAN_NOTE = ' A loan gets the payments of the series that pay it down, and interest at its APR on what\'s owed, '
-  + 'accruing daily.';
+const ACCOUNT_NOTE = ' An account with an interest rate gets its interest on the 1st of each period, on its own balance '
+  + 'the day before; a loan also gets the payments of the series that pay it down.';
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -23,25 +23,29 @@ const basisLabel = (c) => {
 // "What the forecast assumes" (Phase F, F1b), collapsed under the balance chart: the scheduled
 // income, then each category of the accounts `accountIds` with what it spent over the last 90
 // days and the reimbursements taken off, its share in a series, how it's forecast and what it adds
-// over the next 90 days (utils/forecast.js forecastAssumptions), each loan's payments and interest
-// (`loans`: loanInputs), and a total, the forecast's change from today
-function ForecastAssumptions({ transactions, recurring, occurrences, accountIds, today, label, loans = [] }) {
-  const { categories, income, loans: loanRows } = forecastAssumptions(transactions, recurring, occurrences, accountIds, today, loans);
+// over the next 90 days (utils/forecast.js forecastAssumptions), each loan's payments and each
+// account's interest (`accounts`: accountInputs), and a total, the forecast's change from today
+function ForecastAssumptions({ transactions, recurring, occurrences, accountIds, today, label, accounts = [] }) {
+  const { categories, income, accounts: accountRows } = forecastAssumptions(transactions, recurring, occurrences, accountIds, today, accounts);
   const reimbursed = (cents) => (cents ? formatCents(cents) : '—');
   const rows = [];
   if (income.count) {
     rows.push(['Scheduled income', '—', '—', '—', `${plural(income.count, 'payment')} from ${income.series} series`, formatSignedCents(income.cents)]);
   }
-  loanRows.forEach(loan => {
+  accountRows.forEach(account => {
+    if (account.kind === 'loan') {
+      rows.push([
+        `${account.name}: payments`, '—', '—', '—',
+        account.payments.count ? `${plural(account.payments.count, 'payment')} from its paying series` : 'No payments due',
+        formatSignedCents(account.payments.cents),
+      ]);
+    }
     rows.push([
-      `${loan.name}: payments`, '—', '—', '—',
-      loan.payments.count ? `${plural(loan.payments.count, 'payment')} from its paying series` : 'No payments due',
-      formatSignedCents(loan.payments.cents),
-    ]);
-    rows.push([
-      `${loan.name}: interest`, '—', '—', '—',
-      loan.apr ? `${loan.apr.toFixed(2)}% APR on what's owed, daily` : 'No APR set, so no interest',
-      formatSignedCents(-loan.interest),
+      `${account.name}: interest`, '—', '—', '—',
+      account.apr
+        ? `${account.apr.toFixed(2)}% a year, ${account.kind === 'loan' ? 'charged' : 'paid'} ${account.frequency}`
+        : 'No APR set, so no interest',
+      formatSignedCents(account.interest),
     ]);
   });
   categories.forEach(c => rows.push([
@@ -58,12 +62,12 @@ function ForecastAssumptions({ transactions, recurring, occurrences, accountIds,
     reimbursed(categories.reduce((sum, c) => sum + c.reimbursed, 0)),
     '', '',
     formatSignedCents(categories.reduce((sum, c) => sum + c.forecast,
-      loanRows.reduce((sum, loan) => sum + loan.payments.cents - loan.interest, income.cents))),
+      accountRows.reduce((sum, account) => sum + account.payments.cents + account.interest, income.cents))),
   ]);
 
   return (
     <ViewAsTable
-      summary="What the forecast assumes" note={loanRows.length ? NOTE + LOAN_NOTE : NOTE}
+      summary="What the forecast assumes" note={accountRows.length ? NOTE + ACCOUNT_NOTE : NOTE}
       caption={`What the forecast assumes, ${label}`}
       columns={['Category', 'Spent over the last 90 days', 'Reimbursed', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days']}
       rows={rows}

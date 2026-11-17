@@ -8,7 +8,7 @@ import { useProjection } from '../../hooks/useProjection';
 import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
-import { FORECAST_DAYS, forecastInputs, forecastPoints, loanInputs } from '../../utils/forecast';
+import { FORECAST_DAYS, forecastInputs, forecastPoints, accountInputs } from '../../utils/forecast';
 
 const NET = 'net';
 
@@ -26,9 +26,9 @@ const changeLabel = (change, from) => {
 // position? Net position or one account (a choice above), over 3M / 6M / 1Y / All: the current
 // balance and its change over the range, a step line with a brush, a 90-day forecast (Phase F,
 // F1: utils/forecast.js) with what it assumes (F1b), and a table. `accounts` (GET
-// /api/accounts) give the current balances each history should end at (the plan's check), and
-// which accounts are loans, with their APR (F2a); `recurring` (every template) tells the forecast
-// which series have ended, and which pay down a loan.
+// /api/accounts) give the current balances each history should end at (the plan's check), which
+// accounts are loans (F2a), and each account's interest rate and how often it hits; `recurring`
+// (every template) tells the forecast which series have ended, and which pay down a loan.
 function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
@@ -56,22 +56,23 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
   const change = points[points.length - 1].cents - points[0].cents;
 
   // The forecast: from today's balance, the shown accounts' scheduled items and average spending,
-  // and for the loans shown their payments and interest, accruing on their balance today
+  // the loans' payments, and the interest of every account shown with a rate, each on its own balance
   const shownIds = shown.map(b => b.id);
   const forecastEnd = shiftDays(today, FORECAST_DAYS);
-  const loans = loanInputs(
-    accounts.filter(a => a.kind === 'loan' && shownIds.includes(a.id)).map(a => ({
-      id: a.id, name: a.account_name, apr: a.apr ?? null,
+  const interestAccounts = accountInputs(
+    accounts.filter(a => shownIds.includes(a.id) && (a.kind === 'loan' || a.apr != null)).map(a => ({
+      id: a.id, name: a.account_name, kind: a.kind, apr: a.apr ?? null, frequency: a.interest_frequency ?? 'monthly',
       startCents: balances.find(b => b.id === a.id).closing_cents,
     })),
-    recurring, occurrences,
+    transactions, recurring, occurrences, today,
   );
-  const withInterest = loans.some(loan => loan.apr);
+  const withInterest = interestAccounts.some(account => account.apr);
   const forecast = forecastFailed ? []
-    : forecastPoints(series.closing_cents, { ...forecastInputs(transactions, recurring, occurrences, shownIds, today), loans },
+    : forecastPoints(series.closing_cents,
+                     { ...forecastInputs(transactions, recurring, occurrences, shownIds, today), accounts: interestAccounts },
                      today, forecastEnd);
   const sources = withInterest
-    ? 'scheduled items, your average spending over the last 90 days and loan interest'
+    ? 'scheduled items, your average spending over the last 90 days and interest'
     : 'scheduled items and your average spending over the last 90 days';
 
   const allPoints = [...points, ...forecast];
@@ -137,7 +138,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
           <li>
             <span className="balance-key forecast" aria-hidden="true" />
             {withInterest
-              ? 'Forecast: scheduled items, average spending over the last 90 days and loan interest'
+              ? 'Forecast: scheduled items, average spending over the last 90 days and interest'
               : 'Forecast: scheduled items and average spending over the last 90 days'}
           </li>
         </ul>
@@ -145,7 +146,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
       {forecast.length > 0 && (
         <ForecastAssumptions
           transactions={transactions} recurring={recurring} occurrences={occurrences}
-          accountIds={shownIds} today={today} label={label} loans={loans}
+          accountIds={shownIds} today={today} label={label} accounts={interestAccounts}
         />
       )}
       <ViewAsTable
