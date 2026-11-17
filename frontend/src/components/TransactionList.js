@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info, Check, Unlink } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
-import { isLoanEntry } from './transactions/utils';
+import { isLoanEntry, LOAN_ENTRY_TITLE } from './transactions/utils';
 
 const formatDate = (dateStr, includeYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -193,8 +193,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                     </span>
                   )}
                   {isLoanEntry(t) && (
-                    <span className="tx-loan-chip"
-                          title="Follows a payment in its recurring series: change that payment instead">
+                    <span className="tx-loan-chip" title={LOAN_ENTRY_TITLE}>
                       Loan entry
                     </span>
                   )}

@@ -5,8 +5,7 @@ import AccountKindFields from './AccountKindFields';
 import InterestFields from './InterestFields';
 import AccountGoalProgress from './goals/AccountGoalProgress';
 import { useGoals } from '../hooks/useGoals';
-import TransactionList from './TransactionList';
-import { sortList } from './transactions/utils';
+import { isLoanEntry, LOAN_ENTRY_TITLE } from './transactions/utils';
 
 const formatDate = (dateStr, showYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -88,6 +87,12 @@ function AccountsView({
     return s;
   };
 
+  // The name of the account a loan entry's payment came from
+  const payingAccount = (entry) => {
+    const payment = transactions.find(t => t.id === entry.loan_payment_id);
+    return accounts.find(ac => ac.id === payment?.account_id)?.account_name ?? '';
+  };
+
   const toggleAccountExpand = (id) =>
     setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -166,16 +171,16 @@ function AccountsView({
         ) : (
           accounts.map(a => {
             const cfg = getTransferConfig(a.id);
-            const accountTransfers = transactions.filter(t => t.is_transfer && t.account_id === a.id);
             // A loan's row lists everything on it (its payments' loan entries are bills paid from
-            // another account, not transfers); any other account's row lists its transfers
+            // another account, not transfers, and it's charged interest); any other account's row
+            // lists its transfers. Both show in the same list.
             const isLoan = a.kind === 'loan';
-            const loanTransactions = isLoan ? sortList(transactions.filter(t => t.account_id === a.id), 'date-desc') : [];
-            const expandable = isLoan ? loanTransactions.length > 0 : accountTransfers.length > 0;
+            const listed = transactions.filter(t => t.account_id === a.id && (isLoan || t.is_transfer));
+            const expandable = listed.length > 0;
             const expanded = expandable && expandedAccountIds.has(a.id);
-            const visibleTransfers = applyTransferSort(accountTransfers, cfg.sort);
-            const transferYears = new Set(accountTransfers.map(t => t.date.slice(0, 4)));
-            const showYear = transferYears.size > 1;
+            const visibleListed = applyTransferSort(listed, cfg.sort);
+            const listedYears = new Set(listed.map(t => t.date.slice(0, 4)));
+            const showYear = listedYears.size > 1;
             // Starting balance + transactions (transfers included) = current balance
             const transactionCents = Math.round(a.balance * 100) - Math.round((a.opening_balance ?? 0) * 100);
             const typeStarting = (text) => {
@@ -297,14 +302,9 @@ function AccountsView({
                         </strong>
                         <small>
                           {a.account_id}
-                          {isLoan && loanTransactions.length > 0 && (
+                          {listed.length > 0 && (
                             <span className="account-transfer-count">
-                              {loanTransactions.length} transaction{loanTransactions.length !== 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {!isLoan && accountTransfers.length > 0 && (
-                            <span className="account-transfer-count">
-                              {accountTransfers.length} transfer{accountTransfers.length !== 1 ? 's' : ''}
+                              {listed.length} {isLoan ? 'transaction' : 'transfer'}{listed.length !== 1 ? 's' : ''}
                             </span>
                           )}
                           {a.opening_balance !== 0 && (
@@ -361,25 +361,18 @@ function AccountsView({
                     </div>
 
 
-                    {isLoan && expanded && (
-                      <div className="account-loan-transactions">
-                        <TransactionList
-                          transactions={loanTransactions} accounts={accounts}
-                          onEdit={onEdit} onDelete={onDelete} showAll
-                        />
-                      </div>
-                    )}
-
-                    {!isLoan && expanded && (() => {
-                      const acctSelected = accountTransfers.filter(t => selectedTransferIds.has(t.id));
-                      const allSelected  = accountTransfers.every(t => selectedTransferIds.has(t.id));
+                    {expanded && (() => {
+                      // A loan entry follows its payment, so it can't be selected (nor edited or deleted)
+                      const selectable = listed.filter(t => !isLoanEntry(t));
+                      const acctSelected = selectable.filter(t => selectedTransferIds.has(t.id));
+                      const allSelected  = selectable.length > 0 && selectable.every(t => selectedTransferIds.has(t.id));
                       const someSelected = acctSelected.length > 0;
 
                       const toggleAll = () => {
                         if (allSelected) {
-                          setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.delete(t.id)); return n; });
+                          setSelectedTransferIds(prev => { const n = new Set(prev); selectable.forEach(t => n.delete(t.id)); return n; });
                         } else {
-                          setSelectedTransferIds(prev => { const n = new Set(prev); accountTransfers.forEach(t => n.add(t.id)); return n; });
+                          setSelectedTransferIds(prev => { const n = new Set(prev); selectable.forEach(t => n.add(t.id)); return n; });
                         }
                       };
 
@@ -403,25 +396,31 @@ function AccountsView({
                                 checked={allSelected}
                                 ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
                                 onChange={toggleAll}
+                                disabled={selectable.length === 0}
                               />
                               <span>
                                 {someSelected
-                                  ? `${acctSelected.length} of ${accountTransfers.length} selected`
-                                  : `Transfers (${accountTransfers.length})`}
+                                  ? `${acctSelected.length} of ${listed.length} selected`
+                                  : `${isLoan ? 'Transactions' : 'Transfers'} (${listed.length})`}
                               </span>
                             </label>
                             <div
                               className="transfer-bulk-bar"
                               style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
                             >
-                              <span className="transfer-bulk-hint">Move {acctSelected.length} to:</span>
-                              <select value={transferBulkToAccountId} onChange={e => setTransferBulkToAccountId(e.target.value)}>
-                                <option value="">— account —</option>
-                                {accounts.filter(ac => ac.id !== a.id).map(ac => (
-                                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
-                                ))}
-                              </select>
-                              <button className="btn btn-primary btn-sm" disabled={!transferBulkToAccountId} onClick={handleBulkMove}>Move</button>
+                              {/* Moving re-links transfers to another account; a loan's transactions aren't transfers */}
+                              {!isLoan && (
+                                <>
+                                  <span className="transfer-bulk-hint">Move {acctSelected.length} to:</span>
+                                  <select value={transferBulkToAccountId} onChange={e => setTransferBulkToAccountId(e.target.value)}>
+                                    <option value="">— account —</option>
+                                    {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                      <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                    ))}
+                                  </select>
+                                  <button className="btn btn-primary btn-sm" disabled={!transferBulkToAccountId} onClick={handleBulkMove}>Move</button>
+                                </>
+                              )}
                               <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>Delete {acctSelected.length}</button>
                             </div>
                             <div className="transfer-sort-controls">
@@ -447,7 +446,7 @@ function AccountsView({
                           {(() => {
                             const vendorOrder = [];
                             const byVendor = {};
-                            for (const t of visibleTransfers) {
+                            for (const t of visibleListed) {
                               if (!byVendor[t.vendor]) { vendorOrder.push(t.vendor); byVendor[t.vendor] = []; }
                               byVendor[t.vendor].push(t);
                             }
@@ -465,7 +464,7 @@ function AccountsView({
                                     </span>
                                   </div>
                                   {group.map(t => (
-                                    <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}`}>
+                                    <div key={t.id} className={`account-transfer-row${selectedTransferIds.has(t.id) ? ' transfer-selected' : ''}${isLoanEntry(t) ? ' loan-entry' : ''}`}>
                                       {editingTransferId === t.id ? (
                                         <div className="transfer-edit-row">
                                           <input type="date" value={editTransferFields.date} onChange={e => setETF('date', e.target.value)} />
@@ -482,15 +481,20 @@ function AccountsView({
                                             className="transfer-checkbox"
                                             checked={selectedTransferIds.has(t.id)}
                                             onChange={() => toggleTransferSelect(t.id)}
+                                            disabled={isLoanEntry(t)}
                                           />
                                           <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                                             {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
                                           </span>
+                                          {/* A loan entry names the account its payment came from; a loan's
+                                              other transactions (interest) have no other account */}
                                           <span className="account-transfer-direction">
-                                            {t.amount < 0 ? 'To' : 'From'}
+                                            {isLoan && !isLoanEntry(t) ? '' : t.amount < 0 ? 'To' : 'From'}
                                           </span>
                                           <span className="account-transfer-peer">
-                                            {t.transfer_peer_id ? (
+                                            {isLoan ? (
+                                              isLoanEntry(t) && <span className="account-loan-payer">{payingAccount(t)}</span>
+                                            ) : t.transfer_peer_id ? (
                                               movingPeerId === t.id ? (
                                                 <span className="account-transfer-pair-picker">
                                                   <select value={movingToAccountId} onChange={e => setMovingToAccountId(e.target.value)} autoFocus>
@@ -547,21 +551,24 @@ function AccountsView({
                                             )}
                                           </span>
                                           <div className="account-transfer-right">
+                                            {isLoanEntry(t) && <span className="tx-loan-chip" title={LOAN_ENTRY_TITLE}>Loan entry</span>}
                                             <span className="account-transfer-date">
                                               {formatDate(t.date, showYear)}
                                             </span>
-                                            <div className="transfer-row-actions">
-                                              <button
-                                                className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
-                                                title="Edit"
-                                                onClick={() => startTransferEdit(t)}
-                                              ><Pencil size={13} /></button>
-                                              <button
-                                                className="btn btn-danger btn-sm icon-btn transfer-action-btn"
-                                                title="Delete"
-                                                onClick={() => onDelete(t.id)}
-                                              ><Trash2 size={13} /></button>
-                                            </div>
+                                            {!isLoanEntry(t) && (
+                                              <div className="transfer-row-actions">
+                                                <button
+                                                  className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
+                                                  title="Edit"
+                                                  onClick={() => startTransferEdit(t)}
+                                                ><Pencil size={13} /></button>
+                                                <button
+                                                  className="btn btn-danger btn-sm icon-btn transfer-action-btn"
+                                                  title="Delete"
+                                                  onClick={() => onDelete(t.id)}
+                                                ><Trash2 size={13} /></button>
+                                              </div>
+                                            )}
                                           </div>
                                         </>
                                       )}

@@ -15,15 +15,14 @@ const account = (overrides) => ({
   transaction_count: 0, recurring_count: 0, needs_attention: false, kind: 'bank', apr: null, ...overrides,
 });
 
-const renderAccounts = (accounts, onEditAccount = jest.fn(), { onCreateAccount = jest.fn(), transactions = [] } = {}) => {
+const renderAccounts = (accounts, onEditAccount = jest.fn(),
+                        { onCreateAccount = jest.fn(), transactions = [], onDeleteTransferBulk = jest.fn() } = {}) => {
   render(
-    <CategoryColorProvider>
-      <AccountsView
-        transactions={transactions} accounts={accounts}
-        onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={jest.fn()}
-        onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
-      />
-    </CategoryColorProvider>
+    <AccountsView
+      transactions={transactions} accounts={accounts}
+      onEdit={jest.fn()} onDelete={jest.fn()} onPairTransfer={jest.fn()} onDeleteTransferBulk={onDeleteTransferBulk}
+      onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
+    />
   );
   return onEditAccount;
 };
@@ -225,29 +224,55 @@ describe('loan accounts', () => {
     expect(within(savings).queryByRole('button', { name: 'Update from statement' })).not.toBeInTheDocument();
   });
 
-  test("a loan's row lists all its transactions, newest first: the loan entries and anything else on it", async () => {
+  test("a loan's row lists all its transactions the way a bank account lists its transfers", async () => {
     const tx = (id, accountId, date, vendor, amount, extra = {}) => ({
       id, account_id: accountId, date, vendor, category: 'Loan', notes: '', amount, amount_cents: Math.round(amount * 100),
       is_transfer: false, is_reimbursement: false, over_budget: false, recurring_id: null, loan_payment_id: null, ...extra,
     });
+    const onDeleteTransferBulk = jest.fn();
     renderAccounts([
       account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, balance: -75142 }),
       account({ id: 6, account_name: 'Checking' }),
-    ], jest.fn(), { transactions: [
+    ], jest.fn(), { onDeleteTransferBulk, transactions: [
       tx(1, 16, '2026-09-30', 'ASPIRE', 75, { loan_payment_id: 11 }),
       tx(2, 16, '2026-11-01', 'Interest', -419.96),
       tx(3, 16, '2026-10-31', 'ASPIRE', 75, { loan_payment_id: 12 }),
-      tx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),       // the payment, in Checking
+      tx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),       // the payments, in Checking
+      tx(12, 6, '2026-10-31', 'ASPIRE', -75, { recurring_id: 5 }),
     ] });
+    // A bank account still expands to its transfers only, and has none here (checked first: once the
+    // loan's list is open, "Checking" also names its entries' paying account)
+    expect(within(accountItem('Checking')).getByTitle('No transfers')).toBeDisabled();
     const loan = accountItem('Student Loan');
     expect(within(loan).getByText('3 transactions')).toBeInTheDocument();
     await userEvent.click(within(loan).getByTitle('Show its transactions'));
-    const rows = [...loan.querySelectorAll('.transaction-item')];
-    expect(rows.map(row => row.querySelector('strong').textContent)).toEqual(['Interest', 'ASPIRE', 'ASPIRE']);
+
+    const list = loan.querySelector('.account-transfers');
+    expect(within(list).getByText('Transactions (3)')).toBeInTheDocument();
+    expect(loan.querySelector('.transaction-item')).toBeNull();          // not the Recurring tab's list
+    // By vendor, newest first, each with its money in and out
+    expect([...list.querySelectorAll('.transfer-vendor-group')].map(group =>
+      [group.querySelector('.transfer-vendor-name').textContent, group.querySelector('.transfer-vendor-flows').textContent]))
+      .toEqual([['Interest', '$419.96 out'], ['ASPIRE', '$150.00 in']]);
+    const rows = [...list.querySelectorAll('.account-transfer-row')];
+    expect(rows.map(row => ['.account-transfer-amount', '.account-transfer-direction', '.account-transfer-peer', '.account-transfer-date']
+      .map(sel => row.querySelector(sel).textContent))).toEqual([
+      ['-$419.96', '', '', 'Nov 1'],
+      ['+$75.00', 'From', 'Checking', 'Oct 31'],          // a loan entry: the account its payment came from
+      ['+$75.00', 'From', 'Checking', 'Sep 30'],
+    ]);
+    // Loan entries are read-only; anything else can be edited, deleted and selected
     expect(within(rows[1]).getByText('Loan entry')).toBeInTheDocument();
-    expect(within(rows[0]).queryByText('Loan entry')).not.toBeInTheDocument();
-    // A bank account still expands to its transfers only, and has none here
-    expect(within(accountItem('Checking')).getByTitle('No transfers')).toBeDisabled();
+    expect(within(rows[1]).queryByTitle('Edit')).not.toBeInTheDocument();
+    expect(within(rows[1]).getByRole('checkbox')).toBeDisabled();
+    expect(within(rows[0]).getByTitle('Edit')).toBeInTheDocument();
+    expect(within(rows[0]).getByTitle('Delete')).toBeInTheDocument();
+    // Selecting every row selects the ones that can change; there's no Move (that re-links transfers)
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Transactions (3)' }));
+    expect(within(list).getByText('1 of 3 selected')).toBeInTheDocument();
+    expect(within(list).queryByText(/^Move/)).not.toBeInTheDocument();
+    await userEvent.click(within(list).getByRole('button', { name: 'Delete 1' }));
+    expect(onDeleteTransferBulk).toHaveBeenCalledWith([2]);
   });
 
 });

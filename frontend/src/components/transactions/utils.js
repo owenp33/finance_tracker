@@ -52,6 +52,9 @@ export const unrelatedSeriesByTransaction = (templates) => {
 // (the server refuses to edit, delete or pair one on its own)
 export const isLoanEntry = (t) => t.loan_payment_id != null;
 
+// What a loan entry's "Loan entry" chip says on hover
+export const LOAN_ENTRY_TITLE = 'Follows a payment in its recurring series: change that payment instead';
+
 export function getMonthRange(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const first = `${year}-${String(month).padStart(2, '0')}-01`;

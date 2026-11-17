@@ -2293,12 +2293,6 @@ body {
 }
 
 .account-transfers,
-.account-loan-transactions {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #f0f0f0;
-}
-
 .account-transfers-header {
   display: flex;
   align-items: center;
@@ -2555,6 +2549,21 @@ body {
 
 .transfer-edit-row input[type="date"] {
   width: 130px;
+}
+
+/* A loan entry's paying account: a name, not a link to change */
+.account-loan-payer {
+  font-size: 0.82rem;
+  color: #444;
+}
+
+/* A loan entry has no actions, so its chip and date stay on hover */
+.account-transfer-row.loan-entry .tx-loan-chip {
+  margin-right: 8px;
+}
+
+.account-transfer-row.loan-entry:hover .account-transfer-date {
+  opacity: 1;
 }
 
 .account-transfer-peer-name {
