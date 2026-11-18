@@ -224,7 +224,7 @@ test("a template's transactions can be removed from the series", async () => {
   await userEvent.click(screen.getByRole('button', { name: /2 transactions in this series/ }));
   const [october] = screen.getAllByRole('button', { name: 'Remove from series' });   // newest first
   await userEvent.click(october);
-  expect(onUnlinkFromRecurring).toHaveBeenCalledWith(1, 32);
+  expect(onUnlinkFromRecurring).toHaveBeenCalledWith(1, [32]);
 });
 
 describe('an expanded series', () => {
@@ -276,13 +276,23 @@ describe('an expanded series', () => {
     expect(onDeleteMany).toHaveBeenCalledWith([32, 31, 30]);
   });
 
+  test('selected payments can be removed from the series together', async () => {
+    const { list, props } = await open();
+    const [, september, august] = list.querySelectorAll('.account-transfer-row');
+    await userEvent.click(within(september).getByRole('checkbox'));
+    await userEvent.click(within(august).getByRole('checkbox'));
+    await userEvent.click(within(list).getByRole('button', { name: 'Remove 2 from series' }));
+    expect(props.onUnlinkFromRecurring).toHaveBeenCalledWith(1, [31, 30]);
+    expect(within(list).getByText('Transactions (3)')).toBeInTheDocument();      // the selection clears
+  });
+
   test('a payment is edited in place, removed from the series or deleted; there is no transfer toggle', async () => {
     const onEdit = jest.fn();
     const { list, props } = await open({ onEdit });
     const [october, september] = list.querySelectorAll('.account-transfer-row');
     expect(within(list).queryAllByTitle(/transfer/i)).toHaveLength(0);
     await userEvent.click(within(september).getByRole('button', { name: 'Remove from series' }));
-    expect(props.onUnlinkFromRecurring).toHaveBeenCalledWith(1, 31);
+    expect(props.onUnlinkFromRecurring).toHaveBeenCalledWith(1, [31]);
     await userEvent.click(within(october).getByTitle('Edit'));
     const amount = within(october).getByPlaceholderText('Amount');
     await userEvent.clear(amount);

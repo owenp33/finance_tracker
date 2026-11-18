@@ -291,6 +291,15 @@ function RecurringTab({
                           </button>
                         </div>
                         <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={async () => {
+                            await onUnlinkFromRecurring(r.id, selected.map(t => t.id));
+                            clearSelection();
+                          }}
+                        >
+                          Remove {selected.length} from series
+                        </button>
+                        <button
                           className="btn btn-danger btn-sm"
                           onClick={async () => {
                             await onDeleteMany(selected.map(t => t.id));
@@ -306,7 +315,7 @@ function RecurringTab({
                         className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
                         title="Remove from series"
                         aria-label="Remove from series"
-                        onClick={() => onUnlinkFromRecurring(r.id, t.id)}
+                        onClick={() => onUnlinkFromRecurring(r.id, [t.id])}
                       ><Unlink size={13} /></button>
                     )}
                     onEdit={onEdit}

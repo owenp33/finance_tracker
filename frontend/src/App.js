@@ -233,10 +233,10 @@ function App() {
     await refreshAll();
   };
 
-  // Keeps the transaction; the series shrinks and renumbers
-  const handleUnlinkFromRecurring = async (recurringId, transactionId) => {
+  // Keeps the transactions; the series shrinks and renumbers after each, so one at a time
+  const handleUnlinkFromRecurring = async (recurringId, transactionIds) => {
     try {
-      await recurringAPI.unlinkFromRecurring(recurringId, transactionId);
+      await forEachInOrder(transactionIds, id => recurringAPI.unlinkFromRecurring(recurringId, id));
     } catch (err) {
       setError(err.message);
     }
