@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pencil, Trash2, Info } from 'lucide-react';
+import { Pencil, Trash2, Info, Unlink } from 'lucide-react';
 import TransactionForm from '../TransactionForm';
-import TransactionList from '../TransactionList';
+import GroupedTransactionList from './GroupedTransactionList';
+import TransactionChips from './TransactionChips';
 import FrequencySelect from './FrequencySelect';
 import RecurringSuggestions from './RecurringSuggestions';
 import FindRecurring from './FindRecurring';
@@ -19,8 +20,6 @@ function RecurringTab({
   onEdit,
   onDelete,
   onDeleteMany,
-  onToggleTransfer,
-  onToggleTransferMany,
   onEditRecurring,
   onDeleteRecurring,
   onLinkToRecurring,
@@ -37,7 +36,6 @@ function RecurringTab({
   const [editingRecurringId, setEditingRecurringId] = useState(null);
   const [recurringEditFields, setRecurringEditFields] = useState({});
   const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
-  const [selectedRecurringTxIds, setSelectedRecurringTxIds] = useState(new Set());
   const [recurringBulkAmount, setRecurringBulkAmount] = useState('');
 
   const toggleRecurringExpand = (id) =>
@@ -49,13 +47,6 @@ function RecurringTab({
 
   const toggleReviewing = (id) =>
     setReviewingIds(prev => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-
-  const toggleSelectRecurringTx = (id) =>
-    setSelectedRecurringTxIds(prev => {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
@@ -257,110 +248,68 @@ function RecurringTab({
                   {isExpanded ? '▲' : '▼'} {generated.length} transaction{generated.length !== 1 ? 's' : ''} in this series
                 </button>
                 {isExpanded && (
-                  <div className="recurring-generated-list">
-                    {(() => {
-                      const sectionSelected = generated.filter(t => selectedRecurringTxIds.has(t.id));
-                      const allSectionSelected = generated.length > 0 && generated.every(t => selectedRecurringTxIds.has(t.id));
-                      const someSectionSelected = sectionSelected.length > 0;
-                      const allAreTransfers = someSectionSelected && sectionSelected.every(t => t.is_transfer);
-
-                      const toggleSelectAllSection = () => {
-                        if (allSectionSelected) {
-                          setSelectedRecurringTxIds(prev => {
-                            const n = new Set(prev); generated.forEach(t => n.delete(t.id)); return n;
-                          });
-                        } else {
-                          setSelectedRecurringTxIds(prev => {
-                            const n = new Set(prev); generated.forEach(t => n.add(t.id)); return n;
-                          });
-                        }
-                      };
-
-                      return (
-                        <>
-                          <div className="recurring-bulk-actions">
-                            <label className="bulk-select-all">
-                              <input
-                                type="checkbox"
-                                checked={allSectionSelected}
-                                ref={el => { if (el) el.indeterminate = someSectionSelected && !allSectionSelected; }}
-                                onChange={toggleSelectAllSection}
-                              />
-                              <span>
-                                {someSectionSelected
-                                  ? `${sectionSelected.length} of ${generated.length} selected`
-                                  : `Select all ${generated.length}`}
-                              </span>
-                            </label>
-                            <div className="recurring-bulk-right">
-                              <div
-                                className="recurring-bulk-amount"
-                                style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-                              >
-                                  <span>Change amount to</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="recurring-bulk-amount-input"
-                                    value={recurringBulkAmount}
-                                    onChange={e => setRecurringBulkAmount(e.target.value)}
-                                    placeholder="0.00"
-                                  />
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    disabled={!recurringBulkAmount || isNaN(parseFloat(recurringBulkAmount))}
-                                    onClick={async () => {
-                                      const amount = parseFloat(recurringBulkAmount);
-                                      for (const t of sectionSelected) {
-                                        await onEdit(t.id, {
-                                          date: t.date, vendor: t.vendor, category: t.category,
-                                          amount, notes: t.notes || '', account_id: t.account_id,
-                                        });
-                                      }
-                                      setRecurringBulkAmount('');
-                                    }}
-                                  >
-                                    Apply
-                                  </button>
-                              </div>
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => onToggleTransferMany(sectionSelected.map(t => t.id))}
-                                style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-                              >
-                                {allAreTransfers ? 'Unmark transfer' : 'Mark as transfer'}
-                              </button>
-                              <button
-                                className="btn btn-danger btn-sm"
-                                onClick={async () => {
-                                  await onDeleteMany(sectionSelected.map(t => t.id));
-                                  setSelectedRecurringTxIds(prev => {
-                                    const n = new Set(prev);
-                                    sectionSelected.forEach(t => n.delete(t.id));
-                                    return n;
-                                  });
-                                }}
-                                style={!someSectionSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-                              >
-                                Delete {sectionSelected.length || '—'}
-                              </button>
-                            </div>
-                          </div>
-                          <TransactionList
-                            transactions={generated}
-                            accounts={accounts}
-                            onEdit={onEdit}
-                            onDelete={onDelete}
-                            onToggleTransfer={onToggleTransfer}
-                            showAll={true}
-                            selectedIds={selectedRecurringTxIds}
-                            onToggle={toggleSelectRecurringTx}
-                            onRemoveFromSeries={(txId) => onUnlinkFromRecurring(r.id, txId)}
+                  // Like an account's list on the Accounts tab; a series' rows have no other account,
+                  // so the middle shows their notes and chips
+                  <GroupedTransactionList
+                    transactions={generated}
+                    label="Transactions"
+                    renderMiddle={t => (
+                      <span className="series-row-details">
+                        {t.notes && <span className="series-row-notes">{t.notes}</span>}
+                        <TransactionChips t={t} />
+                      </span>
+                    )}
+                    renderBulkActions={(selected, clearSelection) => (
+                      <>
+                        <div className="recurring-bulk-amount">
+                          <span>Change amount to</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="recurring-bulk-amount-input"
+                            value={recurringBulkAmount}
+                            onChange={e => setRecurringBulkAmount(e.target.value)}
+                            placeholder="0.00"
                           />
-                        </>
-                      );
-                    })()}
-                  </div>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={!recurringBulkAmount || isNaN(parseFloat(recurringBulkAmount))}
+                            onClick={async () => {
+                              const amount = parseFloat(recurringBulkAmount);
+                              for (const t of selected) {
+                                await onEdit(t.id, {
+                                  date: t.date, vendor: t.vendor, category: t.category,
+                                  amount, notes: t.notes || '', account_id: t.account_id,
+                                });
+                              }
+                              setRecurringBulkAmount('');
+                            }}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={async () => {
+                            await onDeleteMany(selected.map(t => t.id));
+                            clearSelection();
+                          }}
+                        >
+                          Delete {selected.length}
+                        </button>
+                      </>
+                    )}
+                    extraActions={t => (
+                      <button
+                        className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
+                        title="Remove from series"
+                        aria-label="Remove from series"
+                        onClick={() => onUnlinkFromRecurring(r.id, t.id)}
+                      ><Unlink size={13} /></button>
+                    )}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                  />
                 )}
               </div>
             );

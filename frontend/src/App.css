@@ -408,11 +408,6 @@ body {
   border-radius: 6px;
 }
 
-.recurring-generated-list .transaction-item.tx-selected {
-  background: #eef1ff;
-  border-radius: 4px;
-}
-
 .tx-cat-dot {
   width: 9px;
   height: 9px;
@@ -1007,22 +1002,6 @@ body {
 .recurring-generated-list .transaction-item {
   padding: 8px 10px;
   font-size: 0.88rem;
-}
-
-.recurring-bulk-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  background: transparent;
-  border-radius: 6px;
-}
-
-.recurring-bulk-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .recurring-bulk-amount {
@@ -2555,6 +2534,23 @@ body {
 
 .transfer-edit-row input[type="date"] {
   width: 130px;
+}
+
+/* A recurring series' row on Transactions → Recurring: its notes and chips where an account's row
+   has "To" / "From" and the other account */
+.series-row-details {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.series-row-notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A loan entry's paying account: a name, not a link to change */

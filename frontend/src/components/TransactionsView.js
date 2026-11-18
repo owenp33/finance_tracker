@@ -80,8 +80,6 @@ function TransactionsView({
           onEdit={onEdit}
           onDelete={onDelete}
           onDeleteMany={onDeleteMany}
-          onToggleTransfer={onToggleTransfer}
-          onToggleTransferMany={onToggleTransferMany}
           onEditRecurring={onEditRecurring}
           onDeleteRecurring={onDeleteRecurring}
           onLinkToRecurring={onLinkToRecurring}

@@ -25,7 +25,7 @@ const renderTab = (recurring, given = {}) => {
       <RecurringTab
         transactions={[]} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={recurring}
         onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDeleteMany={jest.fn()}
-        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onDeleteRecurring={jest.fn()}
+        onDeleteRecurring={jest.fn()}
         {...props}
       />
     </CategoryColorProvider>
@@ -211,7 +211,7 @@ test("a template's transactions can be removed from the series", async () => {
       <RecurringTab
         transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
         onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
-        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
         onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={onUnlinkFromRecurring}
       />
     </CategoryColorProvider>
@@ -220,6 +220,72 @@ test("a template's transactions can be removed from the series", async () => {
   const [october] = screen.getAllByRole('button', { name: 'Remove from series' });   // newest first
   await userEvent.click(october);
   expect(onUnlinkFromRecurring).toHaveBeenCalledWith(1, 32);
+});
+
+describe('an expanded series', () => {
+  const payment = (id, date, extra = {}) => ({
+    id, account_id: 1, date, vendor: 'Anthropic', category: 'Subscriptions', amount: -20, notes: '', recurring_id: 1,
+    is_transfer: false, is_reimbursement: false, over_budget: false, ...extra,
+  });
+  const SERIES = [
+    payment(30, '2026-08-02', { notes: 'Annual plan' }),
+    payment(31, '2026-09-02', { over_budget: true }),
+    payment(32, '2026-10-02'),
+  ];
+  const open = async (given = {}) => {
+    const props = renderTab([template()], { transactions: SERIES, onUnlinkFromRecurring: jest.fn(), ...given });
+    await userEvent.click(screen.getByRole('button', { name: /3 transactions in this series/ }));
+    return { list: document.querySelector('.recurring-generated .account-transfers'), props };
+  };
+
+  test("lists its transactions the way an account lists its own: by vendor, newest first, notes and chips in the middle", async () => {
+    const { list } = await open();
+    expect(within(list).getByText('Transactions (3)')).toBeInTheDocument();
+    expect(document.querySelector('.recurring-generated .transaction-item')).toBeNull();     // not the old list
+    expect([...list.querySelectorAll('.transfer-vendor-group')].map(group =>
+      [group.querySelector('.transfer-vendor-name').textContent, group.querySelector('.transfer-vendor-flows').textContent]))
+      .toEqual([['Anthropic', '$60.00 out']]);
+    expect([...list.querySelectorAll('.account-transfer-row')].map(row =>
+      ['.account-transfer-amount', '.series-row-details', '.account-transfer-date'].map(sel => row.querySelector(sel).textContent)))
+      .toEqual([
+        ['-$20.00', '', 'Oct 2'],
+        ['-$20.00', 'Over budget', 'Sep 2'],
+        ['-$20.00', 'Annual plan', 'Aug 2'],
+      ]);
+  });
+
+  test('selected payments can get a new amount or be deleted, and none can be marked as transfers', async () => {
+    const onEdit = jest.fn();
+    const onDeleteMany = jest.fn();
+    const { list } = await open({ onEdit, onDeleteMany });
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Transactions (3)' }));
+    expect(within(list).getByText('3 of 3 selected')).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /transfer/i })).not.toBeInTheDocument();
+    await userEvent.type(within(list).getByPlaceholderText('0.00'), '-25');
+    await userEvent.click(within(list).getByRole('button', { name: 'Apply' }));
+    expect(onEdit.mock.calls).toEqual([32, 31, 30].map(id => {
+      const t = SERIES.find(row => row.id === id);
+      return [id, { date: t.date, vendor: 'Anthropic', category: 'Subscriptions', amount: -25, notes: t.notes, account_id: 1 }];
+    }));
+    await userEvent.click(within(list).getByRole('button', { name: 'Delete 3' }));
+    expect(onDeleteMany).toHaveBeenCalledWith([32, 31, 30]);
+  });
+
+  test('a payment is edited in place, removed from the series or deleted; there is no transfer toggle', async () => {
+    const onEdit = jest.fn();
+    const { list, props } = await open({ onEdit });
+    const [october, september] = list.querySelectorAll('.account-transfer-row');
+    expect(within(list).queryAllByTitle(/transfer/i)).toHaveLength(0);
+    await userEvent.click(within(september).getByRole('button', { name: 'Remove from series' }));
+    expect(props.onUnlinkFromRecurring).toHaveBeenCalledWith(1, 31);
+    await userEvent.click(within(october).getByTitle('Edit'));
+    const amount = within(october).getByPlaceholderText('Amount');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '-21');
+    await userEvent.click(within(october).getByRole('button', { name: 'Save' }));
+    expect(onEdit).toHaveBeenCalledWith(32, { date: '2026-10-02', vendor: 'Anthropic', amount: '-21', notes: '',
+                                              account_id: 1, category: 'Subscriptions' });
+  });
 });
 
 test('a finished template with no occurrences left says so instead of a last date', () => {
@@ -275,7 +341,7 @@ const renderWithSeries = (count) => {
       <RecurringTab
         transactions={series} accounts={[{ id: 1, account_name: 'Discover' }]} recurringTransactions={[template()]}
         onAdd={jest.fn()} onAddRecurring={jest.fn()} onEdit={jest.fn()} onDelete={jest.fn()} onDeleteMany={jest.fn()}
-        onToggleTransfer={jest.fn()} onToggleTransferMany={jest.fn()} onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
+        onEditRecurring={jest.fn()} onDeleteRecurring={jest.fn()}
         onLinkToRecurring={jest.fn()} onDismissSuggestion={jest.fn()} onUnlinkFromRecurring={jest.fn()}
       />
     </CategoryColorProvider>
