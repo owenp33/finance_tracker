@@ -84,6 +84,8 @@ test('a goal is added with its account and target, and its own monthly amount if
   getGoals.mockResolvedValue([]);
   await renderGoals();
   expect(screen.getByText(/^No goals yet/)).toBeInTheDocument();
+  // The heading line matches Category Allocations': "+ Add goal" is a secondary button like "+ Add Category"
+  expect(screen.getByRole('button', { name: '+ Add goal' })).toHaveClass('btn-secondary');
   await user.click(screen.getByRole('button', { name: '+ Add goal' }));
   await user.selectOptions(screen.getByLabelText('Account'), 'Savings');
   await user.type(screen.getByLabelText('Target balance'), '7500');

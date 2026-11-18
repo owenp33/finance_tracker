@@ -2859,7 +2859,7 @@ body {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  padding: 16px 18px;
+  padding: 20px;
   margin-top: 20px;
 }
 
@@ -4093,7 +4093,9 @@ body {
   margin-bottom: 16px;
 }
 
-.category-allocations-header h3 {
+/* Budgeting's section titles: CATEGORY ALLOCATIONS and GOALS */
+.category-allocations-header h3,
+.goals-header h3 {
   font-size: 1rem;
   font-weight: 700;
   color: #374151;

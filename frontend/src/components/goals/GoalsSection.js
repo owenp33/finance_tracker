@@ -25,7 +25,7 @@ function GoalsSection({ accounts = [], goalPlan }) {
     <section className="goals-section">
       <div className="goals-header">
         <h3>Goals</h3>
-        {!adding && <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>+ Add goal</button>}
+        {!adding && <button className="btn btn-secondary btn-sm" onClick={() => setAdding(true)}>+ Add goal</button>}
       </div>
       <p className="chart-note">
         Goals run in order: the first one not reached gets the monthly amount, and the next takes over once it's reached.
