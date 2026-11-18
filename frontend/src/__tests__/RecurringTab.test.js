@@ -42,6 +42,11 @@ test('each template shows its schedule and next date', () => {
   expect(screen.getByText(/Every 30 days · Next: Oct 29$/)).toBeInTheDocument();
 });
 
+test('each template names the account it is on', () => {
+  renderTab([template({ account_id: 1 })]);
+  expect(screen.getByText('Subscriptions · Monthly · Next: Nov 3 · Discover')).toBeInTheDocument();
+});
+
 test("the header line totals the active series' costs per month", () => {
   renderTab([
     template(),
@@ -417,7 +422,8 @@ describe('paying down a loan', () => {
     const { onEditRecurring } = renderTab([aspire({ loan_account_id: 5 })], {
       accounts: ACCOUNTS, transactions: PAYMENTS, onEditRecurring: jest.fn().mockResolvedValue(),
     });
-    expect(screen.getByText(/· Pays down ASPIRE loan$/)).toBeInTheDocument();
+    // Its account, then the loan it pays down
+    expect(screen.getByText('Loan · Monthly · Next: Nov 3 · Checking · Pays down ASPIRE loan')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(paysDown()).toHaveValue('5');
     expect(screen.queryByText(/loan entr/)).not.toBeInTheDocument();

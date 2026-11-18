@@ -200,10 +200,12 @@ function RecurringTab({
                 const when = displayDate
                   ? `${finishedSeries ? 'Last' : 'Next'}: ${formatDate(displayDate, finishedSeries || dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear())}`
                   : 'No occurrences';
+                const account = accountName(r.account_id);
                 const loan = r.loan_account_id != null ? accountName(r.loan_account_id) : null;
                 return (
                   <span>
                     {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {when}
+                    {account && ` · ${account}`}
                     {loan && ` · Pays down ${loan}`}
                   </span>
                 );
