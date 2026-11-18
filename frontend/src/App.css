@@ -2614,6 +2614,11 @@ body {
   max-width: 440px;
 }
 
+/* The Add Account form's Add / Cancel: clear of the hint text above them */
+.account-form .form-actions {
+  margin-top: 16px;
+}
+
 .account-edit-form input {
   padding: 6px 10px;
   border: 1px solid #d1d5db;
