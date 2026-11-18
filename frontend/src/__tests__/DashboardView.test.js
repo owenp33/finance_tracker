@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent, act } from '@testing-library/react';
+import { render, screen, within, fireEvent, act, waitFor } from '@testing-library/react';
 import DashboardView from '../components/DashboardView';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getProjection } from '../api/recurring';
@@ -278,5 +278,50 @@ describe('the goal card', () => {
   test("a goal not reached at this pace says so", async () => {
     await open([goalRow(2, 1, 16, 'Student Loan', 'loan', -7521700, 0, 0)].map(g => ({ ...g, monthly: null, monthly_cents: null })));
     expect(texts()[2]).toBe('Nothing goes toward it this month · not reached at this pace');
+  });
+});
+
+describe('the 90-day projection', () => {
+  const ACCOUNTS = [{ id: 6, account_name: 'Checking', kind: 'bank', apr: null, balance: 7000 },
+                    { id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3000 }];
+  const RECURRING = [{ id: 5, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 },
+                     { id: 13, amount: 1700, frequency: 14, frequency_unit: 'days', number: -1, idx: 1 }];
+  const OCCURRENCES = [
+    { recurring_id: 5, account_id: 6, date: '2026-11-30', vendor: 'ASPIRE', category: 'Loan', amount: -75 },
+    { recurring_id: 13, account_id: 7, date: '2026-12-01', vendor: 'Paycheck', category: 'Income', amount: 1700 },
+  ];
+  const card = () => document.querySelector('.projection-card');
+
+  test('sits beside the goal card, both just above Next 30 days', async () => {
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING });
+    const row = document.querySelector('.dashboard-goal-row');
+    expect([...row.children].map(child => child.classList.contains('goal-card') || child.classList.contains('projection-card')))
+      .toEqual([true, true]);
+    expect(row.children[0]).toHaveClass('goal-card');
+    expect(document.querySelector('.stats-grid .goal-card')).toBeNull();
+    const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(document.querySelector('.dashboard-columns'), row)).toBe(true);
+    expect(follows(row, document.querySelector('.agenda-section'))).toBe(true);
+  });
+
+  test('shows net position at the end of the next 90 days, from today', async () => {
+    getProjection.mockResolvedValue(OCCURRENCES);
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, transactions: [] });
+    // $10,000 today, less ASPIRE's $75 and plus the $1,700 paycheck, by Feb 3 (90 days from Nov 5)
+    await waitFor(() => expect(card().querySelector('.value').textContent).toBe('$11,625'));
+    expect(card().querySelector('h3').textContent).toBe('90-day projection');
+    expect(card().querySelector('.stat-sub').textContent).toBe('Net position by Feb 3 · now $10,000');
+  });
+
+  test('its link goes to Insights', async () => {
+    const onNavigate = jest.fn();
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, onNavigate });
+    fireEvent.click(within(card()).getByRole('button', { name: 'Insights →' }));
+    expect(onNavigate).toHaveBeenCalledWith('insights');
+  });
+
+  test('without accounts it says so', async () => {
+    await renderDashboard();
+    expect(['.value', '.stat-sub'].map(sel => card().querySelector(sel).textContent)).toEqual(['—', 'No accounts yet']);
   });
 });

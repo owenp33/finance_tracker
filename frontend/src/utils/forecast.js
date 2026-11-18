@@ -253,3 +253,23 @@ export const forecastAssumptions = (transactions, recurring, occurrences, accoun
   });
   return { categories, income, accounts: accountRows };
 };
+
+// A forecast of several accounts together (Insights → Accounts' net position or one account, the
+// Dashboard's 90-day projection), today through FORECAST_DAYS on: from `startCents` (their balance
+// today), the scheduled items and average spending of the accounts `accountIds`, the payments of their
+// loans and the interest of each with a rate, each on its own balance (`startOf(account)`, in cents).
+// `accounts` are GET /api/accounts entries. Returns {points (forecastPoints'), interestAccounts (the
+// accountInputs of those with a rate or a loan)}.
+export const forecastFor = ({ accounts, accountIds, startCents, startOf, transactions, recurring, occurrences, today }) => {
+  const interestAccounts = accountInputs(
+    accounts.filter(a => accountIds.includes(a.id) && (a.kind === 'loan' || a.apr != null)).map(a => ({
+      id: a.id, name: a.account_name, kind: a.kind, apr: a.apr ?? null, frequency: a.interest_frequency ?? 'monthly',
+      startCents: startOf(a),
+    })),
+    transactions, recurring, occurrences, today,
+  );
+  const points = forecastPoints(startCents,
+                                { ...forecastInputs(transactions, recurring, occurrences, accountIds, today), accounts: interestAccounts },
+                                today, shiftDays(today, FORECAST_DAYS));
+  return { points, interestAccounts };
+};

@@ -1,4 +1,5 @@
 import {
+  forecastFor,
   FORECAST_DAYS, lastNinetyDaysStart, categoryShares, forecastInputs, forecastPoints, forecastAssumptions, accountInputs,
 } from '../utils/forecast';
 import { shiftDays } from '../utils/dates';
@@ -308,5 +309,27 @@ describe('what the forecast assumes', () => {
       tx(2, 6, '2026-10-02', 'Utility', -10.02),
     ];
     expect(forecastAssumptions(utility, [template(9)], [], [6], TODAY).categories[0]).toMatchObject({ share: 89, basis: 'average' });
+  });
+});
+
+describe('a forecast of several accounts together', () => {
+  test("adds up their scheduled items and each one's interest on its own balance", () => {
+    const accounts = [
+      { id: 6, account_name: 'Checking', kind: 'bank', apr: null, balance: 7000 },
+      { id: 7, account_name: 'Savings', kind: 'bank', apr: 0.5, interest_frequency: 'yearly', balance: 3000 },
+    ];
+    const recurring = [{ id: 5, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 },
+                       { id: 13, amount: 1700, frequency: 14, frequency_unit: 'days', number: -1, idx: 1 }];
+    const occurrences = [
+      { recurring_id: 5, account_id: 6, date: '2026-11-30', vendor: 'ASPIRE', category: 'Loan', amount: -75 },
+      { recurring_id: 13, account_id: 7, date: '2026-12-01', vendor: 'Paycheck', category: 'Income', amount: 1700 },
+    ];
+    const { points, interestAccounts } = forecastFor({
+      accounts, accountIds: [6, 7], startCents: 1000000, startOf: account => Math.round(account.balance * 100),
+      transactions: [], recurring, occurrences, today: '2026-11-16',
+    });
+    expect(interestAccounts.map(account => account.id)).toEqual([7]);
+    // $10,000.00 − $75.00 + $1,700.00, then Savings' yearly 0.50% on Jan 1 on the $4,700.00 it holds: $23.50
+    expect(points[points.length - 1]).toMatchObject({ date: '2027-02-14', cents: 1164850 });
   });
 });

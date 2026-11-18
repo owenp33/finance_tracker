@@ -10,7 +10,7 @@ import { forecastAgainstGoal } from '../../utils/goals';
 import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
-import { FORECAST_DAYS, forecastInputs, forecastPoints, accountInputs } from '../../utils/forecast';
+import { FORECAST_DAYS, forecastFor } from '../../utils/forecast';
 
 const NET = 'net';
 
@@ -82,18 +82,12 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
   // the loans' payments, and the interest of every account shown with a rate, each on its own balance
   const shownIds = shown.map(b => b.id);
   const forecastEnd = shiftDays(today, FORECAST_DAYS);
-  const interestAccounts = accountInputs(
-    accounts.filter(a => shownIds.includes(a.id) && (a.kind === 'loan' || a.apr != null)).map(a => ({
-      id: a.id, name: a.account_name, kind: a.kind, apr: a.apr ?? null, frequency: a.interest_frequency ?? 'monthly',
-      startCents: balances.find(b => b.id === a.id).closing_cents,
-    })),
-    transactions, recurring, occurrences, today,
-  );
+  const { points: forecastAll, interestAccounts } = forecastFor({
+    accounts, accountIds: shownIds, startCents: series.closing_cents,
+    startOf: a => balances.find(b => b.id === a.id).closing_cents, transactions, recurring, occurrences, today,
+  });
   const withInterest = interestAccounts.some(account => account.apr);
-  const forecast = forecastFailed ? []
-    : forecastPoints(series.closing_cents,
-                     { ...forecastInputs(transactions, recurring, occurrences, shownIds, today), accounts: interestAccounts },
-                     today, forecastEnd);
+  const forecast = forecastFailed ? [] : forecastAll;
   // The goals on the account shown (net position spans every account, so it shows none)
   const accountGoals = selected && forecast.length > 0 ? (goals ?? []).filter(goal => goal.account_id === selected.id) : [];
   const sources = withInterest

@@ -3013,8 +3013,23 @@ body {
 }
 
 /* The Dashboard's goal card (F2d): its own row above this month's cards */
-.goal-card {
-  grid-column: 1 / -1;
+/* The goal card and the 90-day projection, side by side above the agenda (2026-11-17) */
+.dashboard-goal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 700px) {
+  .dashboard-goal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.projection-chart {
+  margin-top: 10px;
 }
 
 .goal-card .link-btn {

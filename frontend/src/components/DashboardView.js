@@ -2,6 +2,7 @@ import TransactionList from './TransactionList';
 import BudgetPace from './BudgetPace';
 import Agenda from './Agenda';
 import GoalCard from './goals/GoalCard';
+import ProjectionCard from './dashboard/ProjectionCard';
 import { useProjection } from '../hooks/useProjection';
 import { useGoalPlan } from '../hooks/useGoalPlan';
 import { activeSaving } from '../utils/goals';
@@ -65,9 +66,8 @@ function DashboardView({ transactions, budgetData = [], onNavigate, onError, acc
   return (
     <div className="dashboard-view">
 
-      {/* This month's summary, the active goal first */}
+      {/* This month's summary */}
       <div className="stats-grid">
-        <GoalCard goals={goalPlan.goals} active={activeSaving(goalPlan.goals, goalPlan.plans)} onNavigate={onNavigate} />
         {budgetData.length > 0 ? (
           <StatCard
             title="Left to spend this month"
@@ -129,6 +129,15 @@ function DashboardView({ transactions, budgetData = [], onNavigate, onError, acc
           </div>
           <TransactionList transactions={recentTransactions} compact />
         </div>
+      </div>
+
+      {/* The active goal and where the next 90 days take net position, side by side */}
+      <div className="dashboard-goal-row">
+        <GoalCard goals={goalPlan.goals} active={activeSaving(goalPlan.goals, goalPlan.plans)} onNavigate={onNavigate} />
+        <ProjectionCard
+          accounts={accounts} transactions={transactions} recurring={recurring}
+          occurrences={goalPlan.occurrences} onNavigate={onNavigate}
+        />
       </div>
 
       {/* The recurring items scheduled in the next 30 days */}
