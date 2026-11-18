@@ -334,6 +334,11 @@ body {
   gap: 20px;
 }
 
+/* Add / Cancel on their own line at the end, whatever fields come before them */
+.transaction-form .form-actions {
+  grid-column: 1 / -1;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -467,11 +472,15 @@ body {
   background: #e7f0ff !important;
 }
 
+/* The Add Transaction form's "Mark as" line spans the form, so a transfer's To account and the
+   recurring fields come under it */
 .mark-as-row {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
+  padding-top: 10px;
+  border-top: 1.5px solid #e9ecef;
 }
 
 .mark-as-label {
@@ -696,16 +705,6 @@ body {
 }
 
 /* Recurring toggle in TransactionForm */
-.recurring-toggle-row {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 10px 0 4px;
-  border-top: 1.5px solid #e9ecef;
-  margin-top: 4px;
-}
-
 .recurring-toggle-label {
   display: flex;
   align-items: center;

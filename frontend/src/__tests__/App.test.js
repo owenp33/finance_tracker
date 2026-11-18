@@ -5,7 +5,7 @@ import { CategoryColorProvider } from '../CategoryColorContext';
 import { SESSION_EXPIRED_EVENT } from '../api/client';
 import { login, me } from '../api/auth';
 import { getAccounts } from '../api/accounts';
-import { getAllTransactions } from '../api/transactions';
+import { getAllTransactions, addTransaction, pairTransfer } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
 import { getProjection, getAccountRecurring } from '../api/recurring';
 import { getGoals } from '../api/goals';
@@ -150,4 +150,29 @@ test('a login that expires while you use the app sends you to the login screen, 
   act(() => { window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: EXPIRED })); });
   expect(await screen.findByText(EXPIRED)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
+});
+
+test('adding a transfer with a To account also creates and links the matching transaction there', async () => {
+  localStorage.setItem('token', 'token');
+  getAccounts.mockResolvedValue([
+    { id: 6, account_id: 'checking', account_name: 'Checking', balance: 100, opening_balance: 0, kind: 'bank', apr: null },
+    { id: 7, account_id: 'savings', account_name: 'Savings', balance: 50, opening_balance: 0, kind: 'bank', apr: null },
+  ]);
+  getAccountRecurring.mockResolvedValue([]);
+  addTransaction.mockResolvedValue({ id: 99 });
+  pairTransfer.mockResolvedValue({});
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
+  await userEvent.click(await screen.findByRole('button', { name: '+ Add Transaction' }));
+  await userEvent.type(screen.getByPlaceholderText('e.g., Netflix'), 'To savings');
+  await userEvent.type(screen.getByPlaceholderText('e.g., Subscriptions'), 'Transfer');
+  await userEvent.type(document.querySelector('.transaction-form input[step="0.01"]'), '-250');
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer' }));
+  await userEvent.selectOptions(screen.getByLabelText('To account'), 'Savings');
+  await userEvent.click(screen.getByRole('button', { name: 'Add Transaction' }));
+  await act(async () => {});
+  expect(addTransaction).toHaveBeenCalledWith(6, expect.objectContaining({ vendor: 'To savings', is_transfer: true }));
+  expect(addTransaction.mock.calls[0][1]).not.toHaveProperty('transfer_to_account_id');
+  expect(pairTransfer).toHaveBeenCalledWith(99, 7);
 });

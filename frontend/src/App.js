@@ -108,10 +108,12 @@ function App() {
 
   // ACTION HANDLERS ===========================================================
 
+  // A transfer can name its other account: the matching transaction is created there and linked
   const handleAddTransaction = async (formData) => {
-    const { account_id, ...rest } = formData;
+    const { account_id, transfer_to_account_id, ...rest } = formData;
     try {
-      await transactionsAPI.addTransaction(account_id, rest);
+      const created = await transactionsAPI.addTransaction(account_id, rest);
+      if (transfer_to_account_id) await transactionsAPI.pairTransfer(created.id, transfer_to_account_id);
       await refreshAll();
     } catch (err) {
       setError(err.message);

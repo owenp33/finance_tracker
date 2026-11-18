@@ -86,7 +86,7 @@ Routes only parse requests and shape responses; business rules live in services,
 A budget allows its amount plus any rolled-over money for one category and month. Whether a transaction is over budget is computed whenever transactions are read: walking the month's expenses in date order (reimbursements credited up front, transfers left out), every expense from the point the allocation is passed is flagged. Nothing is stored, so no edit can leave a flag out of date.
 
 ### Transfers
-A transfer is a pair of transactions in different accounts with opposite amounts, linked to each other. Marking a transaction as a transfer links a matching counterpart within ±5 days when one exists; pairing creates the counterpart in the account you pick.
+A transfer is a pair of transactions in different accounts with opposite amounts, linked to each other. Marking a transaction as a transfer links a matching counterpart within ±5 days when one exists; pairing creates the counterpart in the account you pick, and so does naming a To account when adding a transfer.
 
 ### Reimbursements
 A reimbursement is a positive transaction that pays you back for spending in its category. It matters to budgets (the Budgeting page and the Dashboard's budget pace): they subtract it from its category's spending for the month (never below 0) and credit it up front in the over-budget walk. The balance forecast on Insights → Accounts also takes a category's reimbursements over the last 90 days off its spending, since it leaves the paybacks themselves out as irregular income. Everywhere else (the rest of Insights, the Dashboard's income and the PDF report) it's ordinary money in, counted as income. The account balance changes normally, since the money still reaches the account.
