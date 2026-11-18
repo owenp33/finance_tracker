@@ -225,26 +225,24 @@ body {
   margin-bottom: 30px;
 }
 
+/* The Dashboard's cards (stat cards, the goal card, the two columns, the agenda) share one look,
+   the Budgeting cards': a light border, rounded corners, no shadow */
 .stat-card {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
 }
 
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-}
-
-.stat-card h3 {
-  color: #666;
-  font-size: 0.9rem;
-  font-weight: 600;
+/* Every Dashboard card's title, in the style of Budgeting's CATEGORY ALLOCATIONS; each sits in a
+   .section-header line with its card's link, if any */
+.dashboard-view h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #374151;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
+  letter-spacing: 0.05em;
 }
 
 .stat-card .value {
@@ -2072,13 +2070,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-}
-
-.section-header h3 {
-  color: #333;
-  font-size: 1.3rem;
-  margin: 0;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .link-btn {
@@ -2099,17 +2092,11 @@ body {
 
 /* === Next 30 days (Dashboard; Phase V, V6a) ================= */
 .agenda-section {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
   margin-bottom: 30px;
-}
-
-.agenda-section h3 {
-  color: #333;
-  font-size: 1.3rem;
-  margin-bottom: 16px;
 }
 
 /* Date, item, amount, running total (a week's total sits under the amounts it adds up) */
@@ -3031,7 +3018,6 @@ body {
 }
 
 .goal-card .link-btn {
-  margin-top: 8px;
   padding: 0;
 }
 
@@ -4127,13 +4113,12 @@ body {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  padding: 18px 20px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
 }
 
 .dashboard-col .section-header {
-  margin-bottom: 12px;
   flex-shrink: 0;
 }
 

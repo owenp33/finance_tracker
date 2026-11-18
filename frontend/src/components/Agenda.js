@@ -15,7 +15,7 @@ function Agenda({ occurrences, today }) {
   const weeks = agendaWeeks(occurrences, today);
   return (
     <section className="agenda-section">
-      <h3>Next {AGENDA_DAYS} days</h3>
+      <div className="section-header"><h3>Next {AGENDA_DAYS} days</h3></div>
       {weeks.length === 0 ? (
         <p className="no-data">Nothing scheduled in the next {AGENDA_DAYS} days.</p>
       ) : (

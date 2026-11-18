@@ -25,7 +25,7 @@ const changeFrom = (nowCents, beforeCents, label) => {
 function StatCard({ title, value, valueClass, sub }) {
   return (
     <div className="stat-card">
-      <h3>{title}</h3>
+      <div className="section-header"><h3>{title}</h3></div>
       <div className={valueClass ? `value ${valueClass}` : 'value'}>{value}</div>
       <div className="stat-sub">{sub}</div>
     </div>

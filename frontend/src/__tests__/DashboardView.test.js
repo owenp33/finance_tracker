@@ -243,6 +243,18 @@ describe('the goal card', () => {
     // $4,500 to go at $500 a month: 9 months from November
     await open([goalRow(1, 1, 7, 'Savings', 'bank', 300000, 750000), goalRow(2, 2, 16, 'Student Loan', 'loan', -7521700, 0)]);
     expect(texts()).toEqual(['Savings goal', '$3,000 of $7,500', 'Leave $500.00 in Savings this month · reached by Aug 2027']);
+    // "Goals →" sits on the title's line, like the other cards' links
+    const header = within(goalCard()).getByRole('heading', { name: 'Savings goal' }).parentElement;
+    expect(header).toHaveClass('section-header');
+    expect(within(header).getByRole('button', { name: 'Goals →' })).toBeInTheDocument();
+  });
+
+  test("every card's title sits in the same header line", async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 300000, 750000)]);
+    const titles = [...document.querySelectorAll('.dashboard-view h3')];
+    expect(titles.map(h => h.textContent)).toEqual(expect.arrayContaining(
+      ['Savings goal', 'Income this month', 'Budget Pace', 'Recent Transactions', 'Next 30 days']));
+    titles.forEach(h => expect(h.parentElement).toHaveClass('section-header'));
   });
 
   test("a loan goal: what's owed, the extra to pay this month, and when it's paid off", async () => {

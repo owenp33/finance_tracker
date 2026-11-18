@@ -38,14 +38,16 @@ function GoalCard({ goals, active, onNavigate }) {
   }
   return (
     <div className="stat-card goal-card">
-      <h3>{title}</h3>
+      <div className="section-header">
+        <h3>{title}</h3>
+        {goals && (
+          <button className="link-btn" onClick={() => onNavigate('budgeting')}>
+            {goals.length === 0 ? 'Set a goal →' : 'Goals →'}
+          </button>
+        )}
+      </div>
       <div className="value">{value}</div>
       <div className="stat-sub">{sub}</div>
-      {goals && (
-        <button className="link-btn" onClick={() => onNavigate('budgeting')}>
-          {goals.length === 0 ? 'Set a goal →' : 'Goals →'}
-        </button>
-      )}
     </div>
   );
 }
