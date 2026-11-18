@@ -1,5 +1,5 @@
 import { shiftDays, shiftPeriod } from './dates';
-import { FORECAST_DAYS, INTEREST_MONTHS, forecastInputs } from './forecast';
+import { FORECAST_DAYS, INTEREST_MONTHS, forecastInputs, forecastFor } from './forecast';
 import { isFinished, monthlyEquivalent } from './recurring';
 
 // Goals (Phase F, F2), in cents: how much to put toward them each month, and when each is reached.
@@ -164,4 +164,19 @@ export const forecastAgainstGoal = (goal, forecast) => {
     return { reachesOn: null, dipsOn: days.find(point => point.cents < goal.target_cents)?.date ?? null };
   }
   return { reachesOn: days.find(point => point.cents >= goal.target_cents)?.date ?? null, dipsOn: null };
+};
+
+// Each reached (held) goal whose account's forecast falls under its target within the next 90 days
+// (forecastFor over that account alone, from its balance in `accounts`), as {goal, dipsOn}, in the
+// goals' order; the Dashboard's goal card warns of each
+export const goalDips = (goals, { accounts, transactions, recurring, occurrences, today }) => {
+  const startOf = (account) => Math.round(account.balance * 100);
+  return (goals ?? []).filter(goal => goal.reached).flatMap(goal => {
+    const account = accounts.find(a => a.id === goal.account_id);
+    if (!account) return [];
+    const { points } = forecastFor({ accounts, accountIds: [account.id], startCents: startOf(account), startOf,
+                                     transactions, recurring, occurrences, today });
+    const { dipsOn } = forecastAgainstGoal(goal, points);
+    return dipsOn ? [{ goal, dipsOn }] : [];
+  });
 };

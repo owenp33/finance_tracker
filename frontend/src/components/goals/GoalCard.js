@@ -1,5 +1,6 @@
 import { formatCents, formatWholeDollars } from '../../utils/money';
 import { monthRangeLabel } from '../../utils/dates';
+import { formatDate } from '../transactions/utils';
 
 // What to do this month for a goal's plan: leave money in a savings-like account, pay a loan extra
 const thisMonthText = (goal, plan) => {
@@ -18,8 +19,9 @@ const reachText = (goal, plan) => {
 // The Dashboard's goal card (Phase F, F2d), pushing for this month's action: the active goal
 // (`active`: utils/goals.js activeSaving) with where it stands, what to leave or pay this month and
 // when it's reached; or that every goal is reached, or that there are none yet (`goals`: null while
-// loading). The link goes to the Goals section on Budgeting.
-function GoalCard({ goals, active, onNavigate }) {
+// loading). The link goes to the Goals section on Budgeting. `dips` (utils/goals.js goalDips) are
+// the reached goals the forecast falls under, each an orange warning, whichever goal is active.
+function GoalCard({ goals, active, onNavigate, dips = [] }) {
   let title = 'Goals';
   let value = '—';
   let sub = 'Loading goals…';
@@ -48,6 +50,11 @@ function GoalCard({ goals, active, onNavigate }) {
       </div>
       <div className="value">{value}</div>
       <div className="stat-sub">{sub}</div>
+      {dips.map(({ goal, dipsOn }) => (
+        <div key={goal.id} className="goal-card-warning">
+          {`${goal.account_name}: the forecast dips under ${formatWholeDollars(goal.target_cents / 100)} on ${formatDate(dipsOn)}`}
+        </div>
+      ))}
     </div>
   );
 }

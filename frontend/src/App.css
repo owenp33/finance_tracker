@@ -3032,6 +3032,14 @@ body {
   margin-top: 10px;
 }
 
+/* A reached goal the forecast dips under, on the goal card: a warning, in the darker orange */
+.goal-card-warning {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
 .goal-card .link-btn {
   padding: 0;
 }

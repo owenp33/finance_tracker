@@ -267,6 +267,28 @@ describe('the goal card', () => {
     expect(texts()).toEqual(['Goals', 'All reached', 'Every goal is reached and held']);
   });
 
+  test('a reached goal the forecast dips under gets an orange warning', async () => {
+    getProjection.mockResolvedValue([{ recurring_id: 9, account_id: 7, date: '2026-11-20', vendor: 'Gym', category: 'Fun',
+                                       amount: -200 }]);
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 760000, 750000)], {
+      accounts: [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 7600 }],
+      recurring: [{ id: 9, amount: -200, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 }],
+      transactions: [],
+    });
+    expect(texts()).toEqual(['Goals', 'All reached', 'Every goal is reached and held']);
+    // $7,600 less the $200 on Nov 20
+    await waitFor(() => expect(goalCard().querySelector('.goal-card-warning')).not.toBeNull());
+    expect([...goalCard().querySelectorAll('.goal-card-warning')].map(w => w.textContent))
+      .toEqual(['Savings: the forecast dips under $7,500 on Nov 20']);
+  });
+
+  test('no warning while the forecast stays at or above every reached goal', async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 760000, 750000)], {
+      accounts: [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 7600 }], transactions: [],
+    });
+    expect(goalCard().querySelector('.goal-card-warning')).toBeNull();
+  });
+
   test('without goals, it offers to set one on Budgeting, and the link goes there', async () => {
     const onNavigate = jest.fn();
     await open([], { onNavigate });

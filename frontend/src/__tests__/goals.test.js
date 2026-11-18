@@ -1,6 +1,6 @@
 import {
   GOAL_MONTHS_CAP, PAYOFF_SHOWN_MONTHS, monthlyRoom, regularPayments, goalPlan, loanPayoff, activeSaving, movedThisMonth,
-  forecastAgainstGoal,
+  forecastAgainstGoal, goalDips,
 } from '../utils/goals';
 
 const TODAY = '2026-11-16';     // the next 90 days: through Feb 14, 2027
@@ -163,5 +163,23 @@ describe('the forecast against a goal', () => {
   test('a goal reached and held: the first day the forecast dips under it, if it does', () => {
     expect(forecastAgainstGoal({ reached: true, target_cents: 690000 }, forecast)).toEqual({ reachesOn: null, dipsOn: null });
     expect(forecastAgainstGoal({ reached: true, target_cents: 695000 }, forecast)).toEqual({ reachesOn: null, dipsOn: '2027-01-15' });
+  });
+});
+
+describe('reached goals the forecast dips under', () => {
+  test("each reached goal whose account's forecast falls under its target, with the first day it does", () => {
+    const goal = (id, accountId, balanceCents, targetCents) => ({
+      id, account_id: accountId, account_name: `Account ${accountId}`, account_kind: 'bank', balance_cents: balanceCents,
+      target_cents: targetCents, reached: balanceCents >= targetCents,
+    });
+    const accounts = [{ id: 6, account_name: 'Checking', kind: 'bank', apr: null, balance: 5000 },
+                      { id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 7600 }];
+    const recurring = [{ id: 9, amount: -200, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 }];
+    const occurrences = [{ recurring_id: 9, account_id: 7, date: '2026-12-03', vendor: 'Gym', category: 'Fun', amount: -200 }];
+    const held = goal(1, 7, 760000, 750000);           // $7,600 less $200 on Dec 3: under $7,500
+    const goals = [held, goal(2, 6, 500000, 400000), goal(3, 7, 760000, 900000)];   // Checking holds; the third isn't reached
+    expect(goalDips(goals, { accounts, transactions: [], recurring, occurrences, today: TODAY }))
+      .toEqual([{ goal: held, dipsOn: '2026-12-03' }]);
+    expect(goalDips(null, { accounts, transactions: [], recurring, occurrences, today: TODAY })).toEqual([]);
   });
 });

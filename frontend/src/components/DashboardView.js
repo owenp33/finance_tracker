@@ -5,7 +5,7 @@ import GoalCard from './goals/GoalCard';
 import ProjectionCard from './dashboard/ProjectionCard';
 import { useProjection } from '../hooks/useProjection';
 import { useGoalPlan } from '../hooks/useGoalPlan';
-import { activeSaving } from '../utils/goals';
+import { activeSaving, goalDips } from '../utils/goals';
 import { todayISO, sameDayLastMonth, dayRangeLabel, monthEndLabel } from '../utils/dates';
 import { formatCents, formatWholeDollars } from '../utils/money';
 import { cashFlow } from '../utils/moneyRules';
@@ -133,7 +133,10 @@ function DashboardView({ transactions, budgetData = [], onNavigate, onError, acc
 
       {/* The active goal and where the next 90 days take net position, side by side */}
       <div className="dashboard-goal-row">
-        <GoalCard goals={goalPlan.goals} active={activeSaving(goalPlan.goals, goalPlan.plans)} onNavigate={onNavigate} />
+        <GoalCard
+          goals={goalPlan.goals} active={activeSaving(goalPlan.goals, goalPlan.plans)} onNavigate={onNavigate}
+          dips={goalDips(goalPlan.goals, { accounts, transactions, recurring, occurrences: goalPlan.occurrences, today })}
+        />
         <ProjectionCard
           accounts={accounts} transactions={transactions} recurring={recurring}
           occurrences={goalPlan.occurrences} onNavigate={onNavigate}
