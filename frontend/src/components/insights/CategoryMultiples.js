@@ -30,7 +30,7 @@ function CategoryMultiples({ panels }) {
       ) : (
         <>
           <p className="chart-note">
-            Per month, each on its own scale; the dashed line is its monthly average, and a month only partly in the period is lighter.
+            Per month; dashed line is monthly average
           </p>
           <div className="category-panels">
             {panels.map(panel => (

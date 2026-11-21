@@ -17,23 +17,22 @@ const NET = 'net';
 // A stable stand-in when no one listens for errors (useBalances refetches when it changes)
 const IGNORE_ERROR = () => {};
 
-// What the forecast does to a goal on the account shown (Phase F, F2e), in words, and whether it's
-// a warning (a held goal the forecast dips under)
+// What the forecast does to a goal on the account shown (Phase F, F2e), in a few words, and whether
+// it's a warning (a held goal the forecast dips under)
 const goalNote = (goal, forecast, forecastEnd) => {
   const { reachesOn, dipsOn } = forecastAgainstGoal(goal, forecast);
-  const target = `the ${formatCents(goal.target_cents)} goal`;
+  const target = `Goal ${formatCents(goal.target_cents)}`;
   const paidOff = goal.account_kind === 'loan' && goal.target_cents === 0;
   if (goal.reached) {
     return dipsOn
-      ? { text: `The forecast dips under ${target} on ${formatDate(dipsOn, true)}.`, warning: true }
-      : { text: `The forecast stays at or above ${target} through ${formatDate(forecastEnd, true)}.`, warning: false };
+      ? { text: `${target}: dips under ${formatDate(dipsOn, true)}`, warning: true }
+      : { text: `${target}: holds through ${formatDate(forecastEnd, true)}`, warning: false };
   }
   if (reachesOn) {
-    return { text: paidOff ? `The forecast pays it off on ${formatDate(reachesOn, true)}.`
-                           : `The forecast reaches ${target} on ${formatDate(reachesOn, true)}.`, warning: false };
+    return { text: paidOff ? `Paid off ${formatDate(reachesOn, true)}` : `${target}: reached ${formatDate(reachesOn, true)}`,
+             warning: false };
   }
-  return { text: paidOff ? "The forecast doesn't pay it off in the next 90 days."
-                         : `The forecast doesn't reach ${target} in the next 90 days.`, warning: false };
+  return { text: paidOff ? 'Not paid off in 90 days' : `${target}: not reached in 90 days`, warning: false };
 };
 
 // How far a balance moved over the range, in words
@@ -86,13 +85,9 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
     accounts, accountIds: shownIds, startCents: series.closing_cents,
     startOf: a => balances.find(b => b.id === a.id).closing_cents, transactions, recurring, occurrences, today,
   });
-  const withInterest = interestAccounts.some(account => account.apr);
   const forecast = forecastFailed ? [] : forecastAll;
   // The goals on the account shown (net position spans every account, so it shows none)
   const accountGoals = selected && forecast.length > 0 ? (goals ?? []).filter(goal => goal.account_id === selected.id) : [];
-  const sources = withInterest
-    ? 'scheduled items, your average spending over the last 90 days and interest'
-    : 'scheduled items and your average spending over the last 90 days';
 
   const allPoints = [...points, ...forecast];
   const days = allPoints
@@ -137,7 +132,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
       <div className="balance-change">{changeLabel(change, from)}</div>
       {forecast.length > 0 && (
         <p className="balance-forecast-line">
-          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}, from ${sources}`}
+          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}`}
         </p>
       )}
       {accountGoals.map(goal => {
@@ -160,9 +155,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
           <li><span className="balance-key" aria-hidden="true" />Balance</li>
           <li>
             <span className="balance-key forecast" aria-hidden="true" />
-            {withInterest
-              ? 'Forecast: scheduled items, average spending over the last 90 days and interest'
-              : 'Forecast: scheduled items and average spending over the last 90 days'}
+            Forecast: scheduled items, average spending (over the last 90 days), and any interest
           </li>
         </ul>
       )}

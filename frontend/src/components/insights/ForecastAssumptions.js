@@ -2,19 +2,15 @@ import ViewAsTable from '../ViewAsTable';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { FORECAST_DAYS, forecastAssumptions } from '../../utils/forecast';
 
-const NOTE = 'A category is forecast by its recurring charges when at least 90% of its spending over the last 90 days, '
-  + 'less reimbursements, in every account, was in recurring series; every other category by its average over the '
-  + 'last 90 days, less reimbursements. Income is scheduled income only, and series that have ended are left out.';
-const ACCOUNT_NOTE = ' An account with an interest rate gets its interest on the 1st of each period, on its own balance '
-  + 'the day before; a loan also gets the payments of the series that pay it down.';
+const NOTE = 'Categories at least 90% recurring over the last 90 days use their scheduled charges; others, their 90-day average.';
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 // How a category is forecast, in words
 const basisLabel = (c) => {
-  if (c.basis === 'scheduled') return `Its recurring charges, ${c.count ? `${c.count} due` : 'none due'}`;
-  if (c.basis === 'no-history') return `Its recurring charges, ${c.count} due (no spending over the last 90 days)`;
-  const daily = `${formatCents(Math.round(c.average / FORECAST_DAYS))} a day, its average over the last 90 days`;
+  if (c.basis === 'scheduled') return `Recurring, ${c.count ? `${c.count} due` : 'none due'}`;
+  if (c.basis === 'no-history') return `Recurring, ${c.count} due (no spending over the last 90 days)`;
+  const daily = `${formatCents(Math.round(c.average / FORECAST_DAYS))} a day (average)`;
   return c.count
     ? `${daily}, plus ${plural(c.count, 'charge')} due from a series with no spending over the last 90 days`
     : daily;
@@ -67,7 +63,7 @@ function ForecastAssumptions({ transactions, recurring, occurrences, accountIds,
 
   return (
     <ViewAsTable
-      summary="What the forecast assumes" note={accountRows.length ? NOTE + ACCOUNT_NOTE : NOTE}
+      summary="What the forecast assumes" note={NOTE}
       caption={`What the forecast assumes, ${label}`}
       columns={['Category', 'Spent over the last 90 days', 'Reimbursed', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days']}
       rows={rows}

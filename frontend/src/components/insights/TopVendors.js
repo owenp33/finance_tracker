@@ -45,7 +45,7 @@ function TopVendors({ transactions, months, partial }) {
         <p className="no-data">No spending in this period.</p>
       ) : (
         <>
-          <p className="chart-note">Click a vendor for its months and latest charges.</p>
+          <p className="chart-note">Click a vendor for details.</p>
           <ol className="vendor-bars">
             {vendors.map(v => {
               const open = selected === v.vendor;

@@ -90,6 +90,7 @@ test('each panel draws a bar per month, the partial month lighter, and a dashed 
   expect(groceries.querySelectorAll('.category-bar')).toHaveLength(3);
   expect(groceries.querySelectorAll('.category-bar.partial')).toHaveLength(1);
   expect(groceries.querySelector('.category-average')).not.toBeNull();
+  expect(within(spending()).getByText('Per month; dashed line is monthly average')).toBeInTheDocument();
 });
 
 test('"View as table" lists every panel', async () => {
@@ -104,7 +105,7 @@ test('"View as table" lists every panel', async () => {
 
 test('income is one line instead of a pie, and the pies are gone', () => {
   renderOverview();
-  expect(screen.getByText('Largest income category: Paycheck, $4,000.00 of $4,050.00 (99%)')).toBeInTheDocument();
+  expect(screen.getByText('Top income: Paycheck, $4,000.00 (99%)')).toBeInTheDocument();
   expect(screen.queryByText('Income by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending Breakdown')).not.toBeInTheDocument();
@@ -123,12 +124,10 @@ describe('net per month', () => {
     expect(screen.queryByText('Monthly Trends')).not.toBeInTheDocument();
   });
 
-  test('the note and the legend say where each average sits and what it leaves out', () => {
+  test('the note says what the bars are, and the legend names the average line', () => {
     renderOverview(NET_TRANSACTIONS);
-    expect(within(net()).getByText(
-      'Money in minus money out each month, transfers left out; a month only partly in the period is lighter and in no average.'
-    )).toBeInTheDocument();
-    expect(within(net()).getByText('3-month average of each month and the months either side')).toBeInTheDocument();
+    expect(within(net()).getByText('Money in - money out, transfers left out')).toBeInTheDocument();
+    expect(net().querySelector('.timeline-legend li:last-child').textContent).toBe('3-month average');
   });
 
   test('"View as table" lists each month with its 3-month average, on the middle month', async () => {
@@ -181,6 +180,7 @@ describe('top vendors', () => {
     expect(vendors().querySelector('.vendor-fill').style.width).toBe('100%');
     expect(vendors().querySelectorAll('.vendor-fill')[1].style.width).toMatch(/^29\.6/);      // $800 of $2,700
     expect(screen.queryByText('Top 10 Vendors by Spending')).not.toBeInTheDocument();
+    expect(within(vendors()).getByText('Click a vendor for details.')).toBeInTheDocument();
   });
 
   test("clicking a vendor shows its charges, average, months and latest transactions; clicking again hides them", async () => {
@@ -220,5 +220,5 @@ describe('top vendors', () => {
 test('without spending, the section says so', () => {
   renderOverview([tx('2026-10-01', 2000, 'Paycheck', 'Employer')]);
   expect(within(spending()).getByText('No spending in this period.')).toBeInTheDocument();
-  expect(screen.getByText('All income is in one category: Paycheck ($2,000.00)')).toBeInTheDocument();
+  expect(screen.getByText('All income: Paycheck ($2,000.00)')).toBeInTheDocument();
 });

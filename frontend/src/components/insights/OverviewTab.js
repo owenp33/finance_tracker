@@ -150,9 +150,9 @@ function OverviewTab({ transactions = [], accounts = [] }) {
   const incomeRows = analytics.income_by_category;
   const incomeLine = incomeRows.length === 0 ? null
     : incomeRows.length === 1
-      ? `All income is in one category: ${incomeRows[0].category} (${formatDollars(incomeRows[0].total)})`
-      : `Largest income category: ${incomeRows[0].category}, ${formatDollars(incomeRows[0].total)} of `
-        + `${formatDollars(analytics.summary.total_income)} (${Math.round((incomeRows[0].total / analytics.summary.total_income) * 100)}%)`;
+      ? `All income: ${incomeRows[0].category} (${formatDollars(incomeRows[0].total)})`
+      : `Top income: ${incomeRows[0].category}, ${formatDollars(incomeRows[0].total)} `
+        + `(${Math.round((incomeRows[0].total / analytics.summary.total_income) * 100)}%)`;
 
   return (
     <div className="analytics-dashboard">

@@ -52,7 +52,7 @@ function GoalCard({ goals, active, onNavigate, dips = [] }) {
       <div className="stat-sub">{sub}</div>
       {dips.map(({ goal, dipsOn }) => (
         <div key={goal.id} className="goal-card-warning">
-          {`${goal.account_name}: the forecast dips under ${formatWholeDollars(goal.target_cents / 100)} on ${formatDate(dipsOn)}`}
+          {`${goal.account_name}: forecast dips under ${formatWholeDollars(goal.target_cents / 100)} on ${formatDate(dipsOn)}`}
         </div>
       ))}
     </div>

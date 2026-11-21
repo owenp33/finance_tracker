@@ -279,7 +279,7 @@ describe('the goal card', () => {
     // $7,600 less the $200 on Nov 20
     await waitFor(() => expect(goalCard().querySelector('.goal-card-warning')).not.toBeNull());
     expect([...goalCard().querySelectorAll('.goal-card-warning')].map(w => w.textContent))
-      .toEqual(['Savings: the forecast dips under $7,500 on Nov 20']);
+      .toEqual(['Savings: forecast dips under $7,500 on Nov 20']);
   });
 
   test('no warning while the forecast stays at or above every reached goal', async () => {

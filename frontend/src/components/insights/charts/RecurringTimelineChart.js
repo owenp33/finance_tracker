@@ -169,7 +169,7 @@ export function TimelineLegend() {
           <line x1="7" x2="7" y1="1" y2="9" className="timeline-key-tick" />
           <line x1="15" x2="15" y1="1" y2="9" className="timeline-key-tick" />
         </svg>
-        Posted, a tick per payment
+        Posted
       </li>
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1.5" width="22" height="7" rx="3" className="timeline-scheduled cost" /></svg>Still scheduled</li>
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1" width="22" height="8" rx="3" className="timeline-posted income" /></svg>Income</li>

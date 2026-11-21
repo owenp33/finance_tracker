@@ -63,7 +63,9 @@ const row = (name) => screen.getByText(new RegExp(`^\\d\\. ${name}$`)).closest('
 
 test('goals run in order: the active one gets the room, the next starts once it is reached', async () => {
   await renderGoals();
-  await waitFor(() => expect(screen.getByText(/^Room each month: \$1,133\.33/)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('Room each month: $1,133.33 (income - bills - spending, next 90 days)'))
+    .toBeInTheDocument());
+  expect(screen.getByText('Goals run in order; the next starts once one is reached.')).toBeInTheDocument();
   // $4,500.00 to go at $1,133.33: 4 months; then the loan, charged 6.70% monthly and paid $75 all along
   expect(rows()).toEqual([
     ['1. Savings', 'Active', '$3,000.00 of $7,500.00', '$1,133.33 a month (suggested) · reached by Mar 2027'],
@@ -140,7 +142,7 @@ test('goals move up and down, and are deleted after a confirm', async () => {
 test('without room, the active goal is not reached at this pace', async () => {
   getProjection.mockResolvedValue([]);
   await renderGoals();
-  expect(screen.getByText('Room each month: none (spending is at or above scheduled income over the next 90 days)')).toBeInTheDocument();
+  expect(screen.getByText('Room each month: none (spending meets or exceeds income)')).toBeInTheDocument();
   expect(rows()[0][3]).toBe('Nothing goes toward it · not reached at this pace');
 });
 
@@ -160,19 +162,18 @@ describe("a loan goal's payoff", () => {
     await waitFor(() => expect(screen.getByText(/^Room each month: \$1,133\.33/)).toBeInTheDocument());
     expect(row('Savings').querySelector('.loan-payoff')).toBeNull();
     expect([...payoff().querySelectorAll('.payoff-legend li')].map(li => li.textContent))
-      .toEqual(['With $1,133.33 extra a month', 'Regular payments only ($75.00 a month)']);
+      .toEqual(['With $1,133.33 extra a month', 'Current payments only ($75/mo)']);
     // The extra starts the month after Savings is reached (Mar 2027); paid off 83 months from now
     expect(notes()).toEqual([
-      'With $1,133.33 extra a month from Apr 2027: paid off by Oct 2033, with $19,907.28 in interest.',
-      'With only its regular payments ($75.00 a month): $111,511.97 owed in Oct 2033, with $42,519.97 in interest by then, '
-        + 'and growing: the interest is more than the payments.',
+      'With $1,133.33 extra, from Apr 2027: paid off by Oct 2033, $19,907.28 in interest.',
+      'Current payments only ($75/mo): $111,511.97 owed in Oct 2033, $42,519.97 in interest; interest outpaces the payments.',
     ]);
     expect(payoff().querySelector('.payoff-line-extra')).not.toBeNull();
     expect(payoff().querySelector('.payoff-line-regular')).not.toBeNull();
     expect(payoff().querySelector('.payoff-end-label').textContent).toBe('$112k');     // where the regular payments leave it
     const table = within(payoff()).getByRole('table', { name: "What's owed on Student Loan, month by month" });
     const cells = within(table).getAllByRole('row').map(r => [...r.children].map(c => c.textContent));
-    expect(cells[0]).toEqual(['Month', 'With the extra', 'Regular payments only']);
+    expect(cells[0]).toEqual(['Month', 'With the extra', 'Current payments only']);
     expect(cells[1]).toEqual(['Nov 2026 (now)', '$75,217.00', '$75,217.00']);
     expect(cells.at(-1)).toEqual(['Oct 2033', '$0.00', '$111,511.97']);
     expect(cells).toHaveLength(85);
@@ -184,8 +185,7 @@ describe("a loan goal's payoff", () => {
     await waitFor(() => expect(screen.getByText(/^Room each month: none/)).toBeInTheDocument());
     expect(payoff().querySelector('.payoff-legend')).toBeNull();
     expect(notes()).toEqual([
-      'With only its regular payments ($75.00 a month): $133,948.93 owed in Nov 2036, with $67,731.93 in interest by then, '
-        + 'and growing: the interest is more than the payments.',
+      'Current payments only ($75/mo): $133,948.93 owed in Nov 2036, $67,731.93 in interest; interest outpaces the payments.',
     ]);
     expect(payoff().querySelector('.payoff-line-only')).not.toBeNull();
     expect(payoff().querySelector('.payoff-line-extra')).toBeNull();
@@ -208,8 +208,8 @@ describe("a loan goal's payoff", () => {
       unmount();
       return text;
     };
-    expect(tip({ extra: 'With the extra', regular: 'Regular payments only' }))
-      .toEqual(['Mar 2028', 'With the extra: $41,203.10 owed', 'Regular payments only: $80,112.00 owed']);
-    expect(tip({ extra: null, regular: 'Regular payments only' })).toEqual(['Mar 2028', '$80,112.00 owed']);
+    expect(tip({ extra: 'With the extra', regular: 'Current payments only' }))
+      .toEqual(['Mar 2028', 'With the extra: $41,203.10 owed', 'Current payments only: $80,112.00 owed']);
+    expect(tip({ extra: null, regular: 'Current payments only' })).toEqual(['Mar 2028', '$80,112.00 owed']);
   });
 });

@@ -162,9 +162,9 @@ describe('the forecast', () => {
     await waitFor(() => expect(getProjection).toHaveBeenCalledWith(90));
     // $9,421.68 − $87.38 − $75.00 + $1,700.00 scheduled, − $117.00 averaged over the 90 days
     await waitFor(() => expect(forecastLine())
-      .toBe('Forecast for Feb 6, 2027: $10,842.30, from scheduled items and your average spending over the last 90 days'));
+      .toBe('Forecast for Feb 6, 2027: $10,842.30'));
     expect(tab().querySelector('.balance-forecast .recharts-line-curve')).not.toBeNull();
-    expect(within(tab()).getByText('Forecast: scheduled items and average spending over the last 90 days')).toBeInTheDocument();
+    expect(within(tab()).getByText('Forecast: scheduled items, average spending (over the last 90 days), and any interest')).toBeInTheDocument();
     expect(summary()).toEqual(['$9,421.68', 'Up $9,913.97 since Nov 8, 2025']);     // the history is unchanged
   });
 
@@ -174,7 +174,7 @@ describe('the forecast', () => {
     await pick("Owen's Checking");
     await pick('3M');
     await waitFor(() => expect(forecastLine())
-      .toBe('Forecast for Feb 6, 2027: $7,021.75, from scheduled items and your average spending over the last 90 days'));
+      .toBe('Forecast for Feb 6, 2027: $7,021.75'));
     const rows = (await tableRows()).slice(1);
     expect(rows).toHaveLength(91);
     expect(rows.slice(0, 3)).toEqual([
@@ -194,7 +194,7 @@ describe('the forecast', () => {
     await pick("Owen's Checking");
     // $7,274.13 − $90.00 Grocery − $174.76 Bills
     await waitFor(() => expect(forecastLine())
-      .toBe('Forecast for Feb 6, 2027: $7,009.37, from scheduled items and your average spending over the last 90 days'));
+      .toBe('Forecast for Feb 6, 2027: $7,009.37'));
   });
 
   test("an ended series' charges are left out of its category's average", async () => {
@@ -207,7 +207,7 @@ describe('the forecast', () => {
     await pick("Owen's Checking");
     // $7,274.13 − $87.38 − $75.00 scheduled − $90.00 Grocery − $30.00 Medical
     await waitFor(() => expect(forecastLine())
-      .toBe('Forecast for Feb 6, 2027: $6,991.75, from scheduled items and your average spending over the last 90 days'));
+      .toBe('Forecast for Feb 6, 2027: $6,991.75'));
   });
 
   test('a failed projection is reported, and the history shows without a forecast', async () => {
@@ -225,22 +225,22 @@ describe('the forecast', () => {
     await openTab({ transactions: RECENT });
     await waitFor(() => expect(forecastLine()).toMatch(/\$10,842\.30/));
     await user.click(within(tab()).getByText('What the forecast assumes'));
-    expect(within(tab()).getByText(/^A category is forecast by its recurring charges when at least 90%/)).toBeInTheDocument();
+    expect(within(tab()).getByText('Categories at least 90% recurring over the last 90 days use their scheduled charges; others, their 90-day average.')).toBeInTheDocument();
     const assumptions = () => cells(screen.getByRole('table', { name: /^What the forecast assumes/ }));
     // $9,421.68 + $1,420.62 = $10,842.30, the forecast line's
     expect(assumptions()).toEqual([
       ['Category', 'Spent over the last 90 days', 'Reimbursed', 'Share in a series, all accounts', 'Forecast from', 'Next 90 days'],
       ['Scheduled income', '—', '—', '—', '1 payment from 1 series', '+$1,700.00'],
-      ['Bills', '$87.38', '—', '100%', 'Its recurring charges, 2 due', '-$162.38'],
-      ['Grocery', '$90.00', '—', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
-      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day, its average over the last 90 days', '-$27.00'],
+      ['Bills', '$87.38', '—', '100%', 'Recurring, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '—', '0%', '$1.00 a day (average)', '-$90.00'],
+      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day (average)', '-$27.00'],
       ['Total', '$204.38', '—', '', '', '+$1,420.62'],
     ]);
     await pick("Owen's Checking");
     expect(screen.getByRole('table', { name: "What the forecast assumes, Owen's Checking" })).toBeInTheDocument();
     expect(assumptions().slice(1)).toEqual([
-      ['Bills', '$87.38', '—', '100%', 'Its recurring charges, 2 due', '-$162.38'],
-      ['Grocery', '$90.00', '—', '0%', '$1.00 a day, its average over the last 90 days', '-$90.00'],
+      ['Bills', '$87.38', '—', '100%', 'Recurring, 2 due', '-$162.38'],
+      ['Grocery', '$90.00', '—', '0%', '$1.00 a day (average)', '-$90.00'],
       ['Total', '$177.38', '—', '', '', '-$252.38'],
     ]);
   });
@@ -253,10 +253,10 @@ describe('the forecast', () => {
     await pick("Owen's Checking");
     // As without the extra charge: Allina's and ASPIRE's charges are back, and Bills isn't averaged
     await waitFor(() => expect(forecastLine())
-      .toBe('Forecast for Feb 6, 2027: $7,021.75, from scheduled items and your average spending over the last 90 days'));
+      .toBe('Forecast for Feb 6, 2027: $7,021.75'));
     await user.click(within(tab()).getByText('What the forecast assumes'));
     expect(cells(screen.getByRole('table', { name: /^What the forecast assumes/ }))[1])
-      .toEqual(['Bills', '$174.76', '$87.38', '100%', 'Its recurring charges, 2 due', '-$162.38']);
+      .toEqual(['Bills', '$174.76', '$87.38', '100%', 'Recurring, 2 due', '-$162.38']);
   });
 
   test('a series with no spending over the last 90 days is named as such, and so is one in an averaged category', async () => {
@@ -268,8 +268,8 @@ describe('the forecast', () => {
     await pick("Owen's Discover");
     await user.click(within(tab()).getByText('What the forecast assumes'));
     await waitFor(() => expect(cells(screen.getByRole('table', { name: /^What the forecast assumes/ })).slice(1)).toEqual([
-      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day, its average over the last 90 days, plus 1 charge due from a series with no spending over the last 90 days', '-$87.00'],
-      ['Streaming', '—', '—', '—', 'Its recurring charges, 1 due (no spending over the last 90 days)', '-$15.99'],
+      ['Restaurants', '$27.00', '—', '0%', '$0.30 a day (average), plus 1 charge due from a series with no spending over the last 90 days', '-$87.00'],
+      ['Streaming', '—', '—', '—', 'Recurring, 1 due (no spending over the last 90 days)', '-$15.99'],
       ['Total', '$27.00', '—', '', '', '-$102.99'],
     ]));
   });
@@ -293,7 +293,7 @@ describe("a loan's forecast", () => {
     await open();
     // Dec 1 $60.38, Jan 1 $60.74, Feb 1 $61.11, each a 12th of 7.3% of what was owed the day before
     await waitFor(() => expect(tab().querySelector('.balance-forecast-line').textContent)
-      .toBe('Forecast for Feb 6, 2027: -$10,107.23, from scheduled items, your average spending over the last 90 days and interest'));
+      .toBe('Forecast for Feb 6, 2027: -$10,107.23'));
     expect((await tableRows()).slice(1)).toEqual([
       ['Nov 30, 2026 (forecast)', '-$9,925.00', '+$75.00'],
       ['Dec 1, 2026 (forecast)', '-$9,985.38', '-$60.38'],
@@ -329,7 +329,7 @@ describe('goals on the chart', () => {
     await openTab();
     await pick("Owen's Savings");
     // $3,000.00 plus the $1,700.00 paycheck on Dec 1
-    await waitFor(() => expect(note().textContent).toBe('The forecast reaches the $4,000.00 goal on Dec 1, 2026.'));
+    await waitFor(() => expect(note().textContent).toBe('Goal $4,000.00: reached Dec 1, 2026'));
     expect(tab().querySelector('.balance-goal-line')).not.toBeNull();
   });
 
@@ -338,7 +338,7 @@ describe('goals on the chart', () => {
     getGoals.mockResolvedValue([goalRow(7, "Owen's Savings", 300000, 750000)]);
     await openTab();
     await pick("Owen's Savings");
-    await waitFor(() => expect(note().textContent).toBe("The forecast doesn't reach the $7,500.00 goal in the next 90 days."));
+    await waitFor(() => expect(note().textContent).toBe('Goal $7,500.00: not reached in 90 days'));
   });
 
   test('a goal already reached warns when the forecast dips under it', async () => {
@@ -347,7 +347,7 @@ describe('goals on the chart', () => {
     await openTab();
     await pick("Owen's Checking");
     // $7,274.13 less Allina's $87.38 on Nov 9
-    await waitFor(() => expect(note().textContent).toBe('The forecast dips under the $7,200.00 goal on Nov 9, 2026.'));
+    await waitFor(() => expect(note().textContent).toBe('Goal $7,200.00: dips under Nov 9, 2026'));
     expect(note()).toHaveClass('warning');
   });
 
@@ -358,7 +358,7 @@ describe('goals on the chart', () => {
     expect(note()).toBeNull();                                   // net position: goals are per account
     expect(tab().querySelector('.balance-goal-line')).toBeNull();
     await pick("Owen's Checking");
-    await waitFor(() => expect(note().textContent).toBe('The forecast stays at or above the $5,000.00 goal through Feb 6, 2027.'));
+    await waitFor(() => expect(note().textContent).toBe('Goal $5,000.00: holds through Feb 6, 2027'));
     expect(note()).not.toHaveClass('warning');
   });
 });

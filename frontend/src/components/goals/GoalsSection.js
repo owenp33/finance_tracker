@@ -28,12 +28,12 @@ function GoalsSection({ accounts = [], goalPlan }) {
         {!adding && <button className="btn btn-secondary btn-sm" onClick={() => setAdding(true)}>+ Add goal</button>}
       </div>
       <p className="chart-note">
-        Goals run in order: the first one not reached gets the monthly amount, and the next takes over once it's reached.
+        Goals run in order; the next starts once one is reached.
       </p>
       <p className="goals-room">
         {room > 0
-          ? `Room each month: ${formatCents(room)} (scheduled income less scheduled bills and average spending, over the next 90 days)`
-          : 'Room each month: none (spending is at or above scheduled income over the next 90 days)'}
+          ? `Room each month: ${formatCents(room)} (income - bills - spending, next 90 days)`
+          : 'Room each month: none (spending meets or exceeds income)'}
       </p>
       {adding && (
         <AddGoalForm

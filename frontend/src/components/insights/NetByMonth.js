@@ -10,13 +10,13 @@ function NetByMonth({ rows }) {
     <section className="chart-container full-width net-by-month">
       <h3>Net per month</h3>
       <p className="chart-note">
-        Money in minus money out each month, transfers left out; a month only partly in the period is lighter and in no average.
+        Money in - money out, transfers left out
       </p>
       <NetChart rows={rows} />
       <ul className="timeline-legend">
         <li><span className="net-key positive" aria-hidden="true" />More in than out</li>
         <li><span className="net-key negative" aria-hidden="true" />More out than in</li>
-        <li><span className="net-key average" aria-hidden="true" />3-month average of each month and the months either side</li>
+        <li><span className="net-key average" aria-hidden="true" />3-month average</li>
       </ul>
       <ViewAsTable
         caption="Net per month"
