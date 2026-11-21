@@ -93,6 +93,14 @@ test("the Dashboard's errors show in the banner", async () => {
   expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
 });
 
+test('the nav bar runs Dashboard, Budgeting, Transactions, Insights', async () => {
+  localStorage.setItem('token', 'good-token');
+  renderApp();
+  await loggedIn();
+  expect([...document.querySelectorAll('.view-nav button')].map(button => button.textContent))
+    .toEqual(['Dashboard', 'Budgeting', 'Transactions', 'Insights']);
+});
+
 test('switching views clears the banner; clicking the view you are on keeps it', async () => {
   localStorage.setItem('token', 'good-token');
   getAccounts.mockRejectedValue(new Error('Could not load accounts'));

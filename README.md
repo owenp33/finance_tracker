@@ -106,7 +106,7 @@ Insights → Reports downloads a CSV or a PDF for a period (all time, a month, q
 - **PDF** (drawn with matplotlib): summary pages (totals, with income by category as one line; net per month as on Insights, bars around $0 with the 3-month average and a table, when the period covers two or more months; spending by category as on Insights, a small chart per category for the top 8 and Other, each with its monthly average, and a table; top vendors as on Insights, a bar each with its total, and a table; recurring costs as on Insights → Recurring, as of the day the report is made) that leave transfers out, then a section per account: its opening and closing balance, a balance-over-time chart, and its transactions with running balances, over-budget rows highlighted. Account pages include transfers, since that money really moved.
 
 ### Frontend data flow
-There's no router: `App.js` switches between the Dashboard, Transactions, Budgeting, and Insights views, owns authentication and every mutation handler, and passes data down as props. Data fetching lives in custom hooks (`useAccounts`, `useTransactions`, `useBudgetData`, ...), and every request goes through `src/api/client.js`.
+There's no router: `App.js` switches between the Dashboard, Budgeting, Transactions, and Insights views, owns authentication and every mutation handler, and passes data down as props. Data fetching lives in custom hooks (`useAccounts`, `useTransactions`, `useBudgetData`, ...), and every request goes through `src/api/client.js`.
 
 ### SOLID in the budget UI
 The budget UI follows SOLID principles explicitly:
