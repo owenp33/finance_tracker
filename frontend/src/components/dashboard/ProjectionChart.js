@@ -2,7 +2,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { formatCents, formatCompactDollars } from '../../utils/money';
 import { dayNumber } from '../../utils/dates';
 import { formatDate } from '../transactions/utils';
-import { monthTick } from '../insights/charts/monthTicks';
+import { monthTick } from '../../utils/monthTicks';
 
 const LINE_COLOR = '#2a78d6';   // --chart-blue
 

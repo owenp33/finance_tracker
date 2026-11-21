@@ -1,7 +1,7 @@
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
 import { formatCents, formatCompactDollars } from '../../utils/money';
 import { monthRangeLabel } from '../../utils/dates';
-import { monthTick } from '../insights/charts/monthTicks';
+import { monthTick } from '../../utils/monthTicks';
 
 const MAX_TICKS = 8;
 const EXTRA_COLOR = '#2a78d6';     // --chart-blue

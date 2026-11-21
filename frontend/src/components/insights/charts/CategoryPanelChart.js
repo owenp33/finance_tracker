@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { monthRangeLabel } from '../../../utils/dates';
 import { formatCents, formatCompactDollars } from '../../../utils/money';
-import { monthTick, tickMonths } from './monthTicks';
+import { monthAxis } from '../../../utils/monthTicks';
 
 const HEIGHT = 110;
+const Y_AXIS_WIDTH = 40;
+const MARGIN = { top: 6, right: 4, bottom: 0, left: 0 };
 
 // A month's spending on hover or tap
 function MonthTip({ active, payload }) {
@@ -18,18 +21,20 @@ function MonthTip({ active, payload }) {
 }
 
 // One category's small chart: a bar per month (a month the period only partly covers lighter)
-// on its own scale, and a dashed line at its monthly average
+// on its own scale, and a dashed line at its monthly average; as many month labels as its width fits
 function CategoryPanelChart({ panel }) {
+  const [width, setWidth] = useState(null);     // measured by the container
   const data = panel.months.map(m => ({ ...m, dollars: m.cents / 100 }));
+  const axis = monthAxis(data.map(m => m.month), width === null ? null : width - Y_AXIS_WIDTH - MARGIN.right);
   return (
-    <ResponsiveContainer width="100%" height={HEIGHT}>
-      <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap="20%">
+    <ResponsiveContainer width="100%" height={HEIGHT} onResize={setWidth}>
+      <BarChart data={data} margin={MARGIN} barCategoryGap="20%">
         <XAxis
-          dataKey="month" ticks={tickMonths(data.map(m => m.month))} tickFormatter={monthTick} interval={0}
+          dataKey="month" ticks={axis.ticks} tickFormatter={axis.format} interval={0}
           tickLine={false} axisLine={{ stroke: '#d1d5db' }} tick={{ fontSize: 11, fill: '#6b7280' }}
         />
         <YAxis
-          width={40} tickCount={3} tickFormatter={formatCompactDollars}
+          width={Y_AXIS_WIDTH} tickCount={3} tickFormatter={formatCompactDollars}
           tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#6b7280' }}
         />
         <Tooltip content={<MonthTip />} cursor={{ fill: 'rgba(0, 0, 0, 0.04)' }} />

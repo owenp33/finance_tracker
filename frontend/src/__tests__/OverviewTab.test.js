@@ -4,11 +4,18 @@ import InsightsView from '../components/InsightsView';
 import { NetTip } from '../components/insights/charts/NetChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 
-// jsdom has no layout, so each chart gets a fixed size instead of measuring its container
+// jsdom has no layout, so each chart gets a fixed size instead of measuring its container, and is
+// told that size as Recharts tells it (onResize)
 jest.mock('recharts', () => {
   const actual = jest.requireActual('recharts');
-  const { cloneElement } = jest.requireActual('react');
-  return { ...actual, ResponsiveContainer: ({ children, height }) => cloneElement(children, { width: 300, height }) };
+  const { cloneElement, useEffect } = jest.requireActual('react');
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children, height, onResize }) => {
+      useEffect(() => { onResize?.(300, height); }, [onResize, height]);
+      return cloneElement(children, { width: 300, height });
+    },
+  };
 });
 
 const tx = (date, amount, category, vendor, flags) => ({
@@ -221,4 +228,31 @@ test('without spending, the section says so', () => {
   renderOverview([tx('2026-10-01', 2000, 'Paycheck', 'Employer')]);
   expect(within(spending()).getByText('No spending in this period.')).toBeInTheDocument();
   expect(screen.getByText('All income: Paycheck ($2,000.00)')).toBeInTheDocument();
+});
+
+describe('month labels', () => {
+  // Recharts draws an axis's labels in a layer of their own, apart from the axis
+  const xLabels = (el) => [...el.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')]
+    .map(t => t.textContent);
+  // A paycheck and rent every month from Jan 2017 through November 2026
+  const TEN_YEARS = [];
+  for (let y = 2017; y <= 2026; y += 1) {
+    for (let m = 1; m <= (y < 2026 ? 12 : 11); m += 1) {
+      const month = `${y}-${String(m).padStart(2, '0')}`;
+      TEN_YEARS.push(tx(`${month}-01`, 3000, 'Paycheck', 'Employer'), spend(`${month}-02`, 'Rent', 1200));
+    }
+  }
+
+  test('a short history names every month', () => {
+    renderOverview();
+    expect(xLabels(spending().querySelector('.category-panel'))).toEqual(['Sep 2026', 'Oct', 'Nov']);
+  });
+
+  test('ten years are labelled every other year, evenly, on the small charts and on net per month', () => {
+    renderOverview(TEN_YEARS);
+    // 300px charts: 256px and 240px for the axis, room for 5 years
+    expect(xLabels(spending().querySelector('.category-panel'))).toEqual(['2018', '2020', '2022', '2024', '2026']);
+    const net = screen.getByRole('heading', { name: 'Net per month' }).closest('section');
+    expect(xLabels(net)).toEqual(['2018', '2020', '2022', '2024', '2026']);
+  });
 });
