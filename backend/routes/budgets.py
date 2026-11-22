@@ -77,7 +77,7 @@ def set_scheduled_pace():
 def create_budget():
     """Create a new budget allocation for a category/period."""
     user_id = get_jwt_identity()
-    data    = request.get_json()
+    data    = json_body()
 
     required = ['category', 'period', 'amount']
     if not all(k in data for k in required):
@@ -91,14 +91,18 @@ def create_budget():
             'error': f"A budget for '{data['category']}' in {data['period']} already exists.",
         }), 409
 
-    budget = budget_service.create_budget(
-        user_id     = user_id,
-        category    = data['category'],
-        period      = data['period'],
-        amount      = float(data['amount']),
-        rollover    = bool(data.get('rollover', False)),
-        carried_over= float(data.get('carried_over', 0.0)),
-    )
+    amount, carried_over = float(data['amount']), float(data.get('carried_over', 0.0))
+    try:
+        budget = budget_service.create_budget(
+            user_id     = user_id,
+            category    = data['category'],
+            period      = data['period'],
+            amount      = amount,
+            rollover    = bool(data.get('rollover', False)),
+            carried_over= carried_over,
+        )
+    except ValueError as e:      # a category that can't have a budget
+        return jsonify({'success': False, 'error': str(e)}), 400
     return jsonify({'success': True, 'budget': budget.to_dict()}), 201
 
 
@@ -107,8 +111,11 @@ def create_budget():
 @owns_budget
 def update_budget(budget_id):
     """Update amount, rollover flag, carried_over, or category on an allocation."""
-    data = request.get_json()
-    budget, error = budget_service.update_budget(budget_id, data)
+    data = json_body()
+    try:
+        budget, error = budget_service.update_budget(budget_id, data)
+    except ValueError as e:      # a category that can't have a budget
+        return jsonify({'success': False, 'error': str(e)}), 400
     if error:
         return jsonify({'success': False, 'error': error}), 404
     return jsonify({'success': True, 'budget': budget.to_dict()}), 200

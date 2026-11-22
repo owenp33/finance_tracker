@@ -5,7 +5,7 @@ Thin CRUD operations for interacting with the database.
 Business logic and orchestration belongs in account_service.py.
 """
 from datetime import timedelta
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from extensions import db
 from models.user import User
 from models.account import AccountModel
@@ -234,6 +234,28 @@ class DbService:
             )
             .all()
         )
+
+    def get_category_totals(self, user_id, category):
+        """
+        The user's transactions in one category, over all time: `money_in` and `money_out` (cents,
+        both positive) and how many (`counted`) of those that count in totals (not transfers, not on
+        a loan account), and how many it has in all (`total`).
+        """
+        counted = TransactionModel.is_transfer.is_(False) & (AccountModel.kind != 'loan')
+        money_in, money_out, counted_count, total = (
+            db.session.query(
+                func.coalesce(func.sum(case((counted & (TransactionModel.amount_cents > 0), TransactionModel.amount_cents),
+                                            else_=0)), 0),
+                func.coalesce(func.sum(case((counted & (TransactionModel.amount_cents < 0), -TransactionModel.amount_cents),
+                                            else_=0)), 0),
+                func.coalesce(func.sum(case((counted, 1), else_=0)), 0),
+                func.count(TransactionModel.id),
+            )
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(AccountModel.user_id == user_id, TransactionModel.category == category)
+            .one()
+        )
+        return {'money_in': int(money_in), 'money_out': int(money_out), 'counted': int(counted_count), 'total': total}
 
     def get_transaction_totals_before(self, account_ids, before_date):
         """The sum of amount_cents per account for transactions dated before before_date: {account_id: cents}."""

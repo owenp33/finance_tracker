@@ -124,8 +124,10 @@ account, vendor and amount, within a window of days around a date, nearest first
 exact amount, within a date range), `get_series_transactions` (transactions in any recurring
 series on some accounts between two dates, for the import preview's recurring matches),
 `get_budget_activity` (a user's non-transfer expenses and
-reimbursements in some categories between two dates, for budget flags), and
-`get_transaction_totals_before` (one grouped query: each
+reimbursements in some categories between two dates, for budget flags), `get_category_totals`
+(a user's money in and money out in one category over all time, of the transactions that count
+in totals, with how many count and how many there are; for which categories can have a budget),
+and `get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
 three ways to change a stored balance, `adjust_balance`, `recompute_balance` and `set_balance`
 (sets the balance and the starting balance together, the second from the account's transaction
@@ -259,7 +261,15 @@ id once ("Send every goal once, in the new order."); `delete_goal` moves the lat
 budgeted category, spending (expenses minus reimbursements, never below 0; transfers and loan
 accounts' transactions excluded)
 against the allocation (`amount + carried_over`), and whether the category has a scheduled pace.
-`delete_budget` also deletes the budget's future rollover copies. Budget changes don't touch
+`delete_budget` also deletes the budget's future rollover copies. `create_budget`, and
+`update_budget` when the category changes, refuse (ValueError, a 400) a category that can't have a
+budget (`check_budgetable`): a budget is for spending and comes off the income set on the
+Budgeting page, so a category whose money in outweighs its money out, in dollars over all time,
+can't have one ("Income can't have a budget: it's mostly money coming in."), nor can one none of
+whose transactions count as spending, transfers or on a loan account ("Transfer can't have a
+budget: none of its transactions count as spending."); a category never used is fine. The
+frontend's auto-rollover makes next month's copies through the same endpoint, so a budget made
+before the rule in such a category stops rolling over (the rollover fails quietly). Budget changes don't touch
 transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
 so they follow every budget change on their own.
 
@@ -324,8 +334,9 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   income, expenses, net, partial, average}`, `average` being the 3-month average of net on the
   middle month: each month's net with the months either side, when all three are full (else
   None), so the first and last month have none and no average reaches across a partial month.
-  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → the top 8 categories by
-  plain spending, then the rest as Other (`others` names them), each `{category, total, count,
+  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → 8 panels at most, Other
+  included: a panel per category with spending (plain spending), or, with more than 8 categories,
+  the top 7 then the rest added up as Other, each `{category, total, count,
   months: [{month, cents, partial}], average (full months; None without one), last (the last
   full month's `{month, cents}`, or None)}`. `largest_income(transactions)` → `{category, cents,
   total, categories}` (the largest income category, all money in, how many categories), or
@@ -355,7 +366,8 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   month would repeat the summary page's totals. `render_spending_by_category_page(pdf, panels,
   period_label)` draws `category_panels` as the app's small multiples, three to a row: each
   panel's category, its last full month against its average in whole dollars ("Oct: $350, 8%
-  above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
+  above its $325 average", "about" within 5%, "No full month yet"; Other doesn't name the
+  categories it adds up), and a
   small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
   year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
   2026)", Transactions); no spending says "No spending in this period.". Both monthly charts
@@ -799,6 +811,9 @@ Details worth knowing:
   `spent`, `remaining` (each also as `*_cents`), `rollover`, `over_budget`, and
   `scheduled_pace`. `PUT /budgets/scheduled-pace` with `{category, scheduled}` sets a category's
   pace (see Scheduled pace) and returns `{category, scheduled}`; invalid input is a 400.
+  `POST /budgets` (`{category, period, amount, rollover?, carried_over?}`) is a 409 when the
+  category already has a budget that month and a 400 when it can't have one (see `BudgetService`);
+  `PATCH /budgets/<id>` is a 400 when it renames the budget into such a category.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -891,7 +906,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_goals.py` | Goals: reached and active from the balances and the order, a loan's goal, the monthly amount, editing, reordering, deleting, validation, and the routes |
-| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
+| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers), the scheduled-pace setting (`PUT /budgets/scheduled-pace`), and which categories can have a budget (`POST` / `PATCH /budgets`) |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors, recurring costs and account pages |
 | `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors, recurring costs |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |

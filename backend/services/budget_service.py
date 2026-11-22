@@ -108,7 +108,11 @@ class BudgetService:
     # MUTATIONS =================================================================
 
     def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
-        """Create a budget allocation. (Over-budget flags are computed when transactions are read.)"""
+        """
+        Create a budget allocation. (Over-budget flags are computed when transactions are read.)
+        Raises ValueError when the category can't have a budget (check_budgetable).
+        """
+        self.check_budgetable(user_id, category)
         budget = BudgetModel(
             user_id=user_id,
             category=category,
@@ -124,11 +128,14 @@ class BudgetService:
     def update_budget(self, budget_id, data):
         """
         Apply field updates to a budget allocation.
-        Returns (updated_budget, error_message).
+        Returns (updated_budget, error_message); raises ValueError when a new category can't have a
+        budget (check_budgetable).
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
             return None, 'Budget not found'
+        if 'category' in data and data['category'] != budget.category:
+            self.check_budgetable(budget.user_id, data['category'])
 
         if 'amount' in data:
             budget.amount = float(data['amount'])
@@ -141,6 +148,19 @@ class BudgetService:
 
         db.session.commit()
         return budget, None
+
+    def check_budgetable(self, user_id, category):
+        """
+        A budget is for spending, and it comes off the income set on the Budgeting page: refuse a
+        category whose money in outweighs its money out, in dollars over all time, or none of whose
+        transactions count as spending (transfers, or on a loan account). A category never used is
+        fine. Raises ValueError with the reason.
+        """
+        totals = db_service.get_category_totals(int(user_id), category)
+        if totals['total'] and not totals['counted']:
+            raise ValueError(f"{category} can't have a budget: none of its transactions count as spending.")
+        if totals['money_in'] > totals['money_out']:
+            raise ValueError(f"{category} can't have a budget: it's mostly money coming in.")
 
     def delete_budget(self, budget_id):
         """
