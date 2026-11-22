@@ -399,6 +399,9 @@ class TestSummaryPage:
         assert [line for line in self.lines(None) if 'income category' in line] == []
 
 
+TEN_YEARS = [f'{2017 + i // 12}-{i % 12 + 1:02d}' for i in range(119)]    # Jan 2017 through Nov 2026
+
+
 def _panel(category, cents, average, last, count, others=None):
     """A summary_data.category_panels panel over Sep–Nov 2026, November so far; `last` is October's cents."""
     months = ['2026-09', '2026-10', '2026-11']
@@ -436,6 +439,14 @@ class TestSpendingByCategoryPage:
             ['Medical', 'Oct: $0, 100% below its $44 average'],
             ['Other', 'Oct: $25, 25% above its $20 average', 'Gifts, Pets'],
         ]
+
+    def test_a_long_history_labels_a_small_chart_by_year_evenly(self):
+        panel = {'category': 'Rent', 'total': 119 * 120000, 'count': 119, 'average': 120000,
+                 'months': [{'month': m, 'cents': 120000, 'partial': m == '2026-11'} for m in TEN_YEARS],
+                 'last': {'month': '2026-10', 'cents': 120000}}
+        chart = self.render([panel]).axes[0]
+        # a 132pt axis fits 4 labels: every other year would be 5, so every third
+        assert [t.get_text() for t in chart.get_xticklabels()] == ['2019', '2022', '2025']
 
     def test_each_chart_has_a_bar_per_month_the_partial_month_lighter_and_its_average_dashed(self):
         groceries = self.render(self.PANELS).axes[1]
@@ -683,13 +694,20 @@ class TestNetPerMonthPages:
             ['Mar 2026 (partial)', '$0.00', '$25.00', '-$25.00', '—'],
         ]
 
-    def test_a_long_run_labels_its_first_month_januaries_and_julys_and_continues_the_table(self):
+    def test_a_long_run_labels_months_evenly_as_many_as_fit_and_continues_the_table(self):
         months = [f'{2024 + i // 12}-{i % 12 + 1:02d}' for i in range(pdf_pages.FIRST_PAGE_ROWS + 1)]
         rows = [{'month': m, 'income': 0, 'expenses': 0, 'net': 0, 'partial': False, 'average': None} for m in months]
         first, second = self.render(rows)
-        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == ['Jan 2024', 'Jul', 'Jan 2025', 'Jul']
+        # 21 months on a 490pt axis: every other month would be 11 labels, too many; every third fits
+        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == [
+            'Jan 2024', 'Apr', 'Jul', 'Oct', 'Jan 2025', 'Apr', 'Jul']
         assert second.texts[0].get_text() == 'Net per month (continued)'
         assert _table_cells(second.axes[0])[1:] == [['Sep 2025', '$0.00', '$0.00', '$0.00', '—']]
+
+    def test_ten_years_are_labelled_by_year(self):
+        rows = [{'month': m, 'income': 0, 'expenses': 0, 'net': 0, 'partial': False, 'average': None} for m in TEN_YEARS]
+        first = self.render(rows)[0]
+        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == [str(year) for year in range(2017, 2027)]
 
 
 class TestAccountPageLayout:

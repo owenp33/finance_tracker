@@ -358,7 +358,13 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
   small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
   year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
-  2026)", Transactions); no spending says "No spending in this period.".
+  2026)", Transactions); no spending says "No spending in this period.". Both monthly charts
+  label months by the app's rule (`_month_ticks`, as `frontend/src/utils/monthTicks.js`): from the
+  axis's width in points (`_axis_points`) and the room a label needs (`NET_LABEL_SLOTS`,
+  `PANEL_LABEL_SLOTS`), the smallest of `MONTH_STEPS` that fits (every 1, 2, 3 or 6 months on the
+  calendar, then every January, then every 2, 3, 5 or 10 years), so labels are evenly spaced and
+  never crowd; the year on the first label and on January, and years alone once labels are a year
+  or more apart. An account page's balance chart keeps matplotlib's `AutoDateLocator`.
   `render_top_vendors_page(pdf, vendors, period_label)` draws `top_vendors` as the app does: a
   bar per vendor, largest on top and filling the width, its name on the left and its total in an
   aligned column at the page margin, then the table (Vendor, Total, Charges, Average charge).

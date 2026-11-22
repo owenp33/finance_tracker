@@ -106,7 +106,10 @@ NET_COLUMNS = [               # (header, share of the table width, alignment)
     ('Net', 0.18, 'right'), ('3-month average', 0.18, 'right'),
 ]
 MIN_MONTH_SLOTS = 6           # a few months still get bars this narrow, centred
-ALL_TICKS_UP_TO = 8           # months; a longer run labels only its first month, Januaries and Julys
+# Months between labels, smallest first, as the app's utils/monthTicks.js: every 1, 2, 3 or 6 months
+# on the calendar (every 3: Jan, Apr, Jul, Oct), then every January, then every 2, 3, 5 or 10 years
+MONTH_STEPS = (1, 2, 3, 6, 12, 24, 36, 60, 120)
+NET_LABEL_SLOTS = (50, 32)    # points a label needs on the net chart (8pt), gap included: "Sep 2026", "2026"
 
 
 def render_net_per_month_pages(pdf, rows, period_label):
@@ -141,7 +144,7 @@ def _net_chart(fig, rows):
             color=INK, linewidth=2, marker='o', markersize=3, label=AVERAGE_LABEL, zorder=3)
 
     _month_xlim(ax, len(rows))
-    positions, labels = _month_ticks([row['month'] for row in rows])
+    positions, labels = _month_ticks([row['month'] for row in rows], _axis_points(ax), NET_LABEL_SLOTS)
     ax.set_xticks(positions, labels=labels)
     _style_axes(ax)
     ax.spines['bottom'].set_visible(False)   # the $0 line is the baseline
@@ -169,16 +172,35 @@ def _month_label(month, with_year=True):
     return date(year, number, 1).strftime('%b %Y' if with_year else '%b')
 
 
-def _month_ticks(months, year_below=False):
+def _on_step(month, step):
+    """Whether a month ('YYYY-MM') is labelled when labels are `step` months apart."""
+    year, number = map(int, month.split('-'))
+    return (number - 1) % step == 0 if step < 12 else number == 1 and year % (step // 12) == 0
+
+
+def _month_ticks(months, width, slots, year_below=False):
     """
-    Where and how to label a run of months ('YYYY-MM'): every month of a short run; of a long
-    one, the first, Januaries and Julys. The year shows on January and the first, on a line of
-    its own under the month for a narrow chart.
+    Where and how to label a run of months ('YYYY-MM') on an axis `width` points wide, by the app's
+    rule (utils/monthTicks.js monthAxis): the smallest of MONTH_STEPS whose labels fit, `slots` being
+    the points a month label and a year label need, so labels are evenly spaced and never crowd. The
+    year shows on the first label and on January (on a line of its own under the month for a narrow
+    chart), and alone once labels are a year or more apart.
     """
-    shown = [i for i, month in enumerate(months)
-             if len(months) <= ALL_TICKS_UP_TO or i == 0 or month.endswith(('-01', '-07'))]
-    labels = [_month_label(months[i], with_year=i == 0 or months[i].endswith('-01')) for i in shown]
+    def fits(step):
+        room = max(1, int(width // slots[0 if step < 12 else 1]))
+        return sum(_on_step(month, step) for month in months) <= room
+
+    step = next((step for step in MONTH_STEPS if fits(step)), MONTH_STEPS[-1])
+    shown = [i for i, month in enumerate(months) if _on_step(month, step)] or list(range(min(len(months), 1)))
+    if step >= 12:
+        return shown, [months[i][:4] for i in shown]
+    labels = [_month_label(months[i], with_year=n == 0 or months[i].endswith('-01')) for n, i in enumerate(shown)]
     return shown, [label.replace(' ', '\n') for label in labels] if year_below else labels
+
+
+def _axis_points(ax):
+    """How wide an axes is on its page, in points."""
+    return ax.get_position().width * ax.figure.get_figwidth() * 72
 
 
 def _month_xlim(ax, count):
@@ -204,6 +226,7 @@ PANEL_ROW_HEIGHT = 0.165      # a caption, its chart and month ticks
 PANEL_CAPTION_LINE = 0.015
 PANEL_CHART_HEIGHT = 0.08     # under the caption's three lines
 SPENDING_TABLE_TOP = 0.36
+PANEL_LABEL_SLOTS = (28, 28)  # points a label needs on a panel (7pt, the year under the month), gap included
 PANEL_CATEGORY_CHARS = 30     # longer text is cut short with an ellipsis
 OTHERS_CHARS = 40
 
@@ -252,7 +275,8 @@ def _category_panel(fig, panel, row, column):
         ax.axhline(panel['average'] / 100, color=INK, linewidth=1, dashes=(4, 3), zorder=3,
                    label=AVERAGE_LINE_LABEL)
     _month_xlim(ax, len(months))
-    positions, labels = _month_ticks([m['month'] for m in months], year_below=True)
+    positions, labels = _month_ticks([m['month'] for m in months], _axis_points(ax), PANEL_LABEL_SLOTS,
+                                     year_below=True)
     ax.set_xticks(positions, labels=labels)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=2))
     _style_axes(ax)
