@@ -11,7 +11,7 @@ import math
 from datetime import date
 from models.recurring import shift_date
 
-PANEL_LIMIT = 8    # categories with a chart of their own; the rest add up as Other
+PANEL_LIMIT = 8    # spending-by-category charts in all, Other included
 VENDOR_LIMIT = 10  # vendors on the top vendors page
 
 
@@ -112,8 +112,9 @@ def monthly_net(transactions, months, partial):
 def category_panels(transactions, months, partial, limit=PANEL_LIMIT):
     """
     Spending by category as the app's Insights Overview draws it (small multiples): a panel per
-    category with spending in `months`, the top `limit` by total, then the rest added up as Other
-    (which names them in `others`). Each: {category, total, count (spending transactions), months:
+    category with spending in `months`, `limit` panels at most: with more categories than that, the
+    top `limit` - 1 by total, then the rest added up as Other. Each: {category, total, count
+    (spending transactions), months:
     [{month, cents, partial}], average (over the full months; None without one), last (the last
     full month's {month, cents}, or None)}. Plain spending: reimbursements aren't taken off, since
     only budgets do that.
@@ -131,29 +132,28 @@ def category_panels(transactions, months, partial, limit=PANEL_LIMIT):
     ranked = sorted(
         ({'category': name, 'total': sum(c['by_month'].values()), **c} for name, c in categories.items()),
         key=lambda c: (-c['total'], c['category'].casefold()))
-    groups = [(c['category'], [c], None) for c in ranked[:limit]]
-    rest = ranked[limit:]
-    if rest:
-        groups.append(('Other', rest, sorted(c['category'] for c in rest)))
+    shown = limit - 1 if len(ranked) > limit else limit
+    groups = [(c['category'], [c]) for c in ranked[:shown]]
+    if len(ranked) > shown:
+        groups.append(('Other', ranked[shown:]))
 
     part_only = set(partial)
     panels = []
-    for name, members, others in groups:
+    for name, members in groups:
         panel_months = [{
             'month': month,
             'cents': sum(c['by_month'].get(month, 0) for c in members),
             'partial': month in part_only,
         } for month in months]
         full = [m for m in panel_months if not m['partial']]
-        panel = {'category': name, **({'others': others} if others else {})}
-        panel.update({
+        panels.append({
+            'category': name,
             'total': sum(c['total'] for c in members),
             'count': sum(c['count'] for c in members),
             'months': panel_months,
             'average': round_half_up(sum(m['cents'] for m in full) / len(full)) if full else None,
             'last': {'month': full[-1]['month'], 'cents': full[-1]['cents']} if full else None,
         })
-        panels.append(panel)
     return panels
 
 

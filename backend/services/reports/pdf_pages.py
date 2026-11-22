@@ -217,24 +217,23 @@ SPENDING_NOTE = ('Per month, each on its own scale; the dashed line is its month
                  'and a month only partly in the period is lighter.')
 NO_SPENDING = 'No spending in this period.'
 AVERAGE_LINE_LABEL = 'Monthly average'
-PANELS_PER_ROW = 3            # summary_data.PANEL_LIMIT (8) plus Other fill three rows
+PANELS_PER_ROW = 3            # summary_data.PANEL_LIMIT (8, Other included) fill three rows
 PANEL_WIDTH = 0.26            # as fractions of the page
 PANEL_GAP = 0.05
 PANEL_AXIS_ROOM = 0.045       # for the dollar ticks, left of each chart
 PANEL_TOP = 0.87              # the first row's caption
 PANEL_ROW_HEIGHT = 0.165      # a caption, its chart and month ticks
 PANEL_CAPTION_LINE = 0.015
-PANEL_CHART_HEIGHT = 0.08     # under the caption's three lines
+PANEL_CHART_HEIGHT = 0.095    # under the caption's two lines
 SPENDING_TABLE_TOP = 0.36
 PANEL_LABEL_SLOTS = (28, 28)  # points a label needs on a panel (7pt, the year under the month), gap included
 PANEL_CATEGORY_CHARS = 30     # longer text is cut short with an ellipsis
-OTHERS_CHARS = 40
 
 
 def render_spending_by_category_page(pdf, panels, period_label):
     """
-    Spending by category: a small chart per panel (summary_data.category_panels: the top 8, then
-    Other), each a bar per month on its own scale (a month only partly in the period lighter)
+    Spending by category: a small chart per panel (summary_data.category_panels: 8 at most, the
+    top 7 then Other), each a bar per month on its own scale (a month only partly in the period lighter)
     with its monthly average dashed and its last full month against that average above it, then
     the numbers as a table.
     """
@@ -253,17 +252,15 @@ def render_spending_by_category_page(pdf, panels, period_label):
 
 
 def _category_panel(fig, panel, row, column):
-    """One panel: its category, its label and (for Other) the categories in it, over its chart."""
+    """One panel: its category and its label, over its chart."""
     left = 0.06 + column * (PANEL_WIDTH + PANEL_GAP)
     top = PANEL_TOP - row * PANEL_ROW_HEIGHT
-    chart_top = top - 3 * PANEL_CAPTION_LINE - 0.005
+    chart_top = top - 2 * PANEL_CAPTION_LINE - 0.005
     ax = fig.add_axes([left + PANEL_AXIS_ROOM, chart_top - PANEL_CHART_HEIGHT,
                        PANEL_WIDTH - PANEL_AXIS_ROOM, PANEL_CHART_HEIGHT])
 
     caption = [(_shorten(panel['category'], PANEL_CATEGORY_CHARS), 9, 'bold', INK),
                (_panel_label(panel), 7.5, 'normal', INK_SECONDARY)]
-    if 'others' in panel:
-        caption.append((_shorten(', '.join(panel['others']), OTHERS_CHARS), 7, 'normal', INK_MUTED))
     for line, (text, size, weight, color) in enumerate(caption):
         ax.text(left, top - line * PANEL_CAPTION_LINE, text, transform=fig.transFigure, va='top',
                 fontsize=size, fontweight=weight, color=color, parse_math=False)

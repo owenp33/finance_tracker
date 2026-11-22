@@ -118,17 +118,23 @@ class TestMonthlyNet:
 
 
 class TestCategoryPanels:
-    """Spending by category as the app's small multiples: the top 8, then Other."""
+    """Spending by category as the app's small multiples: 8 panels at most, the top 7 then Other."""
 
     def panels(self):
         return summary_data.category_panels(SPENDING, ['2026-09', '2026-10', '2026-11'], ['2026-11'])
 
-    def test_the_top_8_categories_by_plain_spending_then_the_rest_as_other(self):
+    def test_8_panels_at_most_other_included_the_top_7_by_plain_spending_then_the_rest_as_other(self):
         assert [(p['category'], p['total'], p['count']) for p in self.panels()] == [
             ('Rent', 270000, 3), ('Groceries', 80000, 3), ('Gas', 24000, 2), ('Fun', 13000, 2),
-            ('Dining', 10000, 2), ('Medical', 8700, 1), ('Subscriptions', 4000, 2), ('Shopping', 3000, 1),
-            ('Other', 4000, 2),
+            ('Dining', 10000, 2), ('Medical', 8700, 1), ('Subscriptions', 4000, 2),
+            ('Other', 7000, 3),
         ]
+
+    def test_8_categories_get_a_panel_each_with_no_other(self):
+        eight = [t for t in SPENDING if t.category not in ('Gifts', 'Pets')]
+        panels = summary_data.category_panels(eight, ['2026-09', '2026-10', '2026-11'], ['2026-11'])
+        assert [p['category'] for p in panels] == [
+            'Rent', 'Groceries', 'Gas', 'Fun', 'Dining', 'Medical', 'Subscriptions', 'Shopping']
 
     def test_each_panel_has_every_month_its_average_over_the_full_months_and_its_last_full_month(self):
         panels = self.panels()
@@ -141,10 +147,10 @@ class TestCategoryPanels:
         assert (groceries['average'], groceries['last']) == (35000, {'month': '2026-10', 'cents': 40000})
         assert ([m['cents'] for m in medical['months']], medical['average']) == ([8700, 0, 0], 4350)
 
-    def test_other_adds_up_the_rest_month_by_month_and_names_them(self):
-        other = self.panels()[8]
-        assert (other['others'], [m['cents'] for m in other['months']]) == (['Gifts', 'Pets'], [1500, 2500, 0])
-        assert 'others' not in self.panels()[0]
+    def test_other_adds_up_the_rest_month_by_month_without_naming_them(self):
+        other = self.panels()[7]
+        assert ([m['cents'] for m in other['months']], other['average']) == ([1500, 5500, 0], 3500)
+        assert 'others' not in other
 
     def test_without_a_full_month_there_is_no_average_or_last_month(self):
         (rent,) = summary_data.category_panels([spend(date(2026, 11, 3), 'Rent', 900)], ['2026-11'], ['2026-11'])

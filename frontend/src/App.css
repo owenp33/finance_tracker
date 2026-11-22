@@ -3785,10 +3785,6 @@ body {
   color: #6b7280;
 }
 
-.category-panels + .chart-note {
-  margin: 14px 0 0;
-}
-
 .category-panels {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -3812,12 +3808,6 @@ body {
 .category-panel figcaption strong {
   font-size: 0.9rem;
   color: #1f2937;
-}
-
-.category-panel-others {
-  flex-basis: 100%;
-  font-size: 0.75rem;
-  color: #6b7280;
 }
 
 /* One colour for every panel; a month only partly in the period lighter */

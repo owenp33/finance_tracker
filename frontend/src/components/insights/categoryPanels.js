@@ -3,7 +3,7 @@ import { categorySpendingByMonth, isSpending } from '../../utils/moneyRules';
 
 // The Overview's spending-by-category small multiples (Phase V, V5b), in cents.
 
-export const PANEL_LIMIT = 8;
+export const PANEL_LIMIT = 8;   // panels in all, Other included
 
 // The months a period covers ('YYYY-MM', in order) and those it only partly covers. It runs from
 // `startDate` (else the first transaction, else this month) through `endDate` (else this month,
@@ -20,11 +20,11 @@ export const periodMonths = (transactions, startDate, endDate, today) => {
   return { months, partial };
 };
 
-// One panel per category with spending in `months` (plain money out, moneyRules
-// categorySpendingByMonth): the top `limit` by total, then the rest added up as Other (which
-// names them in `others`). Each: {category, total, count (spending transactions), months:
-// [{month, cents, partial}], average (over the full months; null without one), last (the last
-// full month's {month, cents}, or null)}.
+// A panel per category with spending in `months` (plain money out, moneyRules
+// categorySpendingByMonth), `limit` panels at most: with more categories than that, the top
+// `limit` - 1 by total, then the rest added up as Other. Each: {category, total, count (spending
+// transactions), months: [{month, cents, partial}], average (over the full months; null without
+// one), last (the last full month's {month, cents}, or null)}.
 export const categoryPanels = (transactions, months, partial, limit = PANEL_LIMIT) => {
   const inPeriod = new Set(months);
   const partOnly = new Set(partial);
@@ -34,11 +34,11 @@ export const categoryPanels = (transactions, months, partial, limit = PANEL_LIMI
   const ranked = Object.entries(categorySpendingByMonth(transactions.filter(t => inPeriod.has(t.date.slice(0, 7)))))
     .map(([category, byMonth]) => ({ category, byMonth, total: months.reduce((sum, m) => sum + (byMonth[m] || 0), 0) }))
     .sort((a, b) => b.total - a.total || a.category.localeCompare(b.category));
-  const rest = ranked.slice(limit);
-  const groups = ranked.slice(0, limit).map(c => ({ category: c.category, members: [c] }));
-  if (rest.length) groups.push({ category: 'Other', members: rest, others: rest.map(c => c.category).sort() });
+  const shown = ranked.length > limit ? limit - 1 : limit;
+  const groups = ranked.slice(0, shown).map(c => ({ category: c.category, members: [c] }));
+  if (ranked.length > shown) groups.push({ category: 'Other', members: ranked.slice(shown) });
 
-  return groups.map(({ category, members, others }) => {
+  return groups.map(({ category, members }) => {
     const panelMonths = months.map(month => ({
       month,
       cents: members.reduce((sum, c) => sum + (c.byMonth[month] || 0), 0),
@@ -48,7 +48,6 @@ export const categoryPanels = (transactions, months, partial, limit = PANEL_LIMI
     const last = full[full.length - 1];
     return {
       category,
-      ...(others && { others }),
       total: members.reduce((sum, c) => sum + c.total, 0),
       count: members.reduce((sum, c) => sum + (counts[c.category] || 0), 0),
       months: panelMonths,

@@ -402,11 +402,11 @@ class TestSummaryPage:
 TEN_YEARS = [f'{2017 + i // 12}-{i % 12 + 1:02d}' for i in range(119)]    # Jan 2017 through Nov 2026
 
 
-def _panel(category, cents, average, last, count, others=None):
+def _panel(category, cents, average, last, count):
     """A summary_data.category_panels panel over Sep–Nov 2026, November so far; `last` is October's cents."""
     months = ['2026-09', '2026-10', '2026-11']
     return {
-        'category': category, **({'others': others} if others else {}), 'total': sum(cents), 'count': count,
+        'category': category, 'total': sum(cents), 'count': count,
         'months': [{'month': m, 'cents': c, 'partial': m == '2026-11'} for m, c in zip(months, cents)],
         'average': average, 'last': None if last is None else {'month': '2026-10', 'cents': last},
     }
@@ -419,7 +419,7 @@ class TestSpendingByCategoryPage:
         _panel('Rent', [90000, 90000, 90000], 90000, 90000, 3),
         _panel('Groceries', [30000, 40000, 10000], 35000, 40000, 3),
         _panel('Medical', [8700, 0, 0], 4350, 0, 1),
-        _panel('Other', [1500, 2500, 0], 2000, 2500, 2, others=['Gifts', 'Pets']),
+        _panel('Other', [1500, 2500, 0], 2000, 2500, 2),
     ]
 
     def render(self, panels):
@@ -437,8 +437,16 @@ class TestSpendingByCategoryPage:
             ['Rent', 'Oct: $900, about its $900 average'],
             ['Groceries', 'Oct: $400, 14% above its $350 average'],
             ['Medical', 'Oct: $0, 100% below its $44 average'],
-            ['Other', 'Oct: $25, 25% above its $20 average', 'Gifts, Pets'],
+            ['Other', 'Oct: $25, 25% above its $20 average'],
         ]
+
+    def test_8_charts_fill_three_rows_of_three_three_and_two(self):
+        page = self.render([_panel(f'Category {i}', [100, 100, 100], 100, 100, 3) for i in range(8)])
+        charts = page.axes[:-1]
+        rows = sorted({round(chart.get_position().y0, 3) for chart in charts}, reverse=True)
+        assert [sum(round(c.get_position().y0, 3) == row for c in charts) for row in rows] == [3, 3, 2]
+        # the table sits under the last row's month labels
+        assert page.axes[-1].get_position().y1 < min(chart.get_position().y0 for chart in charts) - 0.02
 
     def test_a_long_history_labels_a_small_chart_by_year_evenly(self):
         panel = {'category': 'Rent', 'total': 119 * 120000, 'count': 119, 'average': 120000,
@@ -481,13 +489,9 @@ class TestSpendingByCategoryPage:
         ]
 
     def test_long_names_are_shortened(self):
-        page = self.render([
-            _panel('C' * 50, [100, 100, 100], 100, 100, 3),
-            _panel('Other', [100, 100, 100], 100, 100, 12, others=[f'Category {i}' for i in range(12)]),
-        ])
-        category, others = page.axes[0].texts[0].get_text(), page.axes[1].texts[2].get_text()
+        page = self.render([_panel('C' * 50, [100, 100, 100], 100, 100, 3)])
+        category = page.axes[0].texts[0].get_text()
         assert (len(category), category[-1]) == (pdf_pages.PANEL_CATEGORY_CHARS, '…')
-        assert (len(others), others[-1]) == (pdf_pages.OTHERS_CHARS, '…')
         assert _table_cells(page.axes[-1])[1][0] == category
 
     def test_no_spending_says_so(self):

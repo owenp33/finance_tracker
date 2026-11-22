@@ -70,7 +70,7 @@ const panelText = () => [...spending().querySelectorAll('.category-panel')].map(
   [panel.querySelector('strong').textContent, panel.querySelector('.category-panel-label').textContent]);
 const cells = (table) => [...table.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th, td')].map(c => c.textContent));
 
-test('a small chart per category: the top 8, then Other, each with its last full month against its average', () => {
+test('8 small charts at most: the top 7 categories, then Other, each with its last full month against its average', () => {
   renderOverview();
   expect(panelText()).toEqual([
     ['Rent', 'Oct: $900, about its $900 average'],
@@ -80,10 +80,10 @@ test('a small chart per category: the top 8, then Other, each with its last full
     ['Dining', 'Oct: $40, 20% below its $50 average'],
     ['Medical', 'Oct: $0, 100% below its $44 average'],
     ['Subscriptions', 'Oct: $20, about its $20 average'],
-    ['Shopping', 'Oct: $30, 100% above its $15 average'],
-    ['Other', 'Oct: $25, 25% above its $20 average'],
+    ['Other', 'Oct: $55, 57% above its $35 average'],
   ]);
-  expect(within(spending()).getByText('Gifts, Pets')).toBeInTheDocument();
+  // Other doesn't name the categories it adds up
+  expect(within(spending()).queryByText(/Shopping|Gifts|Pets/)).not.toBeInTheDocument();
 });
 
 test("the panels don't take reimbursements off (only budgets do), so no note explains a difference", () => {

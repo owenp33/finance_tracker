@@ -38,7 +38,6 @@ function CategoryMultiples({ panels }) {
                 <figcaption>
                   <strong>{panel.category}</strong>
                   <span className="category-panel-label">{panelLabel(panel)}</span>
-                  {panel.others && <span className="category-panel-others">{panel.others.join(', ')}</span>}
                 </figcaption>
                 <CategoryPanelChart panel={panel} />
               </figure>
