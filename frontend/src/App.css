@@ -3795,11 +3795,11 @@ body {
   margin: 0;
 }
 
+/* The category's name, then its label on the line below */
 .category-panel figcaption {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
+  flex-direction: column;
+  gap: 2px;
   margin-bottom: 4px;
   font-size: 0.8rem;
   color: #4b5563;
