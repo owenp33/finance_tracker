@@ -1,6 +1,8 @@
 // Month labels for chart axes: evenly spaced, and never closer than a label needs, however long
 // the run of months (Phase F wrap-up, backlog #29). Each chart measures its axis (Recharts'
-// ResponsiveContainer onResize) and asks monthAxis which months to label.
+// ResponsiveContainer onResize) and asks monthAxis (or dayAxis) which months to label.
+
+import { dayNumber, monthsFrom, shiftPeriod } from './dates';
 
 const MONTH_LABEL_WIDTH = 64;   // px: "Jan 2026" at 11–12px, plus a gap
 const YEAR_LABEL_WIDTH = 44;    // px: "2026", plus a gap
@@ -35,4 +37,16 @@ export const monthAxis = (months, width) => {
     ticks: ticks.length > 0 ? ticks : months.slice(0, 1),
     format: step < 12 ? monthTick : (month) => month.slice(0, 4),
   };
+};
+
+// The months whose 1st falls after day `from` and on or before day `to` ('YYYY-MM-DD'), as 'YYYY-MM'
+export const monthStartsAfter = (from, to) => monthsFrom(shiftPeriod(from.slice(0, 7), 1), to.slice(0, 7));
+
+// monthAxis for an axis of days (utils/dates.js dayNumber, less `origin`): a tick on the 1st of each
+// labelled month, worded as monthAxis words it
+export const dayAxis = (months, width, origin = 0) => {
+  const { ticks, format } = monthAxis(months, width);
+  const days = ticks.map(month => dayNumber(`${month}-01`) - origin);
+  const monthOn = Object.fromEntries(days.map((day, i) => [day, ticks[i]]));
+  return { ticks: days, format: (day, index) => (monthOn[day] ? format(monthOn[day], index) : '') };
 };

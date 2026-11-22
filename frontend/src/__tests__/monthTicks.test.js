@@ -1,13 +1,5 @@
-import { monthAxis } from '../utils/monthTicks';
-
-// 'YYYY-MM' for every month from `from` through `to`
-const monthsFrom = (from, to) => {
-  const months = [];
-  for (let [y, m] = from.split('-').map(Number); `${y}-${String(m).padStart(2, '0')}` <= to; m === 12 ? (y += 1, m = 1) : (m += 1)) {
-    months.push(`${y}-${String(m).padStart(2, '0')}`);
-  }
-  return months;
-};
+import { monthAxis, dayAxis, monthStartsAfter } from '../utils/monthTicks';
+import { dayNumber, monthsFrom } from '../utils/dates';
 const labels = ({ ticks, format }) => ticks.map((month, i) => format(month, i));
 const TEN_YEARS = monthsFrom('2017-01', '2026-11');
 
@@ -41,5 +33,19 @@ describe('month labels on an axis', () => {
       expect(ticks.length).toBeGreaterThan(0);
       expect(ticks.length * 44).toBeLessThanOrEqual(Math.max(width, 44));
     });
+  });
+});
+
+describe('month labels on an axis of days', () => {
+  test('the months whose 1st falls after one day and on or before another', () => {
+    expect(monthStartsAfter('2026-11-20', '2027-02-18')).toEqual(['2026-12', '2027-01', '2027-02']);
+    expect(monthStartsAfter('2026-11-01', '2026-12-01')).toEqual(['2026-12']);
+    expect(monthStartsAfter('2026-11-20', '2026-11-30')).toEqual([]);
+  });
+
+  test("each label sits on its month's 1st, counted in days from an origin", () => {
+    const { ticks, format } = dayAxis(['2026-12', '2027-01', '2027-02'], 600, dayNumber('2026-12-01'));
+    expect(ticks).toEqual([0, 31, 62]);
+    expect(ticks.map((day, i) => format(day, i))).toEqual(['Dec 2026', 'Jan 2027', 'Feb']);
   });
 });

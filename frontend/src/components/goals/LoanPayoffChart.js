@@ -1,24 +1,13 @@
+import { useState } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts';
 import { formatCents, formatCompactDollars } from '../../utils/money';
 import { monthRangeLabel } from '../../utils/dates';
-import { monthTick } from '../../utils/monthTicks';
+import { monthAxis } from '../../utils/monthTicks';
 
-const MAX_TICKS = 8;
 const EXTRA_COLOR = '#2a78d6';     // --chart-blue
 const REGULAR_COLOR = '#6b7280';   // muted ink: the path to compare against
-
-// The months to label: every month of a short run; of a longer one the first, then the Januaries far
-// enough from it not to collide, every few years so there are at most 8
-const payoffTicks = (months) => {
-  if (months.length <= MAX_TICKS) return months;
-  const gap = months.length / MAX_TICKS;
-  const januaries = months.filter((month, i) => month.endsWith('-01') && i >= gap);
-  const step = Math.ceil((januaries.length + 1) / MAX_TICKS);
-  return [months[0], ...januaries.filter((month, i) => (i + 1) % step === 0)];
-};
-
-// A short run names each month ("Dec", "Jan 2027"); a longer one its first month, then years
-const tickLabel = (short) => (month, index) => (short || index === 0 ? monthTick(month, index) : month.slice(0, 4));
+const Y_AXIS_WIDTH = 56;
+const MARGIN = { top: 18, right: 16, bottom: 0, left: 0 };
 
 // The tooltip: the month and what's owed on each path (`labels.extra` null: one path)
 export function PayoffTip({ active, payload, labels }) {
@@ -47,21 +36,23 @@ const EndLabel = ({ x, y, index, value, last }) => (index === last && value > 0 
 // What's owed on a loan month by month (Phase F, F2g): with the goal's extra (solid) and with the
 // regular payments only (dashed, its end labelled); one solid line when nothing extra goes toward it.
 // `months` are utils/goals.js loanPayoff's (cents); `labels` name the paths for the tooltip;
-// `targetOwed` (cents) draws a dashed goal line when the goal isn't $0 owed.
+// `targetOwed` (cents) draws a dashed goal line when the goal isn't $0 owed. As many month labels as
+// its width fits.
 function LoanPayoffChart({ months, labels, targetOwed }) {
-  const short = months.length <= MAX_TICKS;
+  const [width, setWidth] = useState(null);     // measured by the container
+  const axis = monthAxis(months.map(m => m.month), width === null ? null : width - Y_AXIS_WIDTH - MARGIN.right);
   const last = months.length - 1;
   return (
     <div className="payoff-chart">
-      <ResponsiveContainer width="100%" height={180}>
-        <LineChart data={months} margin={{ top: 18, right: 16, bottom: 0, left: 0 }}>
+      <ResponsiveContainer width="100%" height={180} onResize={setWidth}>
+        <LineChart data={months} margin={MARGIN}>
           <CartesianGrid vertical={false} stroke="#eef0f3" />
           <XAxis
-            dataKey="month" ticks={payoffTicks(months.map(m => m.month))} interval={0}
-            tickFormatter={tickLabel(short)} tick={{ fontSize: 11, fill: '#6b7280' }}
+            dataKey="month" ticks={axis.ticks} interval={0}
+            tickFormatter={axis.format} tick={{ fontSize: 11, fill: '#6b7280' }}
           />
           <YAxis
-            domain={[0, 'auto']} tickCount={4} width={56} tickFormatter={formatCompactDollars}
+            domain={[0, 'auto']} tickCount={4} width={Y_AXIS_WIDTH} tickFormatter={formatCompactDollars}
             tick={{ fontSize: 11, fill: '#6b7280' }}
           />
           <Tooltip content={<PayoffTip labels={labels} />} cursor={{ stroke: '#9ca3af', strokeWidth: 1 }} isAnimationActive={false} />
