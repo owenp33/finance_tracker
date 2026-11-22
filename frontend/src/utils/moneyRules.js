@@ -16,6 +16,24 @@ export const isSpending = (t) => counts(t) && t.amount_cents < 0;
 // spending, as in budgets.
 export const isReimbursement = (t) => isIncome(t) && t.is_reimbursement;
 
+// The categories that can't have a budget, as a Set of names, by the server's rule
+// (BudgetService.check_budgetable): a budget is for spending and comes off the income set on the
+// Budgeting page, so a category whose money in outweighs its money out, in dollars over all of
+// `transactions`, can't have one, nor can one none of whose transactions count (transfers, or on
+// a loan account).
+export const unbudgetableCategories = (transactions) => {
+  const totals = {};
+  transactions.forEach(t => {
+    const category = (totals[t.category] = totals[t.category] || { moneyIn: 0, moneyOut: 0, counted: 0 });
+    if (!counts(t)) return;
+    category.counted += 1;
+    if (t.amount_cents > 0) category.moneyIn += t.amount_cents;
+    else category.moneyOut -= t.amount_cents;
+  });
+  return new Set(Object.keys(totals).filter(name =>
+    totals[name].counted === 0 || totals[name].moneyIn > totals[name].moneyOut));
+};
+
 // Income, expenses (spending as a positive amount) and net of the transactions dated `from`
 // through `to` (YYYY-MM-DD, both included)
 export const cashFlow = (transactions, from, to) => {

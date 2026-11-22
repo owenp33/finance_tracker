@@ -17,6 +17,7 @@ import { useMonthProjection } from '../hooks/useProjection';
 import { todayISO, monthEndLabel } from '../utils/dates';
 import { formatCents } from '../utils/money';
 import { rowPace, percentUsed, paceLabel } from '../utils/budgetPace';
+import { unbudgetableCategories } from '../utils/moneyRules';
 
 const getCurrentPeriod = () => {
   const now = new Date();
@@ -94,10 +95,13 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
   const monthEnd = period === today.slice(0, 7) ? monthEndLabel(period) : null;
   const paces = progress.map(item => rowPace(item, { period, today, transactions, occurrences }));
 
+  // The Add Category form suggests the categories used, but not those already budgeted or those
+  // the server refuses (mostly money coming in, or no transactions that count as spending)
   const budgetedCategories = new Set(progress.map(p => p.category));
+  const refused = unbudgetableCategories(transactions);
   const suggestedCategories = [
     ...new Set(transactions.map(t => t.category).filter(Boolean)),
-  ].filter(c => !budgetedCategories.has(c));
+  ].filter(c => !budgetedCategories.has(c) && !refused.has(c));
 
   // Pre-filter transactions by period and group by category (ISP: BudgetRow only gets what it needs)
   const txsByCategory = useMemo(() => {

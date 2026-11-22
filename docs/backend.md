@@ -269,7 +269,9 @@ can't have one ("Income can't have a budget: it's mostly money coming in."), nor
 whose transactions count as spending, transfers or on a loan account ("Transfer can't have a
 budget: none of its transactions count as spending."); a category never used is fine. The
 frontend's auto-rollover makes next month's copies through the same endpoint, so a budget made
-before the rule in such a category stops rolling over (the rollover fails quietly). Budget changes don't touch
+before the rule in such a category stops rolling over (the rollover fails quietly). The Add
+Category form leaves these categories out of its suggestions by the same rule (the browser's
+`utils/moneyRules.js` `unbudgetableCategories`); one typed in gets the server's message. Budget changes don't touch
 transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
 so they follow every budget change on their own.
 

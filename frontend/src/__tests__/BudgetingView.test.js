@@ -331,3 +331,24 @@ describe("the active goal's saving", () => {
     expect(unallocated()).toEqual(['$2600.00', 'remaining to allocate']);
   });
 });
+
+describe('adding a category', () => {
+  const tx = (id, category, amount, flags) => ({
+    id, account_id: 1, date: '2026-10-05', vendor: `${category} shop`, category, notes: '', amount,
+    amount_cents: Math.round(amount * 100), recurring_id: null, is_transfer: false, is_reimbursement: false, ...flags,
+  });
+  const suggestions = () => [...document.querySelectorAll('#budget-category-suggestions option')].map(o => o.value);
+
+  test("suggests the categories you spend in, not those mostly money coming in, only transfers, or already budgeted", async () => {
+    await renderView([
+      tx(1, 'Income', 3000), tx(2, 'Income', -83.95),
+      tx(3, 'Utility', 40), tx(4, 'Utility', -150),
+      tx(5, 'Transfer', -500, { is_transfer: true }),
+      tx(6, 'Groceries', -50),                     // already budgeted in October
+      tx(7, 'Pets', -15),
+      tx(8, 'Reward', 25),
+    ]);
+    await user.click(screen.getByRole('button', { name: '+ Add Category' }));
+    expect(suggestions()).toEqual(['Utility', 'Pets']);
+  });
+});
