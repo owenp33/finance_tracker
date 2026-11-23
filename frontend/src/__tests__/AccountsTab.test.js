@@ -2,6 +2,7 @@ import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InsightsView from '../components/InsightsView';
 import { BalanceTooltip } from '../components/insights/charts/BalanceChart';
+import { GoalPlanTip } from '../components/insights/charts/GoalPlanChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBalances } from '../api/balances';
 import { getProjection } from '../api/recurring';
@@ -360,6 +361,103 @@ describe('goals on the chart', () => {
     await pick("Owen's Checking");
     await waitFor(() => expect(note().textContent).toBe('Goal $5,000.00: holds through Feb 6, 2027'));
     expect(note()).not.toHaveClass('warning');
+  });
+});
+
+describe('the goal plan', () => {
+  // Owen's three goals: Checking at least $100 (reached), Savings to $7,500, then the Student Loan
+  // (6.70% a year, charged monthly; ASPIRE pays $75.00 a month) to $0. $2,600.00 of scheduled income
+  // a month over the next 90 days, nothing spent: $2,600.00 of room a month
+  const LOAN = entry(16, 'Student Loan', -7521700, []);
+  const LOAN_ACCOUNT = { id: 16, account_id: 'sl', account_name: 'Student Loan', balance: -75217, kind: 'loan', apr: 6.7,
+                         interest_frequency: 'monthly' };
+  const ASPIRE = { id: 5, account_id: 6, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1, loan_account_id: 16 };
+  const PAYCHECKS = ['2026-12-01', '2027-01-01', '2027-02-01'].map(date => ({
+    recurring_id: 13, account_id: 7, date, vendor: 'Paycheck', category: 'Income', amount: 2600,
+  }));
+  const goalRow = (id, position, accountId, name, kind, balanceCents, targetCents) => ({
+    id, position, account_id: accountId, account_name: name, account_kind: kind, balance_cents: balanceCents,
+    target_cents: targetCents, remaining_cents: Math.max(targetCents - balanceCents, 0), monthly_cents: null,
+    reached: balanceCents >= targetCents, active: false,
+  });
+  const GOALS = [
+    goalRow(1, 1, 6, "Owen's Checking", 'bank', 727413, 10000),
+    goalRow(2, 2, 7, "Owen's Savings", 'bank', 300000, 750000),
+    goalRow(3, 3, 16, 'Student Loan', 'loan', -7521700, 0),
+  ];
+  const open = async (projection = PAYCHECKS) => {
+    getBalances.mockResolvedValue([...BALANCES, LOAN]);
+    getProjection.mockResolvedValue(projection);
+    getGoals.mockResolvedValue(GOALS);
+    await openTab({ accounts: [...ACCOUNTS, LOAN_ACCOUNT], recurring: [ASPIRE] });
+  };
+  const card = () => screen.getByRole('heading', { name: 'Goal plan' }).closest('section');
+  const titles = () => [...card().querySelectorAll('.goal-plan-panel figcaption')].map(f => f.textContent);
+
+  test('a card under the balance chart: a reached goal in a line, then a chart for each goal not reached, titled with where it\'s headed', async () => {
+    await open();
+    await waitFor(() => expect(titles()).toEqual([
+      "2. Owen's Savings · $3,000 → $7,500 by Jan 2027 · $2,600.00 a month",
+      '3. Student Loan · $75,217 owed → paid off by Aug 2029 · $2,600.00 extra a month from Feb 2027',
+    ]));
+    expect(within(card()).getByText("Goals run in order; each one's monthly amount moves to the next once it's reached.")).toBeInTheDocument();
+    expect(card().querySelector('.goal-plan-held').textContent).toBe("1. Owen's Checking · Reached: keep it at $100.00 or more");
+    expect([...card().querySelectorAll('.goal-plan-handoff')].map(e => e.textContent)).toEqual([
+      "Jan 2027: Owen's Savings reached → Student Loan",
+    ]);
+    const [savings, loan] = card().querySelectorAll('.goal-plan-panel');
+    // Each its own line, the hand-off marked on both; a dashed goal line on Savings (the loan's goal is $0 owed)
+    for (const panel of [savings, loan]) {
+      expect(panel.querySelector('.goal-plan-line')).not.toBeNull();
+      expect(panel.querySelectorAll('.goal-plan-handoff-line')).toHaveLength(1);
+    }
+    expect(savings.querySelector('.goal-plan-target')).not.toBeNull();
+    expect(loan.querySelector('.goal-plan-target')).toBeNull();
+  });
+
+  test('"View as table" lists each month: each goal\'s balance (what the loan owes) and where the money goes', async () => {
+    await open();
+    await waitFor(() => expect(titles()).toHaveLength(2));
+    await user.click(within(card()).getByText('View as table'));
+    const rows = cells(within(card()).getByRole('table', { name: 'Goal plan, month by month' }));
+    expect(rows.slice(0, 5)).toEqual([
+      ['Month', "Owen's Savings", 'Student Loan (owed)', 'Goes to'],
+      ['Nov 2026 (now)', '$3,000.00', '$75,217.00', '—'],
+      ['Dec 2026', '$5,600.00', '$75,561.96', "Owen's Savings, $2,600.00"],
+      ["Jan 2027 (Owen's Savings reached)", '$7,500.00', '$75,908.85', "Owen's Savings, $2,600.00"],
+      ['Feb 2027', '$7,500.00', '$73,657.67', 'Student Loan, $2,600.00'],
+    ]);
+    expect(rows).toHaveLength(35);
+    expect(rows[34]).toEqual(['Aug 2029 (Student Loan paid off)', '$7,500.00', '$0.00', 'Student Loan, $2,600.00']);
+  });
+
+  test('a goal not reached at this pace says so, and the chart runs 10 years', async () => {
+    await open([]);                // no income scheduled: no room
+    await waitFor(() => expect(titles()).toEqual([
+      "2. Owen's Savings · $3,000 → $7,500 · Nothing goes toward it · not reached at this pace",
+      '3. Student Loan · $75,217 owed → paid off · Nothing goes toward it · not reached at this pace',
+    ]));
+    expect(card().querySelectorAll('.goal-plan-handoff')).toHaveLength(0);
+    await user.click(within(card()).getByText('View as table'));
+    expect(cells(within(card()).getByRole('table', { name: 'Goal plan, month by month' }))).toHaveLength(122);
+  });
+
+  test('without goals, the card says where to set them', async () => {
+    await openTab();
+    await waitFor(() => expect(within(card()).getByText('No goals yet. Set them in Budgeting, under Goals.')).toBeInTheDocument());
+    expect(card().querySelector('.goal-plan-panel')).toBeNull();
+  });
+
+  test("a month's tooltip gives the goal's balance or what's owed, and what goes toward it", () => {
+    const tip = (props) => render(<GoalPlanTip active {...props} />).container.textContent;
+    const point = (month, cents, funded) => [{ payload: { month, cents, funded } }];
+    expect(tip({ payload: point('2027-02', 7365767, 260000), owed: true, reachMonth: '2029-08' }))
+      .toBe('Feb 2027$73,657.67 owed$2,600.00 extra this month');
+    expect(tip({ payload: point('2026-12', 560000, 260000), owed: false, reachMonth: '2027-01' }))
+      .toBe('Dec 2026$5,600.00$2,600.00 toward it this month');
+    expect(tip({ payload: point('2027-03', 750000, 0), owed: false, reachMonth: '2027-01' })).toBe('Mar 2027$7,500.00Reached');
+    expect(tip({ payload: point('2029-09', 0, 0), owed: true, reachMonth: '2029-08' })).toBe('Sep 2029$0.00 owedPaid off');
+    expect(tip({ payload: point('2026-12', 7556196, 0), owed: true, reachMonth: '2029-08' })).toBe('Dec 2026$75,561.96 owed');
   });
 });
 

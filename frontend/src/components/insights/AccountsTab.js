@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react';
 import BalanceChart from './charts/BalanceChart';
 import ForecastAssumptions from './ForecastAssumptions';
+import GoalPlan from './GoalPlan';
 import ViewAsTable from '../ViewAsTable';
 import { formatDate } from '../transactions/utils';
 import { useBalances } from '../../hooks/useBalances';
 import { useProjection } from '../../hooks/useProjection';
 import { useGoals } from '../../hooks/useGoals';
-import { forecastAgainstGoal } from '../../utils/goals';
+import { forecastAgainstGoal, planGoals, goalTimeline } from '../../utils/goals';
 import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
@@ -49,7 +50,8 @@ const changeLabel = (change, from) => {
 // /api/accounts) give the current balances each history should end at (the plan's check), which
 // accounts are loans (F2a), and each account's interest rate and how often it hits; `recurring`
 // (every template) tells the forecast which series have ended, and which pay down a loan. An
-// account's goals (F2e) are dashed lines, with a note on where the forecast takes them.
+// account's goals (F2e) are dashed lines, with a note on where the forecast takes them. Under it, the
+// goal plan (GoalPlan): every goal's plan, as on Budgeting, over time.
 function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
@@ -101,79 +103,86 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
 
   const views = [{ key: NET, label: 'Net position' }, ...balances.map(b => ({ key: b.id, label: b.account_name }))];
 
+  // The goals' plan, worked out as on Budgeting (planGoals, from the same 90-day projection), over time
+  const { plans } = planGoals({ goals, accounts, transactions, recurring, occurrences, today });
+  const timeline = goals ? goalTimeline(goals, plans, { accounts, recurring, today }) : null;
+
   return (
-    <section className="chart-container balance-over-time">
-      <div className="balance-header">
-        <h3>Balance over time</h3>
-        <div className="timeline-toggle" role="group" aria-label="Range">
-          {RANGES.map(key => (
+    <div className="accounts-tab">
+      <section className="chart-container balance-over-time">
+        <div className="balance-header">
+          <h3>Balance over time</h3>
+          <div className="timeline-toggle" role="group" aria-label="Range">
+            {RANGES.map(key => (
+              <button
+                key={key} type="button" aria-pressed={range === key}
+                className={`timeline-toggle-btn${range === key ? ' active' : ''}`} onClick={() => setRange(key)}
+              >
+                {key}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="timeline-toggle balance-views" role="group" aria-label="Account">
+          {views.map(({ key, label: name }) => (
             <button
-              key={key} type="button" aria-pressed={range === key}
-              className={`timeline-toggle-btn${range === key ? ' active' : ''}`} onClick={() => setRange(key)}
+              key={key} type="button" aria-pressed={view === key || (key === NET && !selected)}
+              className={`timeline-toggle-btn${view === key || (key === NET && !selected) ? ' active' : ''}`}
+              onClick={() => setView(key)}
             >
-              {key}
+              {name}
             </button>
           ))}
         </div>
-      </div>
-      <div className="timeline-toggle balance-views" role="group" aria-label="Account">
-        {views.map(({ key, label: name }) => (
-          <button
-            key={key} type="button" aria-pressed={view === key || (key === NET && !selected)}
-            className={`timeline-toggle-btn${view === key || (key === NET && !selected) ? ' active' : ''}`}
-            onClick={() => setView(key)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
 
-      <div className="balance-now">{formatCents(series.closing_cents)}</div>
-      <div className="balance-change">{changeLabel(change, from)}</div>
-      {forecast.length > 0 && (
-        <p className="balance-forecast-line">
-          {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}`}
-        </p>
-      )}
-      {accountGoals.map(goal => {
-        const { text, warning } = goalNote(goal, forecast, forecastEnd);
-        return <p key={goal.id} className={`balance-goal-note${warning ? ' warning' : ''}`}>{text}</p>;
-      })}
-      {mismatch && (
-        <p className="balance-mismatch">
-          {`This history ends at ${formatCents(series.closing_cents)}, but `
-            + `${selected ? "the account's balance is" : 'your accounts add up to'} ${formatCents(currentCents)}.`}
-        </p>
-      )}
+        <div className="balance-now">{formatCents(series.closing_cents)}</div>
+        <div className="balance-change">{changeLabel(change, from)}</div>
+        {forecast.length > 0 && (
+          <p className="balance-forecast-line">
+            {`Forecast for ${formatDate(forecastEnd, true)}: ${formatCents(forecast[forecast.length - 1].cents)}`}
+          </p>
+        )}
+        {accountGoals.map(goal => {
+          const { text, warning } = goalNote(goal, forecast, forecastEnd);
+          return <p key={goal.id} className={`balance-goal-note${warning ? ' warning' : ''}`}>{text}</p>;
+        })}
+        {mismatch && (
+          <p className="balance-mismatch">
+            {`This history ends at ${formatCents(series.closing_cents)}, but `
+              + `${selected ? "the account's balance is" : 'your accounts add up to'} ${formatCents(currentCents)}.`}
+          </p>
+        )}
 
-      <BalanceChart
-        key={`${view}-${range}`} points={points} forecast={forecast} today={today}
-        transactions={transactions} accountIds={shownIds} goals={accountGoals}
-      />
-      {forecast.length > 0 && (
-        <ul className="timeline-legend">
-          <li><span className="balance-key" aria-hidden="true" />Balance</li>
-          <li>
-            <span className="balance-key forecast" aria-hidden="true" />
-            Forecast: scheduled items, average spending (over the last 90 days), and any interest
-          </li>
-        </ul>
-      )}
-      {forecast.length > 0 && (
-        <ForecastAssumptions
-          transactions={transactions} recurring={recurring} occurrences={occurrences}
-          accountIds={shownIds} today={today} label={label} accounts={interestAccounts}
+        <BalanceChart
+          key={`${view}-${range}`} points={points} forecast={forecast} today={today}
+          transactions={transactions} accountIds={shownIds} goals={accountGoals}
         />
-      )}
-      <ViewAsTable
-        caption={`Balance by day, ${label}`}
-        columns={['Date', 'End-of-day balance', 'Change that day']}
-        rows={days.map(day => [
-          `${formatDate(day.date, true)}${day.kind === 'forecast' ? ' (forecast)' : ''}`,
-          formatCents(day.cents), formatSignedCents(day.change),
-        ])}
-      />
-    </section>
+        {forecast.length > 0 && (
+          <ul className="timeline-legend">
+            <li><span className="balance-key" aria-hidden="true" />Balance</li>
+            <li>
+              <span className="balance-key forecast" aria-hidden="true" />
+              Forecast: scheduled items, average spending (over the last 90 days), and any interest
+            </li>
+          </ul>
+        )}
+        {forecast.length > 0 && (
+          <ForecastAssumptions
+            transactions={transactions} recurring={recurring} occurrences={occurrences}
+            accountIds={shownIds} today={today} label={label} accounts={interestAccounts}
+          />
+        )}
+        <ViewAsTable
+          caption={`Balance by day, ${label}`}
+          columns={['Date', 'End-of-day balance', 'Change that day']}
+          rows={days.map(day => [
+            `${formatDate(day.date, true)}${day.kind === 'forecast' ? ' (forecast)' : ''}`,
+            formatCents(day.cents), formatSignedCents(day.change),
+          ])}
+        />
+      </section>
+      <GoalPlan goals={goals} plans={plans} timeline={timeline} />
+    </div>
   );
 }
 

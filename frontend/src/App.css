@@ -3446,10 +3446,38 @@ body {
 }
 
 /* ── Insights → Recurring (Phase V, V3) ───────────────────────────────────── */
-.recurring-costs {
+.recurring-costs,
+.accounts-tab {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Insights → Accounts' goal plan (Phase F): a reached goal in a line, then a small chart per goal on
+   one month axis, each titled with where it's headed */
+.goal-plan-held,
+.goal-plan-handoff {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.goal-plan-panel {
+  margin: 16px 0 0;
+}
+
+.goal-plan-panel figcaption {
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.goal-plan-panel figcaption strong {
+  color: #1f2937;
+}
+
+.goal-plan .view-as-table {
+  margin-top: 12px;
 }
 
 .recurring-costs-headline h3 {
