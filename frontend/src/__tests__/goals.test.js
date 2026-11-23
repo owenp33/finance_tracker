@@ -1,6 +1,6 @@
 import {
-  GOAL_MONTHS_CAP, PAYOFF_SHOWN_MONTHS, monthlyRoom, regularPayments, goalPlan, loanPayoff, activeSaving, movedThisMonth,
-  forecastAgainstGoal, goalDips,
+  GOAL_MONTHS_CAP, PAYOFF_SHOWN_MONTHS, monthlyRoom, regularPayments, goalPlan, loanPayoff, planGoals, goalTimeline,
+  activeSaving, movedThisMonth, forecastAgainstGoal, goalDips,
 } from '../utils/goals';
 
 const TODAY = '2026-11-16';     // the next 90 days: through Feb 14, 2027
@@ -123,6 +123,96 @@ describe('goal plan', () => {
       expect(PAYOFF_SHOWN_MONTHS).toBe(120);
       expect(result.months).toHaveLength(121);
       expect(result.months[120]).toEqual({ month: '2036-11', withExtra: 13394893, without: 13394893 });
+    });
+  });
+
+  describe('the plan, as Budgeting and Insights both work it out', () => {
+    // $2,600.00 of scheduled income in Savings each month over the next 90 days: $2,600.00 of room a month
+    const occurrences = ['2026-12-01', '2027-01-01', '2027-02-01'].map(date => ({
+      recurring_id: 13, account_id: 7, date, vendor: 'Paycheck', category: 'Income', amount: 2600,
+    }));
+    const inputs = { accounts: ACCOUNTS, transactions: [], recurring: RECURRING, occurrences, today: TODAY };
+
+    test("the room, each goal's plan, and each loan goal's payoff", () => {
+      const result = planGoals({ goals: [SAVINGS_GOAL, LOAN_GOAL], ...inputs });
+      const plans = plan([SAVINGS_GOAL, LOAN_GOAL], 260000);
+      expect(result).toEqual({
+        room: 260000, plans,
+        payoffs: [null, loanPayoff(LOAN_GOAL, plans[1], { accounts: ACCOUNTS, recurring: RECURRING, today: TODAY })],
+      });
+    });
+
+    test('before the goals load, the room alone', () => {
+      expect(planGoals({ goals: null, ...inputs })).toEqual({ room: 260000, plans: [], payoffs: [] });
+    });
+  });
+
+  describe("the plan's timeline, for Insights", () => {
+    const timeline = (goals, roomCents, accounts = ACCOUNTS) => goalTimeline(
+      goals, goalPlan(goals, { roomCents, accounts, recurring: RECURRING, today: TODAY }),
+      { accounts, recurring: RECURRING, today: TODAY });
+
+    test("each goal's path from now until the last is reached, where the money goes each month, and the hand-off", () => {
+      const result = timeline([SAVINGS_GOAL, LOAN_GOAL], 260000);
+      // Savings is reached in January (2 months), the loan 33 months from now (Aug 2029)
+      expect(result.months).toHaveLength(34);
+      expect([result.months[0], result.months[33]]).toEqual(['2026-11', '2029-08']);
+      const [savings, loan] = result.goals;
+      // $3,000.00, then $2,600.00 a month up to its $7,500.00 target, where it stays
+      expect(savings).toMatchObject({ id: 1, owed: false, target: 750000 });
+      expect(savings.path).toEqual([300000, 560000, 750000, ...Array(31).fill(750000)]);
+      // What the loan owes: its interest and $75.00 payments, then the $2,600.00 too from February (as its payoff chart)
+      expect(loan).toMatchObject({ id: 2, owed: true, target: 0 });
+      expect(loan.path.slice(0, 4)).toEqual([7521700, 7556196, 7590885, 7365767]);
+      expect(loan.path[33]).toBe(0);
+      const [, loanPlan] = plan([SAVINGS_GOAL, LOAN_GOAL], 260000);
+      expect(loan.path).toEqual(loanPayoff(LOAN_GOAL, loanPlan, { accounts: ACCOUNTS, recurring: RECURRING, today: TODAY })
+        .months.map(m => m.withExtra));
+      // Nothing this month; Savings in December and January, then the loan
+      expect(result.funding).toEqual([
+        null, { id: 1, cents: 260000 }, { id: 1, cents: 260000 }, ...Array(31).fill({ id: 2, cents: 260000 }),
+      ]);
+      expect(result.handoffs).toEqual([{ month: '2027-01', from: 1, to: 2 }]);
+    });
+
+    test("a loan's own amount stops once its target is reached; its regular payments go on, and the next goal takes over", () => {
+      // $1,000.00 owed, no interest, a target of $500.00 owed, $75.00 a month from its series plus $100.00 of its
+      // own: reached in 3 months (Feb 2027). Then Savings gets the $2,600.00: $4,500.00 to go, 2 more months
+      const accounts = [{ id: 7, kind: 'bank', apr: null }, { id: 16, kind: 'loan', apr: null }];
+      const small = { ...LOAN_GOAL, balance_cents: -100000, target_cents: -50000, remaining_cents: 50000, monthly_cents: 10000 };
+      const result = timeline([small, SAVINGS_GOAL], 260000, accounts);
+      expect(result.months).toEqual(['2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04']);
+      expect(result.goals.map(g => [g.id, g.target, g.path])).toEqual([
+        [2, 50000, [100000, 82500, 65000, 47500, 40000, 32500]],
+        [1, 750000, [300000, 300000, 300000, 300000, 560000, 750000]],
+      ]);
+      expect(result.funding).toEqual([
+        null, { id: 2, cents: 10000 }, { id: 2, cents: 10000 }, { id: 2, cents: 10000 },
+        { id: 1, cents: 260000 }, { id: 1, cents: 260000 },
+      ]);
+      expect(result.handoffs).toEqual([{ month: '2027-02', from: 2, to: 1 }]);
+    });
+
+    test('a reached goal has no path and hands nothing off; the next goal starts now', () => {
+      const held = { ...SAVINGS_GOAL, balance_cents: 800000, remaining_cents: 0, reached: true };
+      const result = timeline([held, LOAN_GOAL], 260000);
+      expect(result.goals[0]).toMatchObject({ id: 1, path: null });
+      expect(result.funding.slice(0, 3)).toEqual([null, { id: 2, cents: 260000 }, { id: 2, cents: 260000 }]);
+      expect(result.handoffs).toEqual([]);
+      // Every goal reached: nothing to draw
+      expect(timeline([held], 260000)).toEqual({
+        months: [], funding: [], handoffs: [], goals: [{ id: 1, goal: held, owed: false, target: 750000, path: null }],
+      });
+    });
+
+    test('a goal not reached at this pace runs 10 years, with nothing going toward it', () => {
+      const result = timeline([SAVINGS_GOAL, LOAN_GOAL], -3000);
+      expect(result.months).toHaveLength(PAYOFF_SHOWN_MONTHS + 1);
+      const [savings, loan] = result.goals;
+      expect(savings.path).toEqual(Array(121).fill(300000));
+      expect(loan.path[120]).toBe(13394893);           // the regular payments alone, as its payoff chart
+      expect(result.funding).toEqual(Array(121).fill(null));
+      expect(result.handoffs).toEqual([]);
     });
   });
 });

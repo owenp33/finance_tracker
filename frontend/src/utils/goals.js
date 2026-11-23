@@ -45,10 +45,10 @@ export const PAYOFF_SHOWN_MONTHS = 120;
 
 // A loan walked month by month from next month, as the server books it: interest on the 1st of each
 // of its periods (the rate's share of what's owed), then its regular payments, plus `extraCents` from
-// month `startsIn + 1` (never when `startsIn` is null). Each month's {month ('YYYY-MM'), cents (the
-// balance at its end, negative while owed), interest}, for `months` months or until the balance
-// reaches `stopAt`.
-const loanWalk = ({ startCents, account, regular, extraCents, startsIn, today, months, stopAt = null }) => {
+// month `startsIn + 1` (never when `startsIn` is null) through month `extraUntil` (to the end when
+// null). Each month's {month ('YYYY-MM'), cents (the balance at its end, negative while owed),
+// interest}, for `months` months or until the balance reaches `stopAt`.
+const loanWalk = ({ startCents, account, regular, extraCents, startsIn, extraUntil = null, today, months, stopAt = null }) => {
   const bps = account?.apr != null ? Math.round(account.apr * 100) : 0;
   const period = INTEREST_MONTHS[account?.interest_frequency ?? 'monthly'];
   const thisMonth = today.slice(0, 7);
@@ -60,7 +60,8 @@ const loanWalk = ({ startCents, account, regular, extraCents, startsIn, today, m
     const interest = bps && (calendarMonth - 1) % period === 0
       ? Math.floor((Math.max(-cents, 0) * bps * period + 60000) / 120000)
       : 0;
-    cents += regular - interest + (startsIn !== null && m > startsIn ? extraCents : 0);
+    const extra = startsIn !== null && m > startsIn && (extraUntil === null || m <= extraUntil);
+    cents += regular - interest + (extra ? extraCents : 0);
     path.push({ month: shiftPeriod(thisMonth, m), cents, interest });
     if (stopAt !== null && cents >= stopAt) break;
   }
@@ -141,6 +142,65 @@ export const loanPayoff = (goal, plan, { accounts, recurring, today }) => {
     withoutReachMonth: withoutMonths === null ? null : shiftPeriod(thisMonth, withoutMonths),
     growing: without.length > 0 && owed(without[without.length - 1].cents) > owed(goal.balance_cents),
   };
+};
+
+// The goals' plan as the Budgeting page and Insights → Accounts both show it: the room each month
+// (monthlyRoom, over every account in `accounts`), each goal's plan (goalPlan) and each loan goal's
+// payoff (loanPayoff; null for any other goal and for a loan goal already reached). Before the goals
+// load (`goals` null), the room alone.
+export const planGoals = ({ goals, accounts, transactions, recurring, occurrences, today }) => {
+  const room = monthlyRoom(transactions, recurring, occurrences, accounts.map(a => a.id), today);
+  if (!goals) return { room, plans: [], payoffs: [] };
+  const plans = goalPlan(goals, { roomCents: room, accounts, recurring, today });
+  const payoffs = goals.map((goal, i) => (goal.account_kind === 'loan' && plans[i].status !== 'held'
+    ? loanPayoff(goal, plans[i], { accounts, recurring, today })
+    : null));
+  return { room, plans, payoffs };
+};
+
+// The plan over time, for Insights → Accounts' goal plan chart. `plans` are goalPlan's, in the goals'
+// order. Returns:
+// - `months` ('YYYY-MM'): this month through the month the last goal is reached, or at least
+//   PAYOFF_SHOWN_MONTHS on when one isn't reached at this pace; none when every goal is reached
+// - `funding`: per month, the goal the monthly amount goes to and how much ({id, cents}); null this
+//   month (the plan starts next month) and when nothing goes toward one
+// - `goals`: each goal's {id, goal, owed (a loan, drawn as what's owed), target, path (cents per
+//   month; null for a reached goal)}. A savings-like goal holds until its turn, then gains its
+//   monthly amount up to its target, where it stays; a loan is walked as on its payoff chart, its own
+//   amount stopping once it's reached while its regular payments go on
+// - `handoffs`: the months a goal is reached and the next takes over ({month, from, to})
+export const goalTimeline = (goals, plans, { accounts, recurring, today }) => {
+  const thisMonth = today.slice(0, 7);
+  const open = plans.filter(plan => plan.status !== 'held');
+  const known = open.filter(plan => plan.months !== null).map(plan => plan.months);
+  const last = open.length === 0 ? null : Math.max(...known, known.length < open.length ? PAYOFF_SHOWN_MONTHS : 0);
+  const months = last === null ? [] : Array.from({ length: last + 1 }, (_, m) => shiftPeriod(thisMonth, m));
+
+  const lines = goals.map((goal, i) => {
+    const plan = plans[i];
+    const owed = goal.account_kind === 'loan';
+    const line = { id: goal.id, goal, owed, target: owed ? Math.max(-goal.target_cents, 0) : goal.target_cents, path: null };
+    if (plan.status === 'held' || months.length === 0) return line;
+    if (!owed) {
+      const gain = (m) => (plan.startsIn === null ? 0 : plan.monthlyCents * Math.max(m - plan.startsIn, 0));
+      return { ...line, path: months.map((_, m) => Math.min(goal.balance_cents + gain(m), goal.target_cents)) };
+    }
+    const walk = loanWalk({
+      startCents: goal.balance_cents, account: accounts.find(a => a.id === goal.account_id),
+      regular: regularPayments(goal.account_id, recurring), extraCents: plan.monthlyCents, startsIn: plan.startsIn,
+      extraUntil: plan.months, today, months: months.length - 1,
+    });
+    return { ...line, path: [goal.balance_cents, ...walk.map(point => point.cents)].map(cents => Math.max(-cents, 0)) };
+  });
+
+  const funding = months.map((_, m) => {
+    const plan = m > 0 && open.find(p => p.startsIn !== null && m > p.startsIn && (p.months === null || m <= p.months));
+    return plan && plan.monthlyCents > 0 ? { id: plan.id, cents: plan.monthlyCents } : null;
+  });
+  const handoffs = open.slice(0, -1).flatMap((plan, i) => (plan.reachMonth
+    ? [{ month: plan.reachMonth, from: plan.id, to: open[i + 1].id }]
+    : []));
+  return { months, funding, goals: lines, handoffs };
 };
 
 // The active goal (the first not reached) with its plan, or null when there's none
