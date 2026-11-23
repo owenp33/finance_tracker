@@ -8,8 +8,7 @@ const LINE_COLOR = '#2a78d6';      // --chart-blue
 const GOAL_COLOR = '#12795a';      // the goal lines' green, as on the payoff chart
 const HANDOFF_COLOR = '#9ca3af';
 const Y_AXIS_WIDTH = 56;
-const MARGIN = { top: 16, right: 16, bottom: 0, left: 0 };
-const SYNC_ID = 'goal-plan';       // every panel's crosshair and tooltip follow the same month
+const MARGIN = { top: 16, right: 28, bottom: 0, left: 0 };   // right: room for a label on the last month
 
 // The tooltip: the month, the goal's balance (what's owed, for a loan), and what goes toward it that
 // month, or that it's reached (paid off, for a loan whose goal is $0 owed) once its month has come
@@ -28,10 +27,10 @@ export function GoalPlanTip({ active, payload, owed, target, reachMonth }) {
   );
 }
 
-// One goal's panel in Insights → Accounts' goal plan: its path month by month (utils/goals.js
-// goalTimeline `line`: a balance, or what a loan owes), a dashed goal line (none for a loan whose goal
-// is $0 owed), and a dashed line at each hand-off (`handoffs`). Every panel gets the same `months`, so
-// they share one axis, labelled as its measured width fits.
+// One goal's panel in Insights → Accounts' goal plan: its path month by month over its own `months`
+// (utils/goals.js goalTimeline `line`: a balance, or what a loan owes; `months` start this month, so
+// `funding` lines up by index), a dashed goal line (none for a loan whose goal is $0 owed), and a
+// dashed line at each hand-off it's given (`handoffs`). Months are labelled as its measured width fits.
 function GoalPlanChart({ line, months, funding, handoffs, reachMonth }) {
   const [width, setWidth] = useState(null);     // measured by the container
   const axis = monthAxis(months, width === null ? null : width - Y_AXIS_WIDTH - MARGIN.right);
@@ -41,7 +40,7 @@ function GoalPlanChart({ line, months, funding, handoffs, reachMonth }) {
   return (
     <div className="goal-plan-chart">
       <ResponsiveContainer width="100%" height={130} onResize={setWidth}>
-        <LineChart data={data} margin={MARGIN} syncId={SYNC_ID}>
+        <LineChart data={data} margin={MARGIN}>
           <CartesianGrid vertical={false} stroke="#eef0f3" />
           <XAxis
             dataKey="month" ticks={axis.ticks} interval={0}
@@ -65,7 +64,7 @@ function GoalPlanChart({ line, months, funding, handoffs, reachMonth }) {
             <ReferenceLine
               y={line.target / 100} ifOverflow="extendDomain" className="goal-plan-target" stroke={GOAL_COLOR} strokeDasharray="6 4"
               label={{ value: `Goal ${formatCompactDollars(line.target / 100)}${line.owed ? ' owed' : ''}`,
-                       position: 'insideTopRight', fill: GOAL_COLOR, fontSize: 11 }}
+                       position: 'insideTopLeft', fill: GOAL_COLOR, fontSize: 11 }}
             />
           )}
           <Line

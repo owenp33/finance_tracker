@@ -29,16 +29,23 @@ const headedText = (line, plan, thisMonth) => {
 };
 
 // Insights → Accounts' goal plan (Phase F): the goals' plan as on Budgeting, over time. A reached goal
-// is a line of text; each other goal a small chart (GoalPlanChart) on one shared month axis, from now
-// until the last goal is reached, titled with where it's headed; each hand-off in words and as a
-// dashed line on every chart; then the months as a table. `plans` are utils/goals.js goalPlan's and
-// `timeline` its goalTimeline's; `goals` null while they load (nothing shown).
+// is a line of text; each other goal a small chart (GoalPlanChart) over its own months, from now until
+// it's reached (the whole plan when it isn't at this pace), titled with where it's headed; each
+// hand-off in words, and as a dashed line on the charts it falls within (not the one it ends); then
+// every month of the plan as a table. `plans` are utils/goals.js goalPlan's and `timeline` its
+// goalTimeline's; `goals` null while they load (nothing shown).
 function GoalPlan({ goals, plans, timeline }) {
   if (goals === null || timeline === null) return null;
   const byId = Object.fromEntries(timeline.goals.map(line => [line.id, line]));
   const planOf = Object.fromEntries(plans.map(plan => [plan.id, plan]));
   const charted = timeline.goals.filter(line => line.path !== null);
   const name = (line) => line.goal.account_name;
+
+  // A goal's months: the plan's (all from this month) through its reach month
+  const monthsOf = (line) => {
+    const end = timeline.months.indexOf(planOf[line.id].reachMonth);
+    return end === -1 ? timeline.months : timeline.months.slice(0, end + 1);
+  };
 
   const monthNote = (month, i) => {
     const reached = charted.filter(line => planOf[line.id].reachMonth === month)
@@ -62,18 +69,22 @@ function GoalPlan({ goals, plans, timeline }) {
               {`${monthLabel(handoff.month)}: ${name(byId[handoff.from])} ${reachedWord(byId[handoff.from])} → ${name(byId[handoff.to])}`}
             </p>
           ))}
-          {charted.map(line => (
-            <figure key={line.id} className="goal-plan-panel">
-              <figcaption>
-                <strong>{`${line.goal.position}. ${name(line)}`}</strong>
-                {` · ${headedText(line, planOf[line.id], timeline.months[0])}`}
-              </figcaption>
-              <GoalPlanChart
-                line={line} months={timeline.months} funding={timeline.funding}
-                handoffs={timeline.handoffs} reachMonth={planOf[line.id].reachMonth}
-              />
-            </figure>
-          ))}
+          {charted.map(line => {
+            const months = monthsOf(line);
+            return (
+              <figure key={line.id} className="goal-plan-panel">
+                <figcaption>
+                  <strong>{`${line.goal.position}. ${name(line)}`}</strong>
+                  {` · ${headedText(line, planOf[line.id], timeline.months[0])}`}
+                </figcaption>
+                <GoalPlanChart
+                  line={line} months={months} funding={timeline.funding}
+                  handoffs={timeline.handoffs.filter(handoff => handoff.from !== line.id && months.includes(handoff.month))}
+                  reachMonth={planOf[line.id].reachMonth}
+                />
+              </figure>
+            );
+          })}
           {charted.length > 0 && (
             <ViewAsTable
               caption="Goal plan, month by month"

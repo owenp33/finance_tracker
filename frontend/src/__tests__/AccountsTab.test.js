@@ -406,11 +406,18 @@ describe('the goal plan', () => {
       "Jan 2027: Owen's Savings reached → Student Loan",
     ]);
     const [savings, loan] = card().querySelectorAll('.goal-plan-panel');
-    // Each its own line, the hand-off marked on both; a dashed goal line on Savings (the loan's goal is $0 owed)
-    for (const panel of [savings, loan]) {
-      expect(panel.querySelector('.goal-plan-line')).not.toBeNull();
-      expect(panel.querySelectorAll('.goal-plan-handoff-line')).toHaveLength(1);
-    }
+    // Each over its own months, from now until it's reached: Savings Nov 2026–Jan 2027, the loan through
+    // Aug 2029 (every month labelled, since the test's charts report no width)
+    const labels = (panel) => [...panel.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')]
+      .map(label => label.textContent);
+    expect(labels(savings)).toEqual(['Nov 2026', 'Dec', 'Jan 2027']);
+    expect(labels(loan)).toHaveLength(34);
+    expect([labels(loan)[0], labels(loan)[33]]).toEqual(['Nov 2026', 'Aug']);
+    // Each its own line; the hand-off marked where the loan's turn starts (Savings' chart ends there); a
+    // dashed goal line on Savings (the loan's goal is $0 owed)
+    for (const panel of [savings, loan]) expect(panel.querySelector('.goal-plan-line')).not.toBeNull();
+    expect(savings.querySelectorAll('.goal-plan-handoff-line')).toHaveLength(0);
+    expect(loan.querySelectorAll('.goal-plan-handoff-line')).toHaveLength(1);
     expect(savings.querySelector('.goal-plan-target')).not.toBeNull();
     expect(loan.querySelector('.goal-plan-target')).toBeNull();
   });
