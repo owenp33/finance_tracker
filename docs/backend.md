@@ -625,9 +625,10 @@ reports `last_date` (the latest occurrence generated so far) so clients don't re
 when its next date moves to a different day; re-saving an unchanged next date keeps it. The
 frequency must be a whole number of at least 1.
 
-Generation runs when a template is created, on login, on every `GET /api/auth/me` (each page load),
-and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily at 00:05
-server local time.
+Generation runs when a template is created or edited (an edit that lifts a used-up limit or moves
+the next date back fills what's now due on saving), on login, on every `GET /api/auth/me` (each
+page load), and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily
+at 00:05 server local time.
 
 **Past start dates.** A template whose next date is in the past fills every missed occurrence
 when it is created (adopting exact matches already in the history, generating the rest). With `skip_past`, it instead starts at its first occurrence on or
@@ -650,7 +651,8 @@ always one more than their count.
   by one, so the occurrences still to come stay the same, and `start_date` moves back if needed.
 - **Unlinking** (`unlink_transaction`) keeps the transaction and shrinks the series the way
   deleting a generated transaction does: later occurrences renumber, a limited `number` drops by
-  one, and `next_date` stays.
+  one, and `next_date` stays. So a deleted or unlinked occurrence isn't generated again, even once
+  a limit is lifted; moving `next_date` back to it fills it again.
 - **Suggestions** (`suggest_matches`) list transactions that may belong to a series, for the user
   to confirm; nothing is linked. Because a person confirms them, they use a looser rule than
   automatic matching: same account and vendor, money moving the same way (a refund never matches
@@ -783,7 +785,8 @@ Details worth knowing:
   after today instead of generating past ones); it generates any occurrences already due.
   `PATCH /recurring/<id>` takes any of those fields, and `loan_account_id` (a loan account's id,
   or `null`: the loan the series pays down; anything else is a 400); a new `vendor` or `category`
-  is also applied to the series (see Renaming a series). An invalid schedule is a 400. Template
+  is also applied to the series (see Renaming a series). Like creating, it then generates any
+  occurrences now due (a limit lifted, the next date moved back). An invalid schedule is a 400. Template
   responses carry `loan_account_id`, transaction responses `loan_payment_id` (on a loan entry).
 - `PATCH` / `DELETE /transactions/<id>`, `PATCH /transactions/<id>/transfer` and
   `POST /transactions/<id>/transfer/pair` on a loan entry are a 400 ("This is a loan entry: it

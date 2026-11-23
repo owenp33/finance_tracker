@@ -57,6 +57,10 @@ def update_recurring(recurring_id):
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
+    # Fill the occurrences the change makes due (a limit lifted, the next date moved back), as
+    # creating does, rather than at the next page load
+    recurring_service.process_due_recurring(updated.account_id)
+
     return jsonify({
         'success': True,
         'recurring': recurring_service.template_dict(updated),
