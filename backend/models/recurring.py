@@ -46,7 +46,7 @@ class RecurringModel(db.Model):
     day_of_month = db.Column(db.Integer)  # monthly templates: the day they fall on (the last day in shorter months)
     number = db.Column(db.Integer, default=-1)
     idx = db.Column(db.Integer, default=0)
-    # The loan account the series pays down: each payment then has a loan entry (loan_service.py)
+    # The loan account the series pays down: each payment then counts on it, negated (loan_service.py)
     loan_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True)
 
     generated_transactions = db.relationship('TransactionModel',

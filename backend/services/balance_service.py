@@ -3,8 +3,10 @@ balance_service.py - Account ledgers: balances over time
 
 For each account: the balance at the start of a period (its starting balance plus every earlier
 transaction), each transaction in the period with the balance right after it, and the balance at
-the end. Transfers and reimbursements count, since money really moved. Read-only; used by the
-exports, and (as end-of-day balances) by GET /api/balances for the Insights balance chart.
+the end. Transfers and reimbursements count, since money really moved. A loan's ledger also lists
+the payments of the series that pay it down (made from another account), for the opposite amount
+(loan_service.py). Read-only; used by the exports, and (as end-of-day balances) by GET
+/api/balances for the Insights balance chart.
 """
 from collections import defaultdict
 from dataclasses import dataclass
@@ -18,7 +20,23 @@ db_service = DbService()
 @dataclass(frozen=True)
 class LedgerRow:
     transaction: TransactionModel
-    balance_cents: int          # the account's balance right after this transaction
+    balance_cents: int                  # the account's balance right after this row
+    loan: AccountModel | None = None    # set on a payment paying down this loan: the loan
+
+    @property
+    def loan_payment(self):
+        """A payment made from another account, in a series paying down this ledger's loan."""
+        return self.loan is not None
+
+    @property
+    def amount_cents(self):
+        """What the row moved this ledger's balance by (a loan's payment: the opposite of its amount)."""
+        return -self.transaction.amount_cents if self.loan_payment else self.transaction.amount_cents
+
+    @property
+    def account(self):
+        """The ledger's account: the transaction's own, or the loan a payment pays down."""
+        return self.loan if self.loan_payment else self.transaction.account
 
 
 @dataclass(frozen=True)
@@ -53,12 +71,15 @@ def end_of_day(rows):
     return list(days.items())
 
 
-def running_balances(opening_cents, transactions):
-    """Each transaction, in the order given, with the balance right after it."""
+def running_balances(opening_cents, entries):
+    """
+    Each (transaction, loan) in the order given, as a row with the balance right after it: loan is
+    None for the account's own transaction, else the loan a payment pays down.
+    """
     rows, balance = [], opening_cents
-    for t in transactions:
-        balance += t.amount_cents
-        rows.append(LedgerRow(t, balance))
+    for t, loan in entries:
+        balance += t.amount_cents if loan is None else -t.amount_cents
+        rows.append(LedgerRow(t, balance, loan))
     return rows
 
 
@@ -85,15 +106,18 @@ class BalanceService:
             return []
 
         ids = [a.id for a in accounts]
+        by_id = {a.id: a for a in accounts}
         earlier = db_service.get_transaction_totals_before(ids, start_date) if start_date else {}
         in_period = defaultdict(list)
         for t in db_service.get_user_transactions_filtered(user_id, ids, start_date, end_date):
-            in_period[t.account_id].append(t)
+            in_period[t.account_id].append((t, None))
+        for loan_id, t in db_service.get_loan_payments(ids, start_date, end_date):
+            in_period[loan_id].append((t, by_id[loan_id]))
 
         ledgers = []
         for a in accounts:
             opening = a.opening_balance_cents + earlier.get(a.id, 0)
-            rows = running_balances(opening, sorted(in_period[a.id], key=lambda t: (t.date, t.id)))
+            rows = running_balances(opening, sorted(in_period[a.id], key=lambda entry: (entry[0].date, entry[0].id)))
             ledgers.append(AccountLedger(a, opening, rows))
         return ledgers
 

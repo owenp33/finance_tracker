@@ -41,7 +41,7 @@ def _period(filters, ledgers):
 def _by_date(ledgers):
     """Every LedgerRow in the ledgers, by date, then account, then the order they were added."""
     rows = [row for ledger in ledgers for row in ledger.rows]
-    return sorted(rows, key=lambda r: (r.transaction.date, r.transaction.account_id, r.transaction.id))
+    return sorted(rows, key=lambda r: (r.transaction.date, r.account.id, r.transaction.id))
 
 
 class ReportService:
@@ -63,7 +63,8 @@ class ReportService:
         """
         ledgers = self._ledgers(user_id, filters)
         start, end = _period(filters, ledgers)
-        transactions = [row.transaction for row in _by_date(ledgers)]
+        # Each transaction once: a loan's payment rows repeat a payment already in its own account
+        transactions = [row.transaction for row in _by_date(ledgers) if not row.loan_payment]
         analytics = AnalyticsService.generate_report(transactions)
         over_budget_ids = budget_flag_service.over_budget_ids(user_id, transactions)
         generated_at = generated_at or datetime.now()

@@ -76,22 +76,35 @@ class DbService:
             self._update_balance(account_id, balance_cents=AccountModel.balance_cents + delta_cents)
 
     def recompute_balance(self, account_id):
-        """Set an account's stored balance to its starting balance plus its transactions, atomically."""
+        """
+        Set an account's stored balance to its starting balance plus what moves it (its
+        transactions, and a loan's payments: see _transaction_total), atomically.
+        """
         self._update_balance(account_id, balance_cents=AccountModel.opening_balance_cents + self._transaction_total(account_id))
 
     def set_balance(self, account_id, balance_cents):
         """
-        Set an account's stored balance to balance_cents and its starting balance to that less the
-        sum of its transactions, atomically, so starting balance + transactions = balance.
+        Set an account's stored balance to balance_cents and its starting balance to that less what
+        moves it (see _transaction_total), atomically, so starting balance + that = balance.
         """
         self._update_balance(account_id, balance_cents=balance_cents,
                              opening_balance_cents=balance_cents - self._transaction_total(account_id))
 
     def _transaction_total(self, account_id):
-        """The sum of an account's transaction amounts, as a subquery for the statements above."""
-        return (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
-                .where(TransactionModel.account_id == account_id)
+        """
+        What moves an account's balance, as a subquery for the statements above: the sum of its
+        transactions, less the payments of the series that pay it down (a loan's: a $75 bill paid
+        from Checking is $75 less owed).
+        """
+        own = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+               .where(TransactionModel.account_id == account_id)
+               .scalar_subquery())
+        paid = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+                .select_from(TransactionModel)
+                .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+                .where(RecurringModel.loan_account_id == account_id)
                 .scalar_subquery())
+        return own - paid
 
     def _update_balance(self, account_id, **values):
         db.session.flush()   # write pending changes first (a starting balance, a new transaction)
@@ -258,14 +271,27 @@ class DbService:
         return {'money_in': int(money_in), 'money_out': int(money_out), 'counted': int(counted_count), 'total': total}
 
     def get_transaction_totals_before(self, account_ids, before_date):
-        """The sum of amount_cents per account for transactions dated before before_date: {account_id: cents}."""
+        """
+        What moved each account's balance before before_date, {account_id: cents}: its transactions
+        dated before it, less the payments dated before it of the series that pay it down (a loan's).
+        """
         rows = (
             db.session.query(TransactionModel.account_id, func.sum(TransactionModel.amount_cents))
             .filter(TransactionModel.account_id.in_(account_ids), TransactionModel.date < before_date)
             .group_by(TransactionModel.account_id)
             .all()
         )
-        return {account_id: int(total) for account_id, total in rows}
+        totals = {account_id: int(total) for account_id, total in rows}
+        paid = (
+            db.session.query(RecurringModel.loan_account_id, func.sum(TransactionModel.amount_cents))
+            .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+            .filter(RecurringModel.loan_account_id.in_(account_ids), TransactionModel.date < before_date)
+            .group_by(RecurringModel.loan_account_id)
+            .all()
+        )
+        for loan_id, total in paid:
+            totals[loan_id] = totals.get(loan_id, 0) - int(total)
+        return totals
 
     def find_transfer_peer(self, user_id, amount_cents, date_obj, exclude_account_id, exclude_id=None):
         """
@@ -344,11 +370,28 @@ class DbService:
         from models.goal import GoalModel
         return GoalModel.query.filter_by(user_id=int(user_id)).order_by(GoalModel.position, GoalModel.id).all()
 
+    # LOAN OPERATIONS ===========================================================
+
     def get_series_paying_down(self, loan_account_id):
         """The templates whose series pay down this loan account."""
         return RecurringModel.query.filter_by(loan_account_id=loan_account_id).all()
 
-    # LOAN ENTRY OPERATIONS =====================================================
+    def get_loan_payments(self, loan_account_ids, start_date=None, end_date=None):
+        """
+        The payments that pay down these loan accounts, as (loan account id, transaction): the
+        non-zero transactions of the series paying each one down, dated start_date through
+        end_date (both inclusive, both optional).
+        """
+        query = (db.session.query(RecurringModel.loan_account_id, TransactionModel)
+                 .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+                 .filter(RecurringModel.loan_account_id.in_(loan_account_ids), TransactionModel.amount_cents != 0))
+        if start_date is not None:
+            query = query.filter(TransactionModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(TransactionModel.date <= end_date)
+        return query.all()
+
+    # INTEREST OPERATIONS =======================================================
 
     def claim_interest_period(self, account_id, booked_through, start):
         """
@@ -365,23 +408,6 @@ class DbService:
         if account is not None:
             db.session.expire(account, ['interest_through'])
         return moved
-
-    def get_loan_entry(self, payment_id):
-        """The loan entry mirroring this payment, or None."""
-        return TransactionModel.query.filter_by(loan_payment_id=payment_id).first()
-
-    def get_loan_entries_mirroring_account(self, account_id):
-        """The loan entries (on any account) that mirror payments made from this account."""
-        payments = select(TransactionModel.id).where(TransactionModel.account_id == account_id)
-        return TransactionModel.query.filter(TransactionModel.loan_payment_id.in_(payments)).all()
-
-    def get_loan_entries_mirroring_series(self, recurring_id):
-        """
-        The loan entries that mirror a series' payments, by query (not through the template's
-        collection, which would then still hold the payments when the template is deleted).
-        """
-        payments = select(TransactionModel.id).where(TransactionModel.recurring_id == recurring_id)
-        return TransactionModel.query.filter(TransactionModel.loan_payment_id.in_(payments)).all()
 
     # BUDGET OPERATIONS =========================================================
 

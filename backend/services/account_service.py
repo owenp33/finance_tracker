@@ -12,7 +12,7 @@ from extensions import db
 from models.account import AccountModel, ACCOUNT_KINDS
 from models.transaction import TransactionModel
 from services.db_service import DbService
-from services.loan_service import LoanService, ENTRY_IS_READ_ONLY, is_loan_entry
+from services.loan_service import LoanService
 from services.interest_service import INTEREST_FREQUENCIES, period_start
 
 db_service = DbService()
@@ -197,8 +197,8 @@ class AccountService:
     def delete_account(self, account_id):
         """
         Delete an account. Cascade rules on the model remove all associated
-        transactions and recurring items automatically. Loan entries mirroring its payments go
-        too (moving their loans' balances back), and a loan's series stop paying it down.
+        transactions and recurring items automatically. A loan its series paid down no longer
+        counts their payments, and a loan's series stop paying it down.
         Returns (success, error_message).
         """
         account = db_service.get_account(account_id)
@@ -211,12 +211,14 @@ class AccountService:
         for tx_id in transfer_ids:
             self.unlink_transfer(tx_id)
 
-        loan_service.remove_entries_mirroring_account(account_id)
+        paid_down = [rec.loan_account_id for rec in db_service.get_account_recurring(account_id)]
         for rec in db_service.get_series_paying_down(account_id):
             rec.loan_account_id = None
 
         account = db_service.get_account(account_id)
         db.session.delete(account)
+        db.session.flush()
+        loan_service.refresh(*paid_down)
         db.session.commit()
         return True, None
 
@@ -264,15 +266,13 @@ class AccountService:
     def update_transaction(self, transaction_id, data: dict):
         """
         Parse raw request data and update a transaction.
-        Handles type coercion so routes don't have to. A payment's loan entry follows it; a loan
-        entry can't be edited itself (ENTRY_IS_READ_ONLY).
+        Handles type coercion so routes don't have to. The loan a payment's series pays down
+        follows its amount.
         Returns (updated_transaction, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return None, 'Transaction not found'
-        if is_loan_entry(trans):
-            return None, ENTRY_IS_READ_ONLY
 
         try:
             update_fields = {}
@@ -325,7 +325,7 @@ class AccountService:
                         peer.amount = -update_fields['amount']
                         db_service.adjust_balance(peer.account_id, peer.amount_cents - old_peer_amount_cents)
 
-            loan_service.sync(trans)
+            loan_service.refresh(loan_service.loan_paid_down_by(trans))
             db.session.commit()
             return trans, None
 
@@ -335,14 +335,12 @@ class AccountService:
     def delete_transaction(self, transaction_id):
         """
         Delete a transaction and reverse its effect on the account balance; a generated
-        recurring transaction also shrinks its series, and a payment's loan entry goes with it.
-        A loan entry can't be deleted itself (ENTRY_IS_READ_ONLY). Returns (success, error_message).
+        recurring transaction also shrinks its series, and the loan the series pays down no longer
+        counts it. Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
             return False, 'Transaction not found'
-        if is_loan_entry(trans):
-            return False, ENTRY_IS_READ_ONLY
 
         # Clear transfer link before deleting to avoid SQLAlchemy circular-FK conflicts.
         # unlink_transfer commits, so we re-fetch a clean session state afterward.
@@ -352,11 +350,11 @@ class AccountService:
             if not trans:
                 return False, 'Transaction not found'
 
-        # Capture the series position before the row is gone
+        # Capture the series position, and the loan it pays down, before the row is gone
         recurring_id  = trans.recurring_id
         deleted_index = trans.recurring_index
+        paid_down = loan_service.loan_paid_down_by(trans)
 
-        loan_service.remove_for(trans)
         db_service.adjust_balance(trans.account_id, -trans.amount_cents)
         db.session.delete(trans)
         db.session.flush()   # remove the row from the session before the series is renumbered
@@ -379,6 +377,7 @@ class AccountService:
                      synchronize_session='fetch',
                  ))
 
+        loan_service.refresh(paid_down)
         db.session.commit()
         return True, None
 

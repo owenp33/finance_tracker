@@ -66,7 +66,7 @@ class TestALoanIsCharged:
         assert interest.accrue(loan.id, today=date(2026, 12, 15)) == 1
         assert hits(loan) == [(date(2026, 12, 1), -41996, '6.70% a year, charged monthly, on $75,217.00 owed')]
         row = TransactionModel.query.filter_by(account_id=loan.id).one()
-        assert (row.vendor, row.category, row.loan_payment_id) == ('Interest', 'Interest', None)
+        assert (row.vendor, row.category) == ('Interest', 'Interest')
         assert (loan.interest_through, balance(loan)) == (date(2026, 12, 1), -7521700 - 41996)
 
     def test_missed_months_catch_up_in_order_each_on_what_was_owed_then(self, loan):

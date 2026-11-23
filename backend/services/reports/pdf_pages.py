@@ -583,16 +583,20 @@ def _labelled_bars(fig, bars, top, bars_right):
 # ACCOUNT PAGES =================================================================
 
 def account_table_rows(rows, over_budget_ids):
-    """(cells, over budget?) for each ledger row, one cell per ACCOUNT_COLUMNS entry."""
+    """
+    (cells, over budget?) for each ledger row, one cell per ACCOUNT_COLUMNS entry. A loan's payment
+    (made from another account) shows the amount on the loan, and its budget flag only on its own
+    account's page.
+    """
     table = []
     for row in rows:
         t = row.transaction
-        over = t.id in over_budget_ids
+        over = not row.loan_payment and t.id in over_budget_ids
         table.append(([
             t.date.isoformat(),
             _shorten(t.vendor, VENDOR_CHARS),
             _shorten(t.category, CATEGORY_CHARS),
-            _money(t.amount_cents),
+            _money(row.amount_cents),
             _money(row.balance_cents),
             'Over' if over else '',
         ], over))

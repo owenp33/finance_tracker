@@ -21,13 +21,6 @@ class TransactionModel(db.Model):
         db.ForeignKey('transactions.id', ondelete='SET NULL'),
         nullable=True,
     )
-    # On a loan entry: the payment it mirrors (services/loan_service.py keeps the two in step)
-    loan_payment_id = db.Column(
-        db.Integer,
-        db.ForeignKey('transactions.id', ondelete='SET NULL'),
-        nullable=True,
-        unique=True,
-    )
 
     transfer_peer = db.relationship(
         'TransactionModel',
@@ -40,9 +33,9 @@ class TransactionModel(db.Model):
     @property
     def on_loan_account(self):
         """
-        On a loan account. Such transactions only move what's owed (the bill they mirror is spent
-        from the bank account), so like transfers they count in no total: not in cash flow,
-        budgets, reports or series detection. Balances include them.
+        On a loan account. Such transactions (interest, or anything entered on the loan) only move
+        what's owed, so like transfers they count in no total: not in cash flow, budgets, reports or
+        series detection. Balances include them.
         """
         return bool(self.account and self.account.kind == 'loan')
 
@@ -67,7 +60,6 @@ class TransactionModel(db.Model):
             'is_reimbursement': self.is_reimbursement,
             'transfer_peer_id': self.transfer_peer_id,
             'transfer_peer_account': peer_account,
-            'loan_payment_id': self.loan_payment_id,
             'recurring_number': self.recurring_source.number if self.recurring_id and self.recurring_source else None,
         }
     

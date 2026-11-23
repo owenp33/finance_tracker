@@ -7,7 +7,6 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from services import DbService, AccountService, BudgetFlagService
-from services.loan_service import ENTRY_IS_READ_ONLY, is_loan_entry
 from middleware.ownership import owns_transaction
 
 transactions_bp = Blueprint('transactions', __name__)
@@ -59,12 +58,9 @@ def toggle_transfer(transaction_id):
                  transaction with the opposite amount in a different account.
                  If one is found the two are linked automatically.
     Turning OFF: clears is_transfer and removes the peer link on both sides.
-    A loan entry can't be made a transfer: it follows its payment.
     """
     user_id = get_jwt_identity()
     trans   = db_service.get_transaction(transaction_id)
-    if is_loan_entry(trans):
-        return jsonify({'success': False, 'error': ENTRY_IS_READ_ONLY}), 400
 
     if trans.is_transfer:
         success, error = account_service.unlink_transfer(transaction_id)
@@ -112,10 +108,8 @@ def pair_transfer(transaction_id):
     transfer pair. The peer is a mirror of the original (negated amount, same
     date/vendor/category/notes).
 
-    Body: { to_account_id: <int> }. A loan entry can't be paired: it follows its payment.
+    Body: { to_account_id: <int> }
     """
-    if is_loan_entry(db_service.get_transaction(transaction_id)):
-        return jsonify({'success': False, 'error': ENTRY_IS_READ_ONLY}), 400
     data = request.get_json()
     to_account_id = data.get('to_account_id')
     if not to_account_id:
@@ -144,7 +138,7 @@ def pair_transfer(transaction_id):
 @jwt_required()
 @owns_transaction
 def delete_transaction(transaction_id):
-    """Delete a transaction (not a loan entry, which goes with its payment: a 400)"""
+    """Delete a transaction (a failure the service reports is a 400)"""
     transaction = db_service.get_transaction(transaction_id)
     account_id = transaction.account_id
 

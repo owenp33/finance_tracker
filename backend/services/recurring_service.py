@@ -134,8 +134,8 @@ class RecurringService:
         monthly, or whose next date moves, falls on the day of its (new) next date from then on.
         A changed vendor and/or category is applied to every transaction in the series too.
         loan_account_id (one of the user's loan accounts, or None) is the loan the series pays
-        down: each of its payments then has a loan entry there (LoanService), and setting it
-        books them, switching moves them and None removes them.
+        down: each of its payments then counts on that loan's balance, negated (LoanService), so
+        setting it moves the loan, switching moves both loans and None takes them off.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
@@ -179,9 +179,8 @@ class RecurringService:
         if series_changes:
             _apply_to_series(rec, series_changes)
         if 'loan_account_id' in kwargs:
-            rec.loan_account_id = loan_account_id
-        if 'loan_account_id' in kwargs or (series_changes and rec.loan_account_id):
-            loan_service.sync_series(rec)
+            paid_down_before, rec.loan_account_id = rec.loan_account_id, loan_account_id
+            loan_service.refresh(paid_down_before, loan_account_id)
 
         db.session.commit()
         return rec
@@ -191,14 +190,14 @@ class RecurringService:
         Delete a recurring transaction template.
         If delete_generated=True, also deletes all auto-generated transactions
         from this recurring and reverses their effect on the account balance.
-        Otherwise, those transactions are kept but unlinked from the recurring. Either way, loan
-        entries mirroring the series' payments are removed.
+        Otherwise, those transactions are kept but unlinked from the recurring. Either way, the
+        loan the series paid down no longer counts its payments.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             return False
 
-        loan_service.remove_series_entries(rec)   # the series goes, so its payments stop paying down a loan
+        paid_down = rec.loan_account_id
         if delete_generated:
             transactions = TransactionModel.query.filter_by(recurring_id=recurring_id).all()
             for trans in transactions:
@@ -208,6 +207,7 @@ class RecurringService:
             TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})
 
         db.session.delete(rec)
+        loan_service.refresh(paid_down)
         db.session.commit()
         return True
 
@@ -257,7 +257,7 @@ class RecurringService:
         if dismissal:
             db.session.delete(dismissal)
         tx.recurring_id = rec.id
-        loan_service.sync(tx)
+        loan_service.refresh(rec.loan_account_id)
         _renumber(rec)
         db.session.commit()
         return rec
@@ -274,7 +274,7 @@ class RecurringService:
 
         tx.recurring_id = None
         tx.recurring_index = None
-        loan_service.sync(tx)
+        loan_service.refresh(rec.loan_account_id)
         if rec.number > 0:
             rec.number -= 1
         _renumber(rec)
@@ -305,8 +305,8 @@ class RecurringService:
             if notes:
                 peer.notes = notes
 
-        loan_service.sync(tx)
         rec = tx.recurring_source
+        loan_service.refresh(rec.loan_account_id)
         rec.start_date = min(rec.start_date, date_obj)
         _renumber(rec)
         db.session.commit()
@@ -511,21 +511,22 @@ class RecurringService:
         Fill every due occurrence of the account's templates. An occurrence that already has an
         exact match (see match_candidates; e.g. the same charge imported from the bank) links the
         nearest one; otherwise a transaction is generated. In a series that pays down a loan,
-        either way the payment gets its loan entry. Returns the number generated.
+        either way the payment counts on the loan. Returns the number generated.
         """
         recurring_list = db_service.get_account_recurring(account_id)
         transactions_created = 0
         today = date.today()
 
         for rec in recurring_list:
+            filled = False
             while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
+                filled = True
                 matches = self.match_candidates(rec, rec.next_date)
                 if matches:
                     matches[0].recurring_id = rec.id
                     matches[0].recurring_index = rec.idx
-                    loan_service.sync(matches[0])
                 else:
-                    generated = account_service.add_transaction(
+                    account_service.add_transaction(
                         account_id=account_id,
                         date_obj=rec.next_date,
                         vendor=rec.vendor,
@@ -535,7 +536,6 @@ class RecurringService:
                         recurring_id=rec.id,
                         recurring_index=rec.idx,
                     )
-                    loan_service.sync(generated)
                     transactions_created += 1
 
                 rec.next_date = rec.advance_to_next
@@ -543,6 +543,8 @@ class RecurringService:
 
                 if rec.number != -1 and rec.idx > rec.number:
                     break
+            if filled:
+                loan_service.refresh(rec.loan_account_id)
 
         db.session.commit()   # persist the next dates and adopted links
         return transactions_created

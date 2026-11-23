@@ -34,12 +34,21 @@ def _run_migrations(db):
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',
-            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS loan_payment_id INTEGER UNIQUE REFERENCES transactions(id) ON DELETE SET NULL',
             # Over-budget flags are computed when read (BudgetFlagService); the stored copy is gone
             'ALTER TABLE transactions DROP COLUMN IF EXISTS over_budget',
         ]
         for sql in migrations:
             conn.execute(text(sql))
+
+        # Loan entries are gone: a loan's balance counts the payments of the series paying it down
+        # itself (services/loan_service.py), so the rows that mirrored them, and their column, go.
+        # Stored balances stay as they are: they counted each payment once, through its entry.
+        has_entries = conn.execute(text(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'loan_payment_id'"
+        )).first()
+        if has_entries:
+            conn.execute(text('DELETE FROM transactions WHERE loan_payment_id IS NOT NULL'))
+            conn.execute(text('ALTER TABLE transactions DROP COLUMN loan_payment_id'))
 
         # Backfill recurring_index for rows generated before this column existed,
         # so existing recurring chips show the correct occurrence number.
