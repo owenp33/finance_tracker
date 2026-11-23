@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import TransactionForm from '../TransactionForm';
 import TransactionList from '../TransactionList';
 import FilterPanel from '../FilterPanel';
-import { PAGE_SIZE, getMonthRange, getPeriodLabel, getCurrentPeriod, sortList, unrelatedSeriesByTransaction, isLoanEntry } from './utils';
+import { PAGE_SIZE, getMonthRange, getPeriodLabel, getCurrentPeriod, sortList, unrelatedSeriesByTransaction } from './utils';
 
 function AllTransactionsTab({
   transactions,
@@ -106,15 +106,13 @@ function AllTransactionsTab({
   const toggleSelectTx = (id) =>
     setSelectedTxIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Loan entries follow their payments, so bulk actions leave them out
-  const selectable = visible.filter(t => !isLoanEntry(t));
-  const allVisibleSelected = selectable.length > 0 && selectable.every(t => selectedTxIds.has(t.id));
+  const allVisibleSelected = visible.length > 0 && visible.every(t => selectedTxIds.has(t.id));
 
   const toggleSelectAllTx = () => {
     if (allVisibleSelected) {
-      setSelectedTxIds(prev => { const n = new Set(prev); selectable.forEach(t => n.delete(t.id)); return n; });
+      setSelectedTxIds(prev => { const n = new Set(prev); visible.forEach(t => n.delete(t.id)); return n; });
     } else {
-      setSelectedTxIds(prev => { const n = new Set(prev); selectable.forEach(t => n.add(t.id)); return n; });
+      setSelectedTxIds(prev => { const n = new Set(prev); visible.forEach(t => n.add(t.id)); return n; });
     }
   };
 
@@ -233,7 +231,7 @@ function AllTransactionsTab({
               ref={el => { if (el) el.indeterminate = selectedTxIds.size > 0 && !allVisibleSelected; }}
               onChange={toggleSelectAllTx}
             />
-            <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${selectable.length}`}</span>
+            <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${visible.length}`}</span>
           </label>
           <div className="bulk-actions">
             <button

@@ -6,7 +6,7 @@ import InterestFields from './InterestFields';
 import AccountGoalProgress from './goals/AccountGoalProgress';
 import { useGoals } from '../hooks/useGoals';
 import GroupedTransactionList from './transactions/GroupedTransactionList';
-import { isLoanEntry, LOAN_ENTRY_TITLE } from './transactions/utils';
+import { loanPayments } from '../utils/loanPayments';
 
 // A typed dollar amount in cents, or null while it's blank or not a number
 const typedCents = (text) => {
@@ -29,6 +29,7 @@ const interestFields = (aprText, frequency) => {
 function AccountsView({
   transactions,
   accounts,
+  recurring = [],
   onEdit,
   onDelete,
   onPairTransfer,
@@ -63,26 +64,23 @@ function AccountsView({
   const [movingPeerId, setMovingPeerId] = useState(null);
   const [movingToAccountId, setMovingToAccountId] = useState('');
 
-  // The name of the account a loan entry's payment came from
-  const payingAccount = (entry) => {
-    const payment = transactions.find(t => t.id === entry.loan_payment_id);
-    return accounts.find(ac => ac.id === payment?.account_id)?.account_name ?? '';
-  };
-
   const toggleAccountExpand = (id) =>
     setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
 
   // A row's "To" / "From" and its other account: a transfer's peer (click to move it, or to link an
-  // unlinked one), a loan entry's paying account; a loan's other transactions (interest) have none
+  // unlinked one); on a loan, a payment's account it was paid from, and none for the loan's own
+  // transactions (interest)
   const transferPeer = (t, a, isLoan) => (
     <>
       <span className="account-transfer-direction">
-        {isLoan && !isLoanEntry(t) ? '' : t.amount < 0 ? 'To' : 'From'}
+        {isLoan ? (t.account_id !== a.id ? 'From' : '') : t.amount < 0 ? 'To' : 'From'}
       </span>
       <span className="account-transfer-peer">
         {isLoan ? (
-          isLoanEntry(t) && <span className="account-loan-payer">{payingAccount(t)}</span>
+          t.account_id !== a.id && (
+            <span className="account-loan-payer">{accounts.find(ac => ac.id === t.account_id)?.account_name ?? ''}</span>
+          )
         ) : t.transfer_peer_id ? (
           movingPeerId === t.id ? (
             <span className="account-transfer-pair-picker">
@@ -203,11 +201,13 @@ function AccountsView({
           <p className="no-data">No accounts yet. Add one above.</p>
         ) : (
           accounts.map(a => {
-            // A loan's row lists everything on it (its payments' loan entries are bills paid from
-            // another account, not transfers, and it's charged interest); any other account's row
-            // lists its transfers. Both show in the same list.
+            // A bank account's row lists its transfers; a loan's, its own transactions (interest) and
+            // the payments paying it down (bills paid from another account, not transfers), as they
+            // are: editing one edits the payment, in the account it was paid from. Both in one list.
             const isLoan = a.kind === 'loan';
-            const listed = transactions.filter(t => t.account_id === a.id && (isLoan || t.is_transfer));
+            const listed = isLoan
+              ? [...transactions.filter(t => t.account_id === a.id), ...loanPayments(transactions, recurring, a.id)]
+              : transactions.filter(t => t.account_id === a.id && t.is_transfer);
             const expandable = listed.length > 0;
             const expanded = expandable && expandedAccountIds.has(a.id);
             // Starting balance + transactions (transfers included) = current balance
@@ -389,9 +389,6 @@ function AccountsView({
                       <GroupedTransactionList
                         transactions={listed}
                         label={isLoan ? 'Transactions' : 'Transfers'}
-                        // A loan entry follows its payment, so it can't be selected, edited or deleted
-                        isLocked={isLoanEntry}
-                        lockedBadge={<span className="tx-loan-chip" title={LOAN_ENTRY_TITLE}>Loan entry</span>}
                         renderMiddle={t => transferPeer(t, a, isLoan)}
                         renderBulkActions={(selected, clearSelection) => (
                           <>

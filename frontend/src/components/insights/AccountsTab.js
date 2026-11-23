@@ -12,6 +12,7 @@ import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
 import { FORECAST_DAYS, forecastFor } from '../../utils/forecast';
+import { withLoanPayments } from '../../utils/loanPayments';
 
 const NET = 'net';
 
@@ -155,7 +156,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
 
         <BalanceChart
           key={`${view}-${range}`} points={points} forecast={forecast} today={today}
-          transactions={transactions} accountIds={shownIds} goals={accountGoals}
+          transactions={withLoanPayments(transactions, recurring)} accountIds={shownIds} goals={accountGoals}
         />
         {forecast.length > 0 && (
           <ul className="timeline-legend">

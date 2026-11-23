@@ -32,28 +32,25 @@ const byVendor = (rows) => {
 // A list of transactions grouped by vendor, as an account on Transactions → Accounts expands to: a
 // header (select all, the bulk bar while any row is selected, the sort), then each vendor's rows with
 // what went out and came in; each row its checkbox, amount, `renderMiddle(t)`, date and, on hover,
-// `extraActions(t)`, Edit (in place: date, vendor, amount, notes; saved through `onEdit(id, fields)`)
-// and Delete. A locked row (`isLocked(t)`) can't be selected, edited or deleted and shows
-// `lockedBadge` instead. `renderBulkActions(selected, clearSelection)` fills the bulk bar; `label`
-// names the rows in the header ("Transfers (4)").
+// `extraActions(t)`, Edit (in place: date, vendor, amount, notes; saved through `onEdit(id, fields)`
+// with the row's own account and category) and Delete. `renderBulkActions(selected,
+// clearSelection)` fills the bulk bar; `label` names the rows in the header ("Transfers (4)").
 function GroupedTransactionList({
-  transactions, label, renderMiddle, renderBulkActions, onEdit, onDelete,
-  extraActions = () => null, isLocked = () => false, lockedBadge = null,
+  transactions, label, renderMiddle, renderBulkActions, onEdit, onDelete, extraActions = () => null,
 }) {
   const [sort, setSort] = useState('date-desc');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [editingId, setEditingId] = useState(null);
   const [fields, setFields] = useState({});
 
-  const selectable = transactions.filter(t => !isLocked(t));
-  const selected = selectable.filter(t => selectedIds.has(t.id));
-  const allSelected = selectable.length > 0 && selected.length === selectable.length;
+  const selected = transactions.filter(t => selectedIds.has(t.id));
+  const allSelected = transactions.length > 0 && selected.length === transactions.length;
   const someSelected = selected.length > 0;
   const showYear = new Set(transactions.map(t => t.date.slice(0, 4))).size > 1;
 
   const toggle = (id) =>
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(selectable.map(t => t.id)));
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(transactions.map(t => t.id)));
   const clearSelection = () => setSelectedIds(new Set());
 
   const startEdit = (t) => {
@@ -75,7 +72,7 @@ function GroupedTransactionList({
             checked={allSelected}
             ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
             onChange={toggleAll}
-            disabled={selectable.length === 0}
+            disabled={transactions.length === 0}
           />
           <span>
             {someSelected ? `${selected.length} of ${transactions.length} selected` : `${label} (${transactions.length})`}
@@ -109,7 +106,7 @@ function GroupedTransactionList({
             {group.map(t => (
               <div
                 key={t.id}
-                className={`account-transfer-row${selectedIds.has(t.id) ? ' transfer-selected' : ''}${isLocked(t) ? ' locked' : ''}`}
+                className={`account-transfer-row${selectedIds.has(t.id) ? ' transfer-selected' : ''}`}
               >
                 {editingId === t.id ? (
                   <div className="transfer-edit-row">
@@ -127,30 +124,26 @@ function GroupedTransactionList({
                       className="transfer-checkbox"
                       checked={selectedIds.has(t.id)}
                       onChange={() => toggle(t.id)}
-                      disabled={isLocked(t)}
                     />
                     <span className={`account-transfer-amount ${t.amount >= 0 ? 'green' : 'red'}`}>
                       {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
                     </span>
                     {renderMiddle(t)}
                     <div className="account-transfer-right">
-                      {isLocked(t) && lockedBadge}
                       <span className="account-transfer-date">{formatDate(t.date, showYear)}</span>
-                      {!isLocked(t) && (
-                        <div className="transfer-row-actions">
-                          {extraActions(t)}
-                          <button
-                            className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
-                            title="Edit"
-                            onClick={() => startEdit(t)}
-                          ><Pencil size={13} /></button>
-                          <button
-                            className="btn btn-danger btn-sm icon-btn transfer-action-btn"
-                            title="Delete"
-                            onClick={() => onDelete(t.id)}
-                          ><Trash2 size={13} /></button>
-                        </div>
-                      )}
+                      <div className="transfer-row-actions">
+                        {extraActions(t)}
+                        <button
+                          className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
+                          title="Edit"
+                          onClick={() => startEdit(t)}
+                        ><Pencil size={13} /></button>
+                        <button
+                          className="btn btn-danger btn-sm icon-btn transfer-action-btn"
+                          title="Delete"
+                          onClick={() => onDelete(t.id)}
+                        ><Trash2 size={13} /></button>
+                      </div>
                     </div>
                   </>
                 )}

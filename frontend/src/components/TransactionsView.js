@@ -102,6 +102,7 @@ function TransactionsView({
         <AccountsView
           transactions={transactions}
           accounts={accounts}
+          recurring={recurringTransactions}
           onEdit={onEdit}
           onDelete={onDelete}
           onPairTransfer={onPairTransfer}

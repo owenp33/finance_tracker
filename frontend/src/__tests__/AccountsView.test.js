@@ -16,11 +16,11 @@ const account = (overrides) => ({
 });
 
 const renderAccounts = (accounts, onEditAccount = jest.fn(),
-                        { onCreateAccount = jest.fn(), transactions = [], onDeleteTransferBulk = jest.fn(),
+                        { onCreateAccount = jest.fn(), transactions = [], recurring = [], onDeleteTransferBulk = jest.fn(),
                           onEdit = jest.fn(), onPairTransfer = jest.fn() } = {}) => {
   render(
     <AccountsView
-      transactions={transactions} accounts={accounts}
+      transactions={transactions} accounts={accounts} recurring={recurring}
       onEdit={onEdit} onDelete={jest.fn()} onPairTransfer={onPairTransfer} onDeleteTransferBulk={onDeleteTransferBulk}
       onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
     />
@@ -228,24 +228,34 @@ describe('loan accounts', () => {
     expect(within(savings).queryByRole('button', { name: 'Update from statement' })).not.toBeInTheDocument();
   });
 
-  test("a loan's row lists all its transactions the way a bank account lists its transfers", async () => {
-    const tx = (id, accountId, date, vendor, amount, extra = {}) => ({
-      id, account_id: accountId, date, vendor, category: 'Loan', notes: '', amount, amount_cents: Math.round(amount * 100),
-      is_transfer: false, is_reimbursement: false, over_budget: false, recurring_id: null, loan_payment_id: null, ...extra,
-    });
+  // The Student Loan's own interest, and ASPIRE's payments from Checking (its series pays the loan down)
+  const loanTx = (id, accountId, date, vendor, amount, extra = {}) => ({
+    id, account_id: accountId, date, vendor, category: 'Loan', notes: '', amount, amount_cents: Math.round(amount * 100),
+    is_transfer: false, is_reimbursement: false, over_budget: false, recurring_id: null, ...extra,
+  });
+  const LOAN_ACCOUNTS = [
+    account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, balance: -75142 }),
+    account({ id: 6, account_name: 'Checking' }),
+  ];
+  const LOAN_TRANSACTIONS = [
+    loanTx(2, 16, '2026-11-01', 'Interest', -419.96),
+    loanTx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),
+    loanTx(12, 6, '2026-10-31', 'ASPIRE', -75, { recurring_id: 5 }),
+    loanTx(13, 6, '2026-10-15', 'Spotify', -9.99, { recurring_id: 6 }),      // a series paying nothing down
+  ];
+  const LOAN_RECURRING = [{ id: 5, account_id: 6, loan_account_id: 16 }, { id: 6, account_id: 6, loan_account_id: null }];
+  const openLoan = async (options = {}) => {
+    renderAccounts(LOAN_ACCOUNTS, jest.fn(), { transactions: LOAN_TRANSACTIONS, recurring: LOAN_RECURRING, ...options });
+    const loan = accountItem('Student Loan');
+    await userEvent.click(within(loan).getByTitle('Show its transactions'));
+    return loan.querySelector('.account-transfers');
+  };
+  const loanRows = (list) => [...list.querySelectorAll('.account-transfer-row')];
+
+  test("a loan's row lists its own transactions and the payments paying it down, the way a bank account lists its transfers", async () => {
     const onDeleteTransferBulk = jest.fn();
-    renderAccounts([
-      account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, balance: -75142 }),
-      account({ id: 6, account_name: 'Checking' }),
-    ], jest.fn(), { onDeleteTransferBulk, transactions: [
-      tx(1, 16, '2026-09-30', 'ASPIRE', 75, { loan_payment_id: 11 }),
-      tx(2, 16, '2026-11-01', 'Interest', -419.96),
-      tx(3, 16, '2026-10-31', 'ASPIRE', 75, { loan_payment_id: 12 }),
-      tx(11, 6, '2026-09-30', 'ASPIRE', -75, { recurring_id: 5 }),       // the payments, in Checking
-      tx(12, 6, '2026-10-31', 'ASPIRE', -75, { recurring_id: 5 }),
-    ] });
-    // A bank account still expands to its transfers only, and has none here (checked first: once the
-    // loan's list is open, "Checking" also names its entries' paying account)
+    renderAccounts(LOAN_ACCOUNTS, jest.fn(), { onDeleteTransferBulk, transactions: LOAN_TRANSACTIONS, recurring: LOAN_RECURRING });
+    // A bank account still expands to its transfers only, and has none here
     expect(within(accountItem('Checking')).getByTitle('No transfers')).toBeDisabled();
     const loan = accountItem('Student Loan');
     expect(within(loan).getByText('3 transactions')).toBeInTheDocument();
@@ -254,29 +264,42 @@ describe('loan accounts', () => {
     const list = loan.querySelector('.account-transfers');
     expect(within(list).getByText('Transactions (3)')).toBeInTheDocument();
     expect(loan.querySelector('.transaction-item')).toBeNull();          // not the Recurring tab's list
-    // By vendor, newest first, each with its money in and out
+    // By vendor, newest first, each with its money in and out; a payment as it is, from the account it was paid from
     expect([...list.querySelectorAll('.transfer-vendor-group')].map(group =>
       [group.querySelector('.transfer-vendor-name').textContent, group.querySelector('.transfer-vendor-flows').textContent]))
-      .toEqual([['Interest', '$419.96 out'], ['ASPIRE', '$150.00 in']]);
-    const rows = [...list.querySelectorAll('.account-transfer-row')];
+      .toEqual([['Interest', '$419.96 out'], ['ASPIRE', '$150.00 out']]);
+    const rows = loanRows(list);
     expect(rows.map(row => ['.account-transfer-amount', '.account-transfer-direction', '.account-transfer-peer', '.account-transfer-date']
       .map(sel => row.querySelector(sel).textContent))).toEqual([
       ['-$419.96', '', '', 'Nov 1'],
-      ['+$75.00', 'From', 'Checking', 'Oct 31'],          // a loan entry: the account its payment came from
-      ['+$75.00', 'From', 'Checking', 'Sep 30'],
+      ['-$75.00', 'From', 'Checking', 'Oct 31'],
+      ['-$75.00', 'From', 'Checking', 'Sep 30'],
     ]);
-    // Loan entries are read-only; anything else can be edited, deleted and selected
-    expect(within(rows[1]).getByText('Loan entry')).toBeInTheDocument();
-    expect(within(rows[1]).queryByTitle('Edit')).not.toBeInTheDocument();
-    expect(within(rows[1]).getByRole('checkbox')).toBeDisabled();
-    expect(within(rows[0]).getByTitle('Edit')).toBeInTheDocument();
-    expect(within(rows[0]).getByTitle('Delete')).toBeInTheDocument();
-    // Selecting every row selects the ones that can change; there's no Move (that re-links transfers)
+    // Nothing is locked: every row can be edited, deleted and selected
+    expect(within(list).queryByText('Loan entry')).not.toBeInTheDocument();
+    for (const row of rows) {
+      expect(within(row).getByTitle('Edit')).toBeInTheDocument();
+      expect(within(row).getByTitle('Delete')).toBeInTheDocument();
+      expect(within(row).getByRole('checkbox')).toBeEnabled();
+    }
+    // There's no Move (that re-links transfers)
     await userEvent.click(within(list).getByRole('checkbox', { name: 'Transactions (3)' }));
-    expect(within(list).getByText('1 of 3 selected')).toBeInTheDocument();
+    expect(within(list).getByText('3 of 3 selected')).toBeInTheDocument();
     expect(within(list).queryByText(/^Move/)).not.toBeInTheDocument();
-    await userEvent.click(within(list).getByRole('button', { name: 'Delete 1' }));
-    expect(onDeleteTransferBulk).toHaveBeenCalledWith([2]);
+    await userEvent.click(within(list).getByRole('button', { name: 'Delete 3' }));
+    expect(onDeleteTransferBulk).toHaveBeenCalledWith([2, 11, 12]);
+  });
+
+  test("editing a payment from the loan's list edits the payment itself, in the account it was paid from", async () => {
+    const onEdit = jest.fn();
+    const list = await openLoan({ onEdit });
+    const [, october] = loanRows(list);
+    await userEvent.click(within(october).getByTitle('Edit'));
+    const amount = within(list).getByPlaceholderText('Amount');
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '-80');
+    await userEvent.click(within(list).getByRole('button', { name: 'Save' }));
+    expect(onEdit).toHaveBeenCalledWith(12, { date: '2026-10-31', vendor: 'ASPIRE', amount: '-80', notes: '', account_id: 6, category: 'Loan' });
   });
 
 });
@@ -308,7 +331,7 @@ test('the transactions page has no Flagged tab (over budget shows as a chip inst
 describe("a bank account's transfers", () => {
   const tx = (id, accountId, date, vendor, amount, extra = {}) => ({
     id, account_id: accountId, date, vendor, category: 'Transfer', notes: '', amount, amount_cents: Math.round(amount * 100),
-    is_transfer: true, is_reimbursement: false, over_budget: false, recurring_id: null, loan_payment_id: null,
+    is_transfer: true, is_reimbursement: false, over_budget: false, recurring_id: null,
     transfer_peer_id: null, transfer_peer_account: null, ...extra,
   });
   const ACCOUNTS = [account({ id: 6, account_name: 'Checking' }), account({ id: 7, account_name: 'Savings' })];

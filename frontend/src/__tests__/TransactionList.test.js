@@ -153,19 +153,6 @@ test('a transaction marked unrelated shows a pill and can be added to its series
   expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();   // the usual actions stay
 });
 
-test("a loan entry is marked and has no actions or checkbox: it follows its payment", () => {
-  const entry = { ...TX, id: 2, vendor: 'ASPIRE', category: 'Loan', amount: 75, amount_cents: 7500, account_id: 5,
-                  on_loan_account: true, loan_payment_id: 1 };
-  renderList({ transactions: [entry], onToggle: jest.fn(), selectedIds: new Set() });
-  const chip = screen.getByText('Loan entry');
-  expect(chip).toHaveClass('tx-loan-chip');
-  expect(chip).toHaveAttribute('title', 'Follows a payment in its recurring series: change that payment instead');
-  expect(screen.queryByTitle('Edit')).not.toBeInTheDocument();
-  expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
-  expect(screen.queryByTitle('Mark as transfer')).not.toBeInTheDocument();
-  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-});
-
 test('other transactions show no pill', () => {
   renderList({ unrelatedTo: { 99: [{ id: 5, vendor: 'ASPIRE' }] }, onAddToSeries: jest.fn() });
   expect(screen.queryByText('Unrelated')).not.toBeInTheDocument();

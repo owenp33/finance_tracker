@@ -137,15 +137,15 @@ function RecurringTab({
             <input type="text" value={recurringEditFields.notes} onChange={e => setRF('notes', e.target.value)} />
           </div>
           {'loan_account_id' in recurringEditFields && (() => {
-            // Each payment in the series gets (or loses) a loan entry when the loan changes
+            // The series' payments start (or stop) counting on a loan when the loan changes
             const chosen = recurringEditFields.loan_account_id;
             const payments = transactions.filter(t => t.recurring_id === r.id && t.amount_cents !== 0).length;
             const plural = payments !== 1 ? 's' : '';
             let note = null;
             if (chosen !== (r.loan_account_id ?? null) && payments > 0) {
               note = chosen != null
-                ? `Books a loan entry on ${accountName(chosen)} for each of the ${payments} payment${plural} in this series`
-                : `Removes the ${payments} loan entr${payments !== 1 ? 'ies' : 'y'} from ${accountName(r.loan_account_id)}`;
+                ? `Counts the ${payments} payment${plural} in this series toward ${accountName(chosen)}`
+                : `Stops counting the ${payments} payment${plural} in this series toward ${accountName(r.loan_account_id)}`;
             }
             return (
               <div className="form-group">

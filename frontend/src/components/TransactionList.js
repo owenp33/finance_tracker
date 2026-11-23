@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Pencil, Trash2, ArrowLeftRight, Info, Check } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
-import { isLoanEntry, LOAN_ENTRY_TITLE } from './transactions/utils';
 import TransactionChips from './transactions/TransactionChips';
 
 const formatDate = (dateStr, includeYear = false) => {
@@ -164,7 +163,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
             </>
           ) : (
             <>
-              {onToggle && !isLoanEntry(t) && (
+              {onToggle && (
                 <input
                   type="checkbox"
                   className="tx-checkbox"
@@ -181,11 +180,6 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
               <div className="transaction-right">
                 <div className="tx-default-info">
                   <TransactionChips t={t} />
-                  {isLoanEntry(t) && (
-                    <span className="tx-loan-chip" title={LOAN_ENTRY_TITLE}>
-                      Loan entry
-                    </span>
-                  )}
                   {unrelatedTo?.[t.id] && (
                     <span className="tx-unrelated-chip"
                           title={`Marked unrelated to ${unrelatedTo[t.id].map(s => s.vendor).join(', ')}`}>
@@ -206,7 +200,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                   </div>
                 </div>
                 <div className="tx-hover-actions">
-                  {isLoanEntry(t) ? null : renderActions ? renderActions(t) : (
+                  {renderActions ? renderActions(t) : (
                     <>
                       {unrelatedTo?.[t.id]?.map(series => (
                         <button

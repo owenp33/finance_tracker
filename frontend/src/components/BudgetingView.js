@@ -6,6 +6,7 @@ import GoalsSection from './goals/GoalsSection';
 import GoalSavingRow from './goals/GoalSavingRow';
 import { useGoalPlan } from '../hooks/useGoalPlan';
 import { activeSaving, movedThisMonth } from '../utils/goals';
+import { withLoanPayments } from '../utils/loanPayments';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -240,7 +241,7 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
 
         {saving && (
           <GoalSavingRow goal={saving.goal} plan={saving.plan}
-                         movedCents={movedThisMonth(transactions, saving.goal.account_id, period)} />
+                         movedCents={movedThisMonth(withLoanPayments(transactions, recurring), saving.goal.account_id, period)} />
         )}
 
         {loading ? (

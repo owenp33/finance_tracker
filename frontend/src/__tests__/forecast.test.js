@@ -200,11 +200,11 @@ describe('loans and interest', () => {
   test("a loan gets its paying series' scheduled payments, mirrored as money paid in; a bank account none", () => {
     const [loan, savings] = inputs([LOAN, SAVINGS]);
     expect(loan).toMatchObject({ id: 9, name: 'ASPIRE loan', apr: 7.3, frequency: 'monthly', startCents: -1000000 });
-    expect(loan.entries.map(e => [e.date, e.account_id, e.amount, e.vendor, e.loanEntry])).toEqual([
+    expect(loan.payments.map(p => [p.date, p.account_id, p.amount, p.vendor, p.loanPayment])).toEqual([
       ['2026-11-17', 9, 75, 'Series 5', true],
       ['2026-12-17', 9, 75, 'Series 5', true],
     ]);
-    expect(savings.entries).toEqual([]);
+    expect(savings.payments).toEqual([]);
   });
 
   test('a loan is charged on the 1st of each month, a 12th of its yearly rate on what it owed the day before', () => {

@@ -422,13 +422,12 @@ describe('paying down a loan', () => {
     expect([...paysDown().options].map(o => o.textContent)).toEqual(['No loan', 'ASPIRE loan']);
     expect(paysDown()).toHaveValue('');
     await userEvent.selectOptions(paysDown(), 'ASPIRE loan');
-    expect(screen.getByText('Books a loan entry on ASPIRE loan for each of the 2 payments in this series'))
-      .toHaveClass('recurring-series-note');
+    expect(screen.getByText('Counts the 2 payments in this series toward ASPIRE loan')).toHaveClass('recurring-series-note');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(onEditRecurring).toHaveBeenCalledWith(1, expect.objectContaining({ loan_account_id: 5 }));
   });
 
-  test('a template paying down a loan says so, and stopping removes its entries', async () => {
+  test('a template paying down a loan says so, and stopping takes its payments off the loan', async () => {
     const { onEditRecurring } = renderTab([aspire({ loan_account_id: 5 })], {
       accounts: ACCOUNTS, transactions: PAYMENTS, onEditRecurring: jest.fn().mockResolvedValue(),
     });
@@ -436,9 +435,9 @@ describe('paying down a loan', () => {
     expect(screen.getByText('Loan · Monthly · Next: Nov 3 · Checking · Pays down ASPIRE loan')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(paysDown()).toHaveValue('5');
-    expect(screen.queryByText(/loan entr/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/toward ASPIRE loan/)).not.toBeInTheDocument();      // no change yet
     await userEvent.selectOptions(paysDown(), 'No loan');
-    expect(screen.getByText('Removes the 2 loan entries from ASPIRE loan')).toBeInTheDocument();
+    expect(screen.getByText('Stops counting the 2 payments in this series toward ASPIRE loan')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(onEditRecurring).toHaveBeenCalledWith(1, expect.objectContaining({ loan_account_id: null }));
   });

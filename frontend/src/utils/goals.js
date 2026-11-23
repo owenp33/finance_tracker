@@ -209,8 +209,9 @@ export const activeSaving = (goals, plans) => {
   return goals && index >= 0 ? { goal: goals[index], plan: plans[index] } : null;
 };
 
-// How far an account's balance moved in a month ('YYYY-MM'): its transactions dated then, transfers,
-// loan entries and interest included (what went toward a goal on it so far)
+// How far an account's balance moved in a month ('YYYY-MM'): its transactions dated then, transfers
+// and interest included, and a loan's payments when given utils/loanPayments.js withLoanPayments
+// (what went toward a goal on it so far)
 export const movedThisMonth = (transactions, accountId, period) => transactions
   .filter(t => t.account_id === accountId && t.date.startsWith(period))
   .reduce((sum, t) => sum + t.amount_cents, 0);
