@@ -267,14 +267,11 @@ function AccountsView({
                         placeholder="0.00"
                       />
                       <small className="account-field-hint">
-                        What the account held before its earliest transaction here. Use a negative
-                        amount for money owed, like a credit card balance. If you later import older
-                        transactions, subtract their total from this.
+                        Before its first transaction here. Negative if owed.
                       </small>
                     </div>
                     <p className="account-balance-sum">
-                      The transactions here add up to {formatSignedCents(transactionCents)}, so
-                      starting balance + transactions = current balance.
+                      Starting balance + transactions ({formatSignedCents(transactionCents)}) = current balance.
                     </p>
                     <div className="form-group">
                       <label htmlFor={`account-${a.id}-current`}>Current balance</label>
@@ -287,8 +284,7 @@ function AccountsView({
                         placeholder="0.00"
                       />
                       <small className="account-field-hint">
-                        What your bank shows today. Enter it once every transaction up to today is
-                        here; the starting balance becomes this less the transactions.
+                        What your bank shows today, once every transaction to date is here.
                       </small>
                     </div>
                     <div className="account-edit-actions">
@@ -348,8 +344,7 @@ function AccountsView({
                         <AccountGoalProgress goals={(goals ?? []).filter(goal => goal.account_id === a.id)} />
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
-                            Created by an import. Check its name, account ID, and starting balance, then
-                            edit it or click “Looks good”.
+                            Made by an import: check it, then edit or click “Looks good”.
                           </small>
                         )}
                       </div>

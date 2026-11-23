@@ -38,7 +38,7 @@ test('an account created by an import is flagged until it is marked as reviewed'
 
   const item = accountItem('AMEX GOLD');
   expect(within(item).getByText('Needs attention')).toHaveClass('needs-attention-badge');
-  expect(within(item).getByText(/Created by an import/)).toHaveTextContent(/starting balance/);
+  expect(within(item).getByText('Made by an import: check it, then edit or click “Looks good”.')).toHaveClass('needs-attention-hint');
 
   await userEvent.click(within(item).getByRole('button', { name: 'Looks good' }));
   expect(onEditAccount).toHaveBeenCalledWith(7, { needs_attention: false });
@@ -92,7 +92,9 @@ test('the starting and current balances are linked by what the transactions add 
   renderAccounts([account({ balance: 100, opening_balance: 0 })]);
   const starting = await startEditing('Checking');
   expect(currentField()).toHaveValue(100);
-  expect(screen.getByText(/^The transactions here add up to \+\$100\.00/)).toBeInTheDocument();
+  expect(screen.getByText('Starting balance + transactions (+$100.00) = current balance.')).toBeInTheDocument();
+  expect(screen.getByText('Before its first transaction here. Negative if owed.')).toBeInTheDocument();
+  expect(screen.getByText('What your bank shows today, once every transaction to date is here.')).toBeInTheDocument();
 
   await userEvent.clear(starting);
   await userEvent.type(starting, '1500.25');
@@ -149,7 +151,8 @@ describe('loan accounts', () => {
     expect(howOften()).not.toBeInTheDocument();                     // no rate yet
     await userEvent.type(rate(), '6.8');
     expect(howOften()).toHaveValue('monthly');
-    expect(screen.getByText(/Charged on what's owed/)).toBeInTheDocument();
+    expect(screen.getByText("Charged on what's owed. Blank if unknown.")).toBeInTheDocument();
+    expect(screen.getByText('On the 1st of each month, quarter or year.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(onCreateAccount).toHaveBeenCalledWith({
       account_id: 'aspire-1', account_name: 'ASPIRE loan', kind: 'loan', apr: 6.8, interest_frequency: 'monthly',
@@ -162,7 +165,7 @@ describe('loan accounts', () => {
     await userEvent.click(screen.getByRole('button', { name: '+ Add Account' }));
     await userEvent.type(screen.getByLabelText(/^Account ID/), 'savings-1');
     await userEvent.type(rate(), '0.5');
-    expect(screen.getByText(/Paid on a positive balance/)).toBeInTheDocument();
+    expect(screen.getByText('Paid on a positive balance. Blank if none.')).toBeInTheDocument();
     await userEvent.selectOptions(howOften(), 'Yearly');
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(onCreateAccount).toHaveBeenCalledWith({

@@ -16,8 +16,8 @@ function InterestFields({ idPrefix, kind, apr, onApr, frequency, onFrequency }) 
         />
         <small className="account-field-hint">
           {kind === 'loan'
-            ? "Charged on what's owed, earlier interest included. Leave it blank until you know it; a loan's balance is what you owe, as a negative amount."
-            : 'Paid on a positive balance, and counted as income. Leave it blank if the account earns none.'}
+            ? "Charged on what's owed. Blank if unknown."
+            : 'Paid on a positive balance. Blank if none.'}
         </small>
       </div>
       {apr.trim() !== '' && (
@@ -29,8 +29,7 @@ function InterestFields({ idPrefix, kind, apr, onApr, frequency, onFrequency }) 
             <option value="yearly">Yearly</option>
           </select>
           <small className="account-field-hint">
-            On the 1st of each month, of each quarter (Jan, Apr, Jul, Oct), or of the year, on the balance
-            the day before.
+            On the 1st of each month, quarter or year.
           </small>
         </div>
       )}
