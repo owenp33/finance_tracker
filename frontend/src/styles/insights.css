@@ -701,7 +701,8 @@
 }
 
 /* Phone: the summary cards, chart cards and weekly averages tighter, an amount sized to fit its half of
-   the row, and the category panels one a row */
+   the row, the category panels one a row, and Top vendors' "Leave out recurring charges" under its
+   "Click a vendor for details." (the header's pieces join the card's column, then `order`) */
 @media (max-width: 600px) {
   .summary-cards {
     gap: 10px;
@@ -740,5 +741,33 @@
 
   .category-panels {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .top-vendors {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-vendors-header {
+    display: contents;
+  }
+
+  .top-vendors-header h3 {
+    margin-bottom: 20px;
+  }
+
+  .top-vendors > :not(.top-vendors-header) {
+    order: 3;
+  }
+
+  .top-vendors > .chart-note {
+    order: 1;
+    margin-bottom: 8px;
+  }
+
+  .top-vendors-header .bri-toggle {
+    order: 2;
+    align-self: flex-start;
+    margin-bottom: 12px;
   }
 }
