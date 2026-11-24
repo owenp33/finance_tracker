@@ -13,8 +13,8 @@ export const loanPayments = (transactions, recurring, loanId) => {
 };
 
 // Every transaction, then each loan payment again as it moves its loan: on the loan, for the
-// opposite amount, marked `loanPayment` (for what a loan's balance did: a goal's progress this month,
-// the balance chart's tooltip). The same list when no series pays a loan down.
+// opposite amount, marked `loanPayment` (for what a loan's balance did: utils/balanceMoves.js). The
+// same list when no series pays a loan down.
 export const withLoanPayments = (transactions, recurring) => {
   const loanOf = loansBySeries(recurring);
   const moves = transactions

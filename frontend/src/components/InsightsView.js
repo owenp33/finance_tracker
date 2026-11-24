@@ -4,8 +4,9 @@ import RecurringCostsTab from './insights/RecurringCostsTab';
 import AccountsTab from './insights/AccountsTab';
 import ReportsTab from './insights/ReportsTab';
 
-// `recurring` is every account's recurring templates; `onError` reports a failed request
-const InsightsView = ({ transactions = [], accounts = [], recurring = [], onError }) => {
+// `recurring` is every account's recurring templates, `interest` every interest hit (GET
+// /api/interest); `onError` reports a failed request
+const InsightsView = ({ transactions = [], accounts = [], recurring = [], interest = [], onError }) => {
   const [tab, setTab] = useState('overview');
 
   return (
@@ -19,7 +20,9 @@ const InsightsView = ({ transactions = [], accounts = [], recurring = [], onErro
 
       {tab === 'overview' && <OverviewTab transactions={transactions} accounts={accounts} />}
       {tab === 'recurring' && <RecurringCostsTab recurring={recurring} transactions={transactions} accounts={accounts} onError={onError} />}
-      {tab === 'accounts' && <AccountsTab accounts={accounts} transactions={transactions} recurring={recurring} onError={onError} />}
+      {tab === 'accounts' && (
+        <AccountsTab accounts={accounts} transactions={transactions} recurring={recurring} interest={interest} onError={onError} />
+      )}
       {tab === 'reports'  && <ReportsTab accounts={accounts} />}
     </div>
   );

@@ -8,6 +8,7 @@ function TransactionsView({
   transactions,
   accounts,
   recurringTransactions,
+  interest,
   onAdd,
   onAddRecurring,
   onEdit,
@@ -29,6 +30,7 @@ function TransactionsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  onEditInterest,
   onError,
 }) {
   const [tab, setTab] = useState('all');
@@ -103,6 +105,7 @@ function TransactionsView({
           transactions={transactions}
           accounts={accounts}
           recurring={recurringTransactions}
+          interest={interest}
           onEdit={onEdit}
           onDelete={onDelete}
           onPairTransfer={onPairTransfer}
@@ -110,6 +113,7 @@ function TransactionsView({
           onCreateAccount={onCreateAccount}
           onEditAccount={onEditAccount}
           onDeleteAccount={onDeleteAccount}
+          onEditInterest={onEditInterest}
           onError={onError}
         />
       )}

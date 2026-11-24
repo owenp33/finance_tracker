@@ -3,6 +3,7 @@ import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDollars, formatSignedCents } from '../utils/money';
 import AccountKindFields from './AccountKindFields';
 import InterestFields from './InterestFields';
+import InterestHits from './InterestHits';
 import AccountGoalProgress from './goals/AccountGoalProgress';
 import { useGoals } from '../hooks/useGoals';
 import GroupedTransactionList from './transactions/GroupedTransactionList';
@@ -30,6 +31,7 @@ function AccountsView({
   transactions,
   accounts,
   recurring = [],
+  interest = [],
   onEdit,
   onDelete,
   onPairTransfer,
@@ -37,6 +39,7 @@ function AccountsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  onEditInterest,
   onError = IGNORE_ERROR,
 }) {
   // Each account's goals show their progress on its row (Phase F, F2f)
@@ -70,7 +73,7 @@ function AccountsView({
 
   // A row's "To" / "From" and its other account: a transfer's peer (click to move it, or to link an
   // unlinked one); on a loan, a payment's account it was paid from, and none for the loan's own
-  // transactions (interest)
+  // transactions (any entered on it)
   const transferPeer = (t, a, isLoan) => (
     <>
       <span className="account-transfer-direction">
@@ -201,16 +204,18 @@ function AccountsView({
           <p className="no-data">No accounts yet. Add one above.</p>
         ) : (
           accounts.map(a => {
-            // A bank account's row lists its transfers; a loan's, its own transactions (interest) and
-            // the payments paying it down (bills paid from another account, not transfers), as they
-            // are: editing one edits the payment, in the account it was paid from. Both in one list.
+            // A bank account's row lists its transfers; a loan's, its own transactions (any entered on
+            // it) and the payments paying it down (bills paid from another account, not transfers), as
+            // they are: editing one edits the payment, in the account it was paid from. Both in one
+            // list. Interest hits aren't transactions: a list of their own (InterestHits).
             const isLoan = a.kind === 'loan';
             const listed = isLoan
               ? [...transactions.filter(t => t.account_id === a.id), ...loanPayments(transactions, recurring, a.id)]
               : transactions.filter(t => t.account_id === a.id && t.is_transfer);
+            const hits = interest.filter(hit => hit.account_id === a.id);
             const expandable = listed.length > 0;
             const expanded = expandable && expandedAccountIds.has(a.id);
-            // Starting balance + transactions (transfers included) = current balance
+            // Starting balance + transactions (transfers included) and any interest = current balance
             const transactionCents = Math.round(a.balance * 100) - Math.round((a.opening_balance ?? 0) * 100);
             const typeStarting = (text) => {
               setEditingOpeningBalance(text);
@@ -271,7 +276,7 @@ function AccountsView({
                       </small>
                     </div>
                     <p className="account-balance-sum">
-                      Starting balance + transactions ({formatSignedCents(transactionCents)}) = current balance.
+                      Starting balance + transactions{hits.length > 0 && ' and interest'} ({formatSignedCents(transactionCents)}) = current balance.
                     </p>
                     <div className="form-group">
                       <label htmlFor={`account-${a.id}-current`}>Current balance</label>
@@ -342,6 +347,7 @@ function AccountsView({
                           )}
                         </small>
                         <AccountGoalProgress goals={(goals ?? []).filter(goal => goal.account_id === a.id)} />
+                        <InterestHits hits={hits} loan={isLoan} onSave={onEditInterest} />
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
                             Made by an import: check it, then edit or click “Looks good”.

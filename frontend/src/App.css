@@ -2977,6 +2977,96 @@ body {
   color: #4b5563;
 }
 
+/* An account's interest hits under its row in Transactions → Accounts: a list of their own, closed
+   at first, each with its amount and an Edit (the bank's figure). The row's info is centred, so the
+   list takes a fixed width there, and an open editor doesn't shift it */
+.account-interest {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.account-interest-toggle {
+  background: none;
+  border: none;
+  padding: 2px 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: left;
+  width: fit-content;
+}
+
+.account-interest-toggle:hover {
+  color: #374151;
+}
+
+.account-interest-list {
+  width: 100%;
+  max-width: 580px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.account-interest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 30px;
+}
+
+.account-interest-date {
+  flex: 0 0 96px;
+}
+
+.account-interest-basis {
+  flex: 1;
+  min-width: 0;
+  color: #6b7280;
+}
+
+.account-interest-amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.account-interest-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-interest-edit input {
+  width: 100px;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* On a phone, what a hit was worked out on takes a line of its own under its date and amount */
+@media (max-width: 600px) {
+  .account-interest-basis {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .account-interest-amount,
+  .account-interest-edit {
+    margin-left: auto;
+  }
+}
+
 /* An account's goal progress on its row in Transactions → Accounts (F2f) */
 .account-goal {
   display: flex;

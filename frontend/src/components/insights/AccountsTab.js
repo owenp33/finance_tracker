@@ -12,7 +12,7 @@ import { todayISO, shiftDays } from '../../utils/dates';
 import { formatCents, formatSignedCents } from '../../utils/money';
 import { RANGES, netPosition, rangeStart, rangePoints } from '../../utils/balances';
 import { FORECAST_DAYS, forecastFor } from '../../utils/forecast';
-import { withLoanPayments } from '../../utils/loanPayments';
+import { balanceMoves } from '../../utils/balanceMoves';
 
 const NET = 'net';
 
@@ -50,10 +50,11 @@ const changeLabel = (change, from) => {
 // F1: utils/forecast.js) with what it assumes (F1b), and a table. `accounts` (GET
 // /api/accounts) give the current balances each history should end at (the plan's check), which
 // accounts are loans (F2a), and each account's interest rate and how often it hits; `recurring`
-// (every template) tells the forecast which series have ended, and which pay down a loan. An
+// (every template) tells the forecast which series have ended, and which pay down a loan; the
+// tooltip lists a day's interest hits (`interest`, GET /api/interest) with its transactions. An
 // account's goals (F2e) are dashed lines, with a note on where the forecast takes them. Under it, the
 // goal plan (GoalPlan): every goal's plan, as on Budgeting, over time.
-function AccountsTab({ accounts = [], transactions = [], recurring = [], onError = IGNORE_ERROR }) {
+function AccountsTab({ accounts = [], transactions = [], recurring = [], interest = [], onError = IGNORE_ERROR }) {
   const balances = useBalances(onError);
   const [view, setView] = useState(NET);
   const [range, setRange] = useState('1Y');
@@ -156,7 +157,7 @@ function AccountsTab({ accounts = [], transactions = [], recurring = [], onError
 
         <BalanceChart
           key={`${view}-${range}`} points={points} forecast={forecast} today={today}
-          transactions={withLoanPayments(transactions, recurring)} accountIds={shownIds} goals={accountGoals}
+          transactions={balanceMoves(transactions, recurring, interest)} accountIds={shownIds} goals={accountGoals}
         />
         {forecast.length > 0 && (
           <ul className="timeline-legend">

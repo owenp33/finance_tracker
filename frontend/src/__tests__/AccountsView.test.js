@@ -17,12 +17,13 @@ const account = (overrides) => ({
 
 const renderAccounts = (accounts, onEditAccount = jest.fn(),
                         { onCreateAccount = jest.fn(), transactions = [], recurring = [], onDeleteTransferBulk = jest.fn(),
-                          onEdit = jest.fn(), onPairTransfer = jest.fn() } = {}) => {
+                          onEdit = jest.fn(), onPairTransfer = jest.fn(), interest = [], onEditInterest = jest.fn() } = {}) => {
   render(
     <AccountsView
-      transactions={transactions} accounts={accounts} recurring={recurring}
+      transactions={transactions} accounts={accounts} recurring={recurring} interest={interest}
       onEdit={onEdit} onDelete={jest.fn()} onPairTransfer={onPairTransfer} onDeleteTransferBulk={onDeleteTransferBulk}
       onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
+      onEditInterest={onEditInterest}
     />
   );
   return onEditAccount;
@@ -387,6 +388,84 @@ describe("a bank account's transfers", () => {
     expect(onPairTransfer.mock.calls).toEqual([[1, 7], [2, 7]]);
     await userEvent.click(within(list).getByRole('button', { name: 'Delete 2' }));
     expect(onDeleteTransferBulk).toHaveBeenCalledWith([1, 2]);
+  });
+});
+
+describe('interest on the row', () => {
+  // GET /api/interest rows, newest first: the Student Loan charged monthly, Savings paid yearly
+  const hit = (id, accountId, date, cents, apr, frequency, baseCents) => ({
+    id, account_id: accountId, date, amount: cents / 100, amount_cents: cents, apr, frequency, base_cents: baseCents,
+  });
+  const ACCOUNTS = [
+    account({ id: 1, account_name: 'Checking' }),
+    account({ id: 2, account_name: 'Savings', balance: 3015, apr: 0.5, interest_frequency: 'yearly' }),
+    account({ id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -76059.27 }),
+  ];
+  const INTEREST = [
+    hit(9, 2, '2027-01-01', 1500, 0.5, 'yearly', 300000),
+    hit(8, 16, '2027-01-01', -42231, 6.7, 'monthly', 7563696),
+    hit(7, 16, '2026-12-01', -41996, 6.7, 'monthly', 7521700),
+  ];
+  const rows = (name) => [...accountItem(name).querySelectorAll('.account-interest-row')].map(row =>
+    ['.account-interest-date', '.account-interest-basis', '.account-interest-amount'].map(sel => row.querySelector(sel)?.textContent));
+
+  test("an account's interest is a list of its own under its row, closed at first, and not among its transactions", async () => {
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST });
+    expect(within(accountItem('Checking')).queryByRole('button', { name: /^Interest/ })).not.toBeInTheDocument();
+    const loanToggle = within(accountItem('Student Loan')).getByRole('button', { name: 'Interest (2)' });
+    expect(loanToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(rows('Student Loan')).toEqual([]);
+
+    await userEvent.click(loanToggle);
+    expect(loanToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(rows('Student Loan')).toEqual([
+      ['Jan 1, 2027', '6.70% a year, charged monthly, on $75,636.96 owed', '-$422.31'],
+      ['Dec 1, 2026', '6.70% a year, charged monthly, on $75,217.00 owed', '-$419.96'],
+    ]);
+    await userEvent.click(within(accountItem('Savings')).getByRole('button', { name: 'Interest (1)' }));
+    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
+    // Not transactions: the loan has none to list
+    expect(within(accountItem('Student Loan')).getByTitle('No transactions')).toBeDisabled();
+  });
+
+  test("a hit is changed to the bank's figure, and its form closes once the change is saved", async () => {
+    const onEditInterest = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onEditInterest });
+    const loan = accountItem('Student Loan');
+    await userEvent.click(within(loan).getByRole('button', { name: 'Interest (2)' }));
+    const [, december] = loan.querySelectorAll('.account-interest-row');
+    await userEvent.click(within(december).getByRole('button', { name: 'Edit interest' }));
+    const amount = within(loan).getByLabelText('Interest charged on Dec 1, 2026');
+    expect(amount).toHaveValue(419.96);
+    expect(within(december).getByText('Charged')).toBeInTheDocument();
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '425.10');
+    await userEvent.click(within(loan).getByRole('button', { name: 'Save' }));
+    expect(onEditInterest).toHaveBeenCalledWith(7, 425.1);
+    expect(within(loan).getByLabelText('Interest charged on Dec 1, 2026')).toBeInTheDocument();   // refused: still open
+    await userEvent.click(within(loan).getByRole('button', { name: 'Save' }));
+    expect(onEditInterest).toHaveBeenCalledTimes(2);
+    expect(within(loan).queryByLabelText('Interest charged on Dec 1, 2026')).not.toBeInTheDocument();
+  });
+
+  test('saving needs an amount, and Cancel leaves the hit as it was', async () => {
+    const onEditInterest = jest.fn();
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onEditInterest });
+    const savings = accountItem('Savings');
+    await userEvent.click(within(savings).getByRole('button', { name: 'Interest (1)' }));
+    await userEvent.click(within(savings).getByRole('button', { name: 'Edit interest' }));
+    expect(within(savings).getByText('Paid')).toBeInTheDocument();
+    await userEvent.clear(within(savings).getByLabelText('Interest paid on Jan 1, 2027'));
+    expect(within(savings).getByRole('button', { name: 'Save' })).toBeDisabled();
+    await userEvent.click(within(savings).getByRole('button', { name: 'Cancel' }));
+    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
+    expect(onEditInterest).not.toHaveBeenCalled();
+  });
+
+  test("the edit form's sum counts the interest", async () => {
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST });
+    await startEditing('Savings');
+    expect(screen.getByText('Starting balance + transactions and interest (+$3,015.00) = current balance.')).toBeInTheDocument();
   });
 });
 

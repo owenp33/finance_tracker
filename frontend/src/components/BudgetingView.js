@@ -6,7 +6,7 @@ import GoalsSection from './goals/GoalsSection';
 import GoalSavingRow from './goals/GoalSavingRow';
 import { useGoalPlan } from '../hooks/useGoalPlan';
 import { activeSaving, movedThisMonth } from '../utils/goals';
-import { withLoanPayments } from '../utils/loanPayments';
+import { balanceMoves } from '../utils/balanceMoves';
 import { sortList } from './transactions/utils';
 import {
   useBudgetData,
@@ -47,10 +47,11 @@ const paceTableRow = (item, pace, monthEnd) => {
 // A stable stand-in when no one listens for errors (GoalsSection's hooks refetch when it changes)
 const IGNORE_ERROR = () => {};
 
-// The Budgeting view: the Goals section (Phase F, F2b), then the month's category budgets, with the
-// active goal's saving beside them this month (F2c), which Unallocated leaves out. `accounts` and
-// `recurring` (every template) feed the goals; `onError` takes their errors.
-function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring = [], onError = IGNORE_ERROR }) {
+// The Budgeting view: the month's category budgets, with the active goal's saving beside them this
+// month (Phase F, F2c), which Unallocated leaves out, then the Goals section (F2b). `accounts` and
+// `recurring` (every template) feed the goals, and `interest` (GET /api/interest) what's gone toward
+// the active one this month; `onError` takes their errors.
+function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring = [], interest = [], onError = IGNORE_ERROR }) {
   const [period, setPeriod] = useState(getCurrentPeriod);
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -241,7 +242,7 @@ function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring 
 
         {saving && (
           <GoalSavingRow goal={saving.goal} plan={saving.plan}
-                         movedCents={movedThisMonth(withLoanPayments(transactions, recurring), saving.goal.account_id, period)} />
+                         movedCents={movedThisMonth(balanceMoves(transactions, recurring, interest), saving.goal.account_id, period)} />
         )}
 
         {loading ? (

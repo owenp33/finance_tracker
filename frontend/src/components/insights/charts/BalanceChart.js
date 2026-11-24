@@ -11,9 +11,9 @@ const Y_AXIS_WIDTH = 56;
 const MARGIN = { top: 16, right: 16, bottom: 0, left: 0 };
 
 // A point's details on hover or tap: its date and balance, and for a day with changes, that day's
-// transactions in the accounts shown (`accountIds`; a loan's payments among them when `transactions`
-// is utils/loanPayments.js withLoanPayments, so a payment can show twice, in Checking and on the
-// loan), or for a forecast day, the items scheduled
+// transactions in the accounts shown (`accountIds`; its interest hits and a loan's payments among them
+// when `transactions` is utils/balanceMoves.js balanceMoves, so a payment can show twice, in Checking
+// and on the loan), or for a forecast day, the items scheduled
 // and its share of the average spending (utils/forecast.js forecastPoints)
 export function BalanceTooltip({ active, payload, transactions, accountIds }) {
   if (!active || !payload?.length) return null;

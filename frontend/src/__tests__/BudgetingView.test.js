@@ -52,10 +52,11 @@ beforeEach(() => {
 
 afterEach(() => jest.useRealTimers());
 
-const renderView = async (transactions = [], { accounts = [], recurring = [] } = {}) => {
+const renderView = async (transactions = [], { accounts = [], recurring = [], interest = [] } = {}) => {
   render(
     <CategoryColorProvider>
-      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} accounts={accounts} recurring={recurring} />
+      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} accounts={accounts} recurring={recurring}
+                     interest={interest} />
     </CategoryColorProvider>
   );
   await screen.findAllByRole('img', { name: /:/ });
@@ -312,16 +313,29 @@ describe("the active goal's saving", () => {
     expect(unallocated()).toEqual(['$1750.00', 'after $500.00 to Savings']);
   });
 
+  // ASPIRE's payment from Checking: its series pays the loan down, so it's $75 less owed
+  const PAYMENT = { id: 30, account_id: 6, date: '2026-10-31', vendor: 'ASPIRE', category: 'Loan', notes: '', amount: -75,
+                    amount_cents: -7500, recurring_id: 5, is_transfer: false, is_reimbursement: false, on_loan_account: false };
+  const ASPIRE = { id: 5, account_id: 6, loan_account_id: 16, vendor: 'ASPIRE', category: 'Loan', amount: -75, frequency: 1,
+                   frequency_unit: 'months', number: -1, idx: 2, date: '2026-10-31', next_date: '2026-11-30' };
+
   test("a loan goal's saving is an extra payment, and what's gone to it is how far it's paid down", async () => {
     getGoals.mockResolvedValue([goalRow(2, 16, 'Student Loan', 'loan', -7514200, 0)]);
-    // ASPIRE's payment from Checking: its series pays the loan down, so it's $75 less owed
-    const payment = { id: 30, account_id: 6, date: '2026-10-31', vendor: 'ASPIRE', category: 'Loan', notes: '', amount: -75,
-                      amount_cents: -7500, recurring_id: 5, is_transfer: false, is_reimbursement: false, on_loan_account: false };
-    const aspire = { id: 5, account_id: 6, loan_account_id: 16, vendor: 'ASPIRE', category: 'Loan', amount: -75, frequency: 1,
-                     frequency_unit: 'months', number: -1, idx: 2, date: '2026-10-31', next_date: '2026-11-30' };
-    await renderView([payment], { accounts: ACCOUNTS, recurring: [aspire] });
+    await renderView([PAYMENT], { accounts: ACCOUNTS, recurring: [ASPIRE] });
     await waitFor(() => expect(saving()).not.toBeNull());
     expect(saving().textContent).toBe('Goal: Student Loan · $500.00 extra this month (yours) · $75.00 paid down so far');
+  });
+
+  test("a loan's interest this month counts against what's paid down", async () => {
+    getGoals.mockResolvedValue([goalRow(2, 16, 'Student Loan', 'loan', -7514200, 0)]);
+    // GET /api/interest: October's charge counts, September's doesn't
+    const hit = (id, date, cents) => ({
+      id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+    });
+    await renderView([PAYMENT], { accounts: ACCOUNTS, recurring: [ASPIRE], interest: [hit(4, '2026-10-01', -41996), hit(3, '2026-09-01', -41762)] });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    // $75 paid, $419.96 charged
+    expect(saving().textContent).toBe('Goal: Student Loan · $500.00 extra this month (yours) · $344.96 more owed so far');
   });
 
   test("other months show no saving, and Unallocated is income less that month's budgets", async () => {

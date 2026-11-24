@@ -9,6 +9,8 @@ import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
+import { useInterest } from './hooks/useInterest';
+import * as interestAPI from './api/interest';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -34,6 +36,7 @@ function App() {
   const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
+  const { interest, loadInterest } = useInterest({ setError });
   // AUTH HANDLERS =============================================================
 
   // Forgets the login; the caller decides what the login screen says
@@ -103,8 +106,8 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadInterest()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   // ACTION HANDLERS ===========================================================
 
@@ -302,10 +305,23 @@ function App() {
     await Promise.all([loadBudgetProgress(), loadTransactions()]);
   }, [loadBudgetProgress, loadTransactions]);
 
+  // Changes an interest hit to the bank's figure, which moves its account's balance, so both reload.
+  // Resolves to whether it worked, so the form can stay open after an error.
+  const handleEditInterest = async (id, amount) => {
+    try {
+      await interestAPI.updateInterest(id, amount);
+      await Promise.all([loadAccounts(), loadInterest()]);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    }
+  };
+
   const handleDeleteAccount = async (id) => {
     try {
       await accountsAPI.deleteAccount(id);
-      await Promise.all([loadAccounts(), loadTransactions()]);
+      await Promise.all([loadAccounts(), loadTransactions(), loadInterest()]);
     } catch (err) {
       setError(err.message);
     }
@@ -345,8 +361,9 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
+      loadInterest();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
@@ -396,6 +413,7 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             recurringTransactions={recurringTransactions}
+            interest={interest}
             onAdd={handleAddTransaction}
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
@@ -417,6 +435,7 @@ function App() {
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
+            onEditInterest={handleEditInterest}
             onError={setError}
           />
         )}
@@ -426,6 +445,7 @@ function App() {
             onBudgetChange={handleBudgetChange}
             accounts={accounts}
             recurring={recurringTransactions}
+            interest={interest}
             onError={setError}
           />
         )}
@@ -434,6 +454,7 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             recurring={recurringTransactions}
+            interest={interest}
             onError={setError}
           />
         )}

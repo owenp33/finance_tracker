@@ -1,7 +1,7 @@
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InsightsView from '../components/InsightsView';
-import { BalanceTooltip } from '../components/insights/charts/BalanceChart';
+import BalanceChart, { BalanceTooltip } from '../components/insights/charts/BalanceChart';
 import { GoalPlanTip } from '../components/insights/charts/GoalPlanChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBalances } from '../api/balances';
@@ -11,6 +11,16 @@ import { getGoals } from '../api/goals';
 jest.mock('../api/balances');
 jest.mock('../api/recurring');
 jest.mock('../api/goals');
+
+// The balance chart as it is, keeping the props it was last drawn with (to see what its tooltip lists)
+jest.mock('../components/insights/charts/BalanceChart', () => {
+  const actual = jest.requireActual('../components/insights/charts/BalanceChart');
+  const Chart = (props) => {
+    Chart.lastProps = props;
+    return actual.default(props);
+  };
+  return { ...actual, __esModule: true, default: Chart };
+});
 
 // jsdom has no layout, so the chart gets a fixed size instead of measuring its container
 jest.mock('recharts', () => {
@@ -73,10 +83,10 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 // Opens Insights → Accounts and waits for the balances
-const openTab = async ({ accounts = ACCOUNTS, transactions = [], recurring = [], onError = jest.fn() } = {}) => {
+const openTab = async ({ accounts = ACCOUNTS, transactions = [], recurring = [], interest = [], onError = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
-      <InsightsView transactions={transactions} accounts={accounts} recurring={recurring} onError={onError} />
+      <InsightsView transactions={transactions} accounts={accounts} recurring={recurring} interest={interest} onError={onError} />
     </CategoryColorProvider>
   );
   await user.click(screen.getByRole('button', { name: 'Accounts' }));
@@ -489,6 +499,17 @@ test("a forecast day's tooltip adds that day's share of the average spending", (
     transactions={[]} accountIds={[6]} />);
   expect([...screen.getByRole('tooltip').querySelectorAll('strong, .tip-amount, li')].map(e => e.textContent)).toEqual([
     'Nov 9, 2026, forecast', '$7,185.75', 'Allina Health-$87.38', 'Average spending over the last 90 days-$1.00',
+  ]);
+});
+
+test("the chart's tooltip lists an interest hit on its day, before that day's transactions", async () => {
+  const paycheck = { id: 1, account_id: 7, date: '2026-10-01', vendor: 'Paycheck', amount: 1700, amount_cents: 170000 };
+  const hit = { id: 3, account_id: 7, date: '2026-10-01', amount: 15, amount_cents: 1500, apr: 0.5, frequency: 'yearly', base_cents: 300000 };
+  await openTab({ transactions: [paycheck], interest: [hit] });
+  render(<BalanceTooltip active payload={[{ payload: { date: '2026-10-01', cents: 301500, kind: 'day' } }]}
+    transactions={BalanceChart.lastProps.transactions} accountIds={[7]} />);
+  expect([...screen.getByRole('tooltip').querySelectorAll('li')].map(e => e.textContent)).toEqual([
+    'Interest+$15.00', 'Paycheck+$1,700.00',
   ]);
 });
 

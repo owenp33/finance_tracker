@@ -13,7 +13,7 @@ const TRANSACTIONS = [
   tx(2, 6, 5, 0),            // moves nothing
   tx(3, 6, 6, -999),         // another series
   tx(4, 6, null, -7500),     // in no series
-  tx(5, 16, null, -41996),   // interest, on the loan itself
+  tx(5, 16, null, -41996),   // entered on the loan itself
 ];
 
 test("a loan's payments are the non-zero transactions of the series paying it down, as they are", () => {
