@@ -17,13 +17,14 @@ const account = (overrides) => ({
 
 const renderAccounts = (accounts, onEditAccount = jest.fn(),
                         { onCreateAccount = jest.fn(), transactions = [], recurring = [], onDeleteTransferBulk = jest.fn(),
-                          onEdit = jest.fn(), onPairTransfer = jest.fn(), interest = [], onEditInterest = jest.fn() } = {}) => {
+                          onEdit = jest.fn(), onPairTransfer = jest.fn(), interest = [], onEditInterest = jest.fn(),
+                          onApproveInterest = jest.fn(), onDeleteInterest = jest.fn() } = {}) => {
   render(
     <AccountsView
       transactions={transactions} accounts={accounts} recurring={recurring} interest={interest}
       onEdit={onEdit} onDelete={jest.fn()} onPairTransfer={onPairTransfer} onDeleteTransferBulk={onDeleteTransferBulk}
       onCreateAccount={onCreateAccount} onEditAccount={onEditAccount} onDeleteAccount={jest.fn()}
-      onEditInterest={onEditInterest}
+      onEditInterest={onEditInterest} onApproveInterest={onApproveInterest} onDeleteInterest={onDeleteInterest}
     />
   );
   return onEditAccount;
@@ -319,6 +320,23 @@ test('the Accounts tab counts accounts that need attention', () => {
   expect(within(tab).getByText('2')).toHaveClass('attention-badge');
 });
 
+test("the Accounts tab's count adds the interest waiting for approval", () => {
+  const hit = (id, accountId, approved) => ({
+    id, account_id: accountId, date: '2026-12-01', amount: -1, amount_cents: -100, apr: 6.7, frequency: 'monthly', base_cents: 1, approved,
+  });
+  render(
+    <CategoryColorProvider>
+      <TransactionsView
+        transactions={[]} recurringTransactions={[]}
+        accounts={[account({ id: 1, needs_attention: true }), account({ id: 2, account_name: 'Savings' })]}
+        interest={[hit(7, 2, false), hit(8, 1, false), hit(6, 2, true)]}
+      />
+    </CategoryColorProvider>
+  );
+  const tab = screen.getByRole('button', { name: /^Accounts/ });
+  expect(within(tab).getByText('3')).toHaveClass('attention-badge');
+});
+
 test('the transactions page has no Flagged tab (over budget shows as a chip instead)', () => {
   render(
     <CategoryColorProvider>
@@ -391,10 +409,10 @@ describe("a bank account's transfers", () => {
   });
 });
 
-describe('interest on the row', () => {
+describe('interest waiting for approval', () => {
   // GET /api/interest rows, newest first: the Student Loan charged monthly, Savings paid yearly
-  const hit = (id, accountId, date, cents, apr, frequency, baseCents) => ({
-    id, account_id: accountId, date, amount: cents / 100, amount_cents: cents, apr, frequency, base_cents: baseCents,
+  const hit = (id, accountId, date, cents, apr, frequency, baseCents, approved = false) => ({
+    id, account_id: accountId, date, amount: cents / 100, amount_cents: cents, apr, frequency, base_cents: baseCents, approved,
   });
   const ACCOUNTS = [
     account({ id: 1, account_name: 'Checking' }),
@@ -405,34 +423,56 @@ describe('interest on the row', () => {
     hit(9, 2, '2027-01-01', 1500, 0.5, 'yearly', 300000),
     hit(8, 16, '2027-01-01', -42231, 6.7, 'monthly', 7563696),
     hit(7, 16, '2026-12-01', -41996, 6.7, 'monthly', 7521700),
+    hit(6, 16, '2026-11-01', -41762, 6.7, 'monthly', 7480000, true),     // approved: applied, and gone from the list
+    hit(5, 1, '2026-11-01', 100, 1, 'monthly', 120000, true),            // Checking's only one, approved
   ];
   const rows = (name) => [...accountItem(name).querySelectorAll('.account-interest-row')].map(row =>
     ['.account-interest-date', '.account-interest-basis', '.account-interest-amount'].map(sel => row.querySelector(sel)?.textContent));
 
-  test("an account's interest is a list of its own under its row, closed at first, and not among its transactions", async () => {
+  test("an account's charges waiting for approval show under its row; approved ones, and accounts with none, show nothing", () => {
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST });
-    expect(within(accountItem('Checking')).queryByRole('button', { name: /^Interest/ })).not.toBeInTheDocument();
-    const loanToggle = within(accountItem('Student Loan')).getByRole('button', { name: 'Interest (2)' });
-    expect(loanToggle).toHaveAttribute('aria-expanded', 'false');
-    expect(rows('Student Loan')).toEqual([]);
-
-    await userEvent.click(loanToggle);
-    expect(loanToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(accountItem('Checking').querySelector('.account-interest')).toBeNull();
+    const loan = accountItem('Student Loan');
+    expect(within(loan).getByText('Interest to approve (2)')).toBeInTheDocument();
     expect(rows('Student Loan')).toEqual([
       ['Jan 1, 2027', '6.70% a year, charged monthly, on $75,636.96 owed', '-$422.31'],
       ['Dec 1, 2026', '6.70% a year, charged monthly, on $75,217.00 owed', '-$419.96'],
     ]);
-    await userEvent.click(within(accountItem('Savings')).getByRole('button', { name: 'Interest (1)' }));
+    expect(within(accountItem('Savings')).getByText('Interest to approve (1)')).toBeInTheDocument();
     expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
     // Not transactions: the loan has none to list
-    expect(within(accountItem('Student Loan')).getByTitle('No transactions')).toBeDisabled();
+    expect(within(loan).getByTitle('No transactions')).toBeDisabled();
   });
 
-  test("a hit is changed to the bank's figure, and its form closes once the change is saved", async () => {
+  test('a charge is approved on its own, or all of them at once, oldest first', async () => {
+    const onApproveInterest = jest.fn().mockResolvedValue(true);
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onApproveInterest });
+    const loan = accountItem('Student Loan');
+    const [, december] = loan.querySelectorAll('.account-interest-row');
+    await userEvent.click(within(december).getByRole('button', { name: 'Approve interest' }));
+    expect(onApproveInterest).toHaveBeenLastCalledWith([7]);
+    await userEvent.click(within(loan).getByRole('button', { name: 'Approve all' }));
+    expect(onApproveInterest).toHaveBeenLastCalledWith([7, 8]);
+    // With one waiting, there's no Approve all
+    expect(within(accountItem('Savings')).queryByRole('button', { name: 'Approve all' })).not.toBeInTheDocument();
+  });
+
+  test('a charge is deleted once confirmed', async () => {
+    const onDeleteInterest = jest.fn().mockResolvedValue(true);
+    window.confirm = jest.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onDeleteInterest });
+    const savings = accountItem('Savings');
+    await userEvent.click(within(savings).getByRole('button', { name: 'Delete interest' }));
+    expect(window.confirm).toHaveBeenCalledWith("Delete the interest for Jan 1, 2027 (+$15.00)? It won't be booked again.");
+    expect(onDeleteInterest).not.toHaveBeenCalled();
+    await userEvent.click(within(savings).getByRole('button', { name: 'Delete interest' }));
+    expect(onDeleteInterest).toHaveBeenCalledWith(9);
+  });
+
+  test("a charge is changed to the bank's figure, and its form closes once the change is saved", async () => {
     const onEditInterest = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onEditInterest });
     const loan = accountItem('Student Loan');
-    await userEvent.click(within(loan).getByRole('button', { name: 'Interest (2)' }));
     const [, december] = loan.querySelectorAll('.account-interest-row');
     await userEvent.click(within(december).getByRole('button', { name: 'Edit interest' }));
     const amount = within(loan).getByLabelText('Interest charged on Dec 1, 2026');
@@ -452,7 +492,6 @@ describe('interest on the row', () => {
     const onEditInterest = jest.fn();
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onEditInterest });
     const savings = accountItem('Savings');
-    await userEvent.click(within(savings).getByRole('button', { name: 'Interest (1)' }));
     await userEvent.click(within(savings).getByRole('button', { name: 'Edit interest' }));
     expect(within(savings).getByText('Paid')).toBeInTheDocument();
     await userEvent.clear(within(savings).getByLabelText('Interest paid on Jan 1, 2027'));
@@ -462,10 +501,10 @@ describe('interest on the row', () => {
     expect(onEditInterest).not.toHaveBeenCalled();
   });
 
-  test("the edit form's sum counts the interest", async () => {
+  test("the edit form's sum says nothing of interest (the Transactions section doesn't)", async () => {
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST });
     await startEditing('Savings');
-    expect(screen.getByText('Starting balance + transactions and interest (+$3,015.00) = current balance.')).toBeInTheDocument();
+    expect(screen.getByText('Starting balance + transactions (+$3,015.00) = current balance.')).toBeInTheDocument();
   });
 });
 

@@ -977,7 +977,8 @@ body {
   pointer-events: auto;
 }
 
-.series-link-btn { color: #16a34a; }
+/* Green, over .btn-ghost's grey (which comes later): link to a series, approve interest */
+.btn-ghost.series-link-btn { color: #16a34a; }
 
 .suggestion-unrelated-btn {
   color: #868e96;
@@ -2977,37 +2978,36 @@ body {
   color: #4b5563;
 }
 
-/* An account's interest hits under its row in Transactions → Accounts: a list of their own, closed
-   at first, each with its amount and an Edit (the bank's figure). The row's info is centred, so the
-   list takes a fixed width there, and an open editor doesn't shift it */
+/* An account's interest waiting for approval under its row in Transactions → Accounts: a list of its
+   own, each charge with its amount and Approve / Edit (the bank's figure) / Delete. The row's info is
+   centred, so the list takes a fixed width there, and an open editor doesn't shift it */
 .account-interest {
   align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
-.account-interest-toggle {
-  background: none;
-  border: none;
-  padding: 2px 0 0;
-  font-size: 0.8rem;
-  color: #6b7280;
-  cursor: pointer;
-  text-align: left;
-  width: fit-content;
+.account-interest-heading,
+.account-interest-list {
+  width: 100%;
+  max-width: 600px;
 }
 
-.account-interest-toggle:hover {
-  color: #374151;
+.account-interest-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
 }
 
 .account-interest-list {
-  width: 100%;
-  max-width: 580px;
   list-style: none;
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -3040,6 +3040,11 @@ body {
   text-align: right;
 }
 
+.account-interest-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .account-interest-edit {
   display: flex;
   align-items: center;
@@ -3054,7 +3059,7 @@ body {
   font-size: 0.85rem;
 }
 
-/* On a phone, what a hit was worked out on takes a line of its own under its date and amount */
+/* On a phone, what a charge was worked out on takes a line of its own under its date and amount */
 @media (max-width: 600px) {
   .account-interest-basis {
     order: 3;

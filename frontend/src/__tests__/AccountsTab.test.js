@@ -504,7 +504,8 @@ test("a forecast day's tooltip adds that day's share of the average spending", (
 
 test("the chart's tooltip lists an interest hit on its day, before that day's transactions", async () => {
   const paycheck = { id: 1, account_id: 7, date: '2026-10-01', vendor: 'Paycheck', amount: 1700, amount_cents: 170000 };
-  const hit = { id: 3, account_id: 7, date: '2026-10-01', amount: 15, amount_cents: 1500, apr: 0.5, frequency: 'yearly', base_cents: 300000 };
+  const hit = { id: 3, account_id: 7, date: '2026-10-01', amount: 15, amount_cents: 1500, apr: 0.5, frequency: 'yearly', base_cents: 300000,
+                approved: true };
   await openTab({ transactions: [paycheck], interest: [hit] });
   render(<BalanceTooltip active payload={[{ payload: { date: '2026-10-01', cents: 301500, kind: 'day' } }]}
     transactions={BalanceChart.lastProps.transactions} accountIds={[7]} />);

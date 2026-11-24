@@ -305,18 +305,25 @@ function App() {
     await Promise.all([loadBudgetProgress(), loadTransactions()]);
   }, [loadBudgetProgress, loadTransactions]);
 
-  // Changes an interest hit to the bank's figure, which moves its account's balance, so both reload.
-  // Resolves to whether it worked, so the form can stay open after an error.
-  const handleEditInterest = async (id, amount) => {
+  // Interest waiting for approval: changing a charge or deleting it moves no balance, so only the
+  // interest reloads; approving moves its account's balance, so both do. Each resolves to whether it
+  // worked, so a form can stay open after an error.
+  const changeInterest = async (change, reloads) => {
     try {
-      await interestAPI.updateInterest(id, amount);
-      await Promise.all([loadAccounts(), loadInterest()]);
+      await change();
       return true;
     } catch (err) {
       setError(err.message);
       return false;
+    } finally {
+      await Promise.all(reloads.map(load => load()));
     }
   };
+  const handleEditInterest = (id, amount) => changeInterest(() => interestAPI.updateInterest(id, amount), [loadInterest]);
+  const handleDeleteInterest = (id) => changeInterest(() => interestAPI.deleteInterest(id), [loadInterest]);
+  // One at a time, oldest first (each moves the balance)
+  const handleApproveInterest = (ids) =>
+    changeInterest(() => forEachInOrder(ids, id => interestAPI.approveInterest(id)), [loadAccounts, loadInterest]);
 
   const handleDeleteAccount = async (id) => {
     try {
@@ -436,6 +443,8 @@ function App() {
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
             onEditInterest={handleEditInterest}
+            onApproveInterest={handleApproveInterest}
+            onDeleteInterest={handleDeleteInterest}
             onError={setError}
           />
         )}

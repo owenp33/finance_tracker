@@ -8,10 +8,13 @@ const PAYMENT = {
 const GROCERIES = { id: 2, account_id: 6, recurring_id: null, date: '2026-10-31', vendor: 'Cub Foods', amount: -42.1, amount_cents: -4210 };
 const HIT = {
   id: 3, account_id: 16, date: '2026-12-01', amount: -419.96, amount_cents: -41996, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+  approved: true,
 };
+const WAITING = { ...HIT, id: 4, date: '2027-01-01', approved: false };
 
-test("everything that moved a balance: each interest hit first, then the transactions and each loan payment on its loan", () => {
-  expect(balanceMoves([PAYMENT, GROCERIES], RECURRING, [HIT])).toEqual([
+test("everything that moved a balance: each approved interest hit first, then the transactions and each loan payment on its loan", () => {
+  // The hit waiting for approval hasn't moved anything
+  expect(balanceMoves([PAYMENT, GROCERIES], RECURRING, [WAITING, HIT])).toEqual([
     { id: 'interest-3', account_id: 16, date: '2026-12-01', vendor: 'Interest', category: 'Interest', amount: -419.96,
       amount_cents: -41996, interest: true },
     PAYMENT,

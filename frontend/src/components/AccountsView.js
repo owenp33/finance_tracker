@@ -40,6 +40,8 @@ function AccountsView({
   onEditAccount,
   onDeleteAccount,
   onEditInterest,
+  onApproveInterest,
+  onDeleteInterest,
   onError = IGNORE_ERROR,
 }) {
   // Each account's goals show their progress on its row (Phase F, F2f)
@@ -207,15 +209,16 @@ function AccountsView({
             // A bank account's row lists its transfers; a loan's, its own transactions (any entered on
             // it) and the payments paying it down (bills paid from another account, not transfers), as
             // they are: editing one edits the payment, in the account it was paid from. Both in one
-            // list. Interest hits aren't transactions: a list of their own (InterestHits).
+            // list. Interest isn't a transaction: what's waiting for approval is a list of its own
+            // (InterestHits), and approved interest shows only in the charts.
             const isLoan = a.kind === 'loan';
             const listed = isLoan
               ? [...transactions.filter(t => t.account_id === a.id), ...loanPayments(transactions, recurring, a.id)]
               : transactions.filter(t => t.account_id === a.id && t.is_transfer);
-            const hits = interest.filter(hit => hit.account_id === a.id);
+            const waiting = interest.filter(hit => hit.account_id === a.id && !hit.approved);
             const expandable = listed.length > 0;
             const expanded = expandable && expandedAccountIds.has(a.id);
-            // Starting balance + transactions (transfers included) and any interest = current balance
+            // Starting balance + transactions (transfers included) and approved interest = current balance
             const transactionCents = Math.round(a.balance * 100) - Math.round((a.opening_balance ?? 0) * 100);
             const typeStarting = (text) => {
               setEditingOpeningBalance(text);
@@ -276,7 +279,7 @@ function AccountsView({
                       </small>
                     </div>
                     <p className="account-balance-sum">
-                      Starting balance + transactions{hits.length > 0 && ' and interest'} ({formatSignedCents(transactionCents)}) = current balance.
+                      Starting balance + transactions ({formatSignedCents(transactionCents)}) = current balance.
                     </p>
                     <div className="form-group">
                       <label htmlFor={`account-${a.id}-current`}>Current balance</label>
@@ -347,7 +350,10 @@ function AccountsView({
                           )}
                         </small>
                         <AccountGoalProgress goals={(goals ?? []).filter(goal => goal.account_id === a.id)} />
-                        <InterestHits hits={hits} loan={isLoan} onSave={onEditInterest} />
+                        <InterestHits
+                          hits={waiting} loan={isLoan}
+                          onSave={onEditInterest} onApprove={onApproveInterest} onDelete={onDeleteInterest}
+                        />
                         {a.needs_attention && (
                           <small className="needs-attention-hint">
                             Made by an import: check it, then edit or click “Looks good”.

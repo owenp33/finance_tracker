@@ -9,7 +9,7 @@ import { getAllTransactions, addTransaction, pairTransfer } from '../api/transac
 import { getBudgetProgress } from '../api/budgets';
 import { getProjection, getAccountRecurring } from '../api/recurring';
 import { getGoals } from '../api/goals';
-import { getInterest, updateInterest } from '../api/interest';
+import { getInterest, approveInterest } from '../api/interest';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
@@ -188,31 +188,28 @@ test('adding a transfer with a To account also creates and links the matching tr
   expect(pairTransfer).toHaveBeenCalledWith(99, 7);
 });
 
-test("changing an interest hit saves it, then reloads the accounts and the interest", async () => {
+test('approving interest applies each charge in turn, then reloads the accounts and the interest', async () => {
   localStorage.setItem('token', 'token');
   getAccounts.mockResolvedValue([{
-    id: 16, account_id: 'loan', account_name: 'Student Loan', balance: -75636.96, opening_balance: -77107, kind: 'loan',
+    id: 16, account_id: 'loan', account_name: 'Student Loan', balance: -75217, opening_balance: -77107, kind: 'loan',
     apr: 6.7, interest_frequency: 'monthly',
   }]);
   getAccountRecurring.mockResolvedValue([]);
-  getInterest.mockResolvedValue([{
-    id: 7, account_id: 16, date: '2026-12-01', amount: -419.96, amount_cents: -41996, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
-  }]);
-  updateInterest.mockResolvedValue({});
+  const hit = (id, date, cents) => ({
+    id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+    approved: false,
+  });
+  getInterest.mockResolvedValue([hit(8, '2027-01-01', -42231), hit(7, '2026-12-01', -41996)]);
+  const order = [];
+  approveInterest.mockImplementation(async (id) => { order.push(id); });
   renderApp();
   await loggedIn();
   await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
   await userEvent.click(screen.getByRole('button', { name: /^Accounts/ }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Interest (1)' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Edit interest' }));
-  const amount = screen.getByLabelText('Interest charged on Dec 1, 2026');
-  await userEvent.clear(amount);
-  await userEvent.type(amount, '425.10');
   const [accountLoads, interestLoads] = [getAccounts.mock.calls.length, getInterest.mock.calls.length];
-  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Approve all' }));
   await act(async () => {});
-  expect(updateInterest).toHaveBeenCalledWith(7, 425.1);
+  expect(order).toEqual([7, 8]);
   expect(getAccounts).toHaveBeenCalledTimes(accountLoads + 1);
   expect(getInterest).toHaveBeenCalledTimes(interestLoads + 1);
-  expect(screen.queryByLabelText('Interest charged on Dec 1, 2026')).not.toBeInTheDocument();
 });

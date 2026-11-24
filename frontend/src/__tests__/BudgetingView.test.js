@@ -331,6 +331,7 @@ describe("the active goal's saving", () => {
     // GET /api/interest: October's charge counts, September's doesn't
     const hit = (id, date, cents) => ({
       id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+      approved: true,
     });
     await renderView([PAYMENT], { accounts: ACCOUNTS, recurring: [ASPIRE], interest: [hit(4, '2026-10-01', -41996), hit(3, '2026-09-01', -41762)] });
     await waitFor(() => expect(saving()).not.toBeNull());

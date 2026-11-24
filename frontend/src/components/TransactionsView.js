@@ -8,7 +8,7 @@ function TransactionsView({
   transactions,
   accounts,
   recurringTransactions,
-  interest,
+  interest = [],
   onAdd,
   onAddRecurring,
   onEdit,
@@ -31,11 +31,14 @@ function TransactionsView({
   onEditAccount,
   onDeleteAccount,
   onEditInterest,
+  onApproveInterest,
+  onDeleteInterest,
   onError,
 }) {
   const [tab, setTab] = useState('all');
 
-  const needsAttentionCount = accounts.filter(a => a.needs_attention).length;
+  // Accounts made by an import, and interest charges waiting for approval
+  const needsAttentionCount = accounts.filter(a => a.needs_attention).length + interest.filter(hit => !hit.approved).length;
   const recurringAttentionCount = recurringTransactions.filter(r => r.needs_attention).length;
 
   return (
@@ -49,7 +52,7 @@ function TransactionsView({
         </button>
         <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>
           Accounts {needsAttentionCount > 0 && (
-            <span className="count-badge attention-badge" title="Accounts that need attention">{needsAttentionCount}</span>
+            <span className="count-badge attention-badge" title="Accounts and interest that need attention">{needsAttentionCount}</span>
           )}
         </button>
         <button className={`tab-btn${tab === 'import'    ? ' active' : ''}`} onClick={() => setTab('import')}>Import</button>
@@ -114,6 +117,8 @@ function TransactionsView({
           onEditAccount={onEditAccount}
           onDeleteAccount={onDeleteAccount}
           onEditInterest={onEditInterest}
+          onApproveInterest={onApproveInterest}
+          onDeleteInterest={onDeleteInterest}
           onError={onError}
         />
       )}
