@@ -3,10 +3,9 @@ import { Check, Pencil, Trash2 } from 'lucide-react';
 import { formatCents, formatSignedCents } from '../utils/money';
 import { formatDate } from './transactions/utils';
 
-// What a charge was worked out on: "6.70% a year, charged monthly, on $75,217.00 owed" on a loan,
-// "0.50% a year, paid yearly, on $3,000.00" on any other account
-const basis = (hit, loan) =>
-  `${hit.apr.toFixed(2)}% a year, ${loan ? 'charged' : 'paid'} ${hit.frequency}, on ${formatCents(hit.base_cents)}${loan ? ' owed' : ''}`;
+// What a charge was worked out on: "6.70% on $75,217.00 owed" on a loan, "0.50% on $3,000.00" on any
+// other account (the row above says "a year" and how often)
+const basis = (hit, loan) => `${hit.apr.toFixed(2)}% on ${formatCents(hit.base_cents)}${loan ? ' owed' : ''}`;
 
 // An account's interest waiting for approval (its GET /api/interest rows not yet approved) under its
 // row in Transactions → Accounts, oldest first, the order to approve them in: records of their own,

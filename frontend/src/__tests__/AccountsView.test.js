@@ -436,11 +436,11 @@ describe('interest waiting for approval', () => {
     expect(within(loan).getByText('Interest to approve (2)')).toBeInTheDocument();
     // Oldest first, the order they're approved in (the server lists them newest first)
     expect(rows('Student Loan')).toEqual([
-      ['Dec 1, 2026', '6.70% a year, charged monthly, on $75,217.00 owed', '-$419.96'],
-      ['Jan 1, 2027', '6.70% a year, charged monthly, on $75,636.96 owed', '-$422.31'],
+      ['Dec 1, 2026', '6.70% on $75,217.00 owed', '-$419.96'],
+      ['Jan 1, 2027', '6.70% on $75,636.96 owed', '-$422.31'],
     ]);
     expect(within(accountItem('Savings')).getByText('Interest to approve (1)')).toBeInTheDocument();
-    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
+    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% on $3,000.00', '+$15.00']]);
     // Not transactions: the loan has none to list
     expect(within(loan).getByTitle('No transactions')).toBeDisabled();
   });
@@ -498,7 +498,7 @@ describe('interest waiting for approval', () => {
     await userEvent.clear(within(savings).getByLabelText('Interest paid on Jan 1, 2027'));
     expect(within(savings).getByRole('button', { name: 'Save' })).toBeDisabled();
     await userEvent.click(within(savings).getByRole('button', { name: 'Cancel' }));
-    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
+    expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% on $3,000.00', '+$15.00']]);
     expect(onEditInterest).not.toHaveBeenCalled();
   });
 
