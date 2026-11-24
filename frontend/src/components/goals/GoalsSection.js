@@ -28,7 +28,7 @@ function GoalsSection({ accounts = [], goalPlan }) {
         {!adding && <button className="btn btn-secondary btn-sm" onClick={() => setAdding(true)}>+ Add goal</button>}
       </div>
       <p className="chart-note">
-        Run in order; the next starts once one is reached.
+        Goals start based on ordering
       </p>
       <p className="goals-room">
         {room > 0

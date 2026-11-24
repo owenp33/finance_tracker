@@ -54,9 +54,10 @@
   color: #6b7280;
 }
 
-@media (max-width: 768px) {
+/* Tablet and phone: this month's cards two across */
+@media (max-width: 900px) {
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -163,13 +164,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Phone: each item two lines, the item and its amount, then its date and the running total (named
+   there, since the column headings go) */
 @media (max-width: 600px) {
-  .agenda-columns,
-  .agenda-week-header,
+  .agenda-columns {
+    display: none;
+  }
+
+  .agenda-week-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .agenda-week-header h4 {
+    grid-column: 1;
+  }
+
   .agenda-item {
-    grid-template-columns: 72px 1fr 78px 86px;
-    gap: 8px;
-    font-size: 0.82rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "what amount" "date running";
+    gap: 2px 12px;
+  }
+
+  .agenda-what { grid-area: what; min-width: 0; }
+  .agenda-amount { grid-area: amount; }
+  .agenda-date { grid-area: date; font-size: 0.8rem; }
+  .agenda-running { grid-area: running; font-size: 0.8rem; }
+
+  .agenda-running::before {
+    content: "Running total ";
   }
 }
 
@@ -183,7 +205,7 @@
   margin-bottom: 24px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 600px) {
   .dashboard-goal-row {
     grid-template-columns: 1fr;
   }
@@ -242,4 +264,34 @@
   font-size: 0.9rem;
   font-weight: 600;
   color: #333;
+}
+
+/* Phone: the cards' padding tighter and their titles smaller (two across), and Budget Pace and Recent
+   Transactions one under the other */
+@media (max-width: 600px) {
+  .stats-grid {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card,
+  .dashboard-col,
+  .agenda-section {
+    padding: 14px;
+  }
+
+  .dashboard-view h3 {
+    font-size: 0.85rem;
+  }
+
+  .stat-card .value {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-columns,
+  .dashboard-goal-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
 }
