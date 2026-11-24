@@ -2,12 +2,6 @@
    tab's charts (recurring costs and the timeline, balance over time and its goal lines, the goal plan,
    spending by category, net per month, top vendors). */
 
-@media (max-width: 768px) {
-  .charts-grid    { grid-template-columns: 1fr; }
-
-  .summary-cards  { grid-template-columns: 1fr; }
-}
-
 /* === InsightsView / AnalyticsDashboard =================================== */
 .analytics-dashboard {
   padding: 0;
@@ -684,4 +678,67 @@
   margin: 8px 0 0;
   font-size: 0.82rem;
   color: #6b7280;
+}
+
+/* Tablet and phone: one chart a row, as wide as the card (two need 820px), and the summary cards two
+   across with Net under them across both. These follow the rules they change, so they win. */
+@media (max-width: 900px) {
+  .summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-card.net {
+    grid-column: 1 / -1;
+  }
+
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .charts-grid > * {
+    min-width: 0;
+  }
+}
+
+/* Phone: the summary cards, chart cards and weekly averages tighter, an amount sized to fit its half of
+   the row, and the category panels one a row */
+@media (max-width: 600px) {
+  .summary-cards {
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .summary-card {
+    padding: 12px 14px;
+  }
+
+  .summary-card h3 {
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+  }
+
+  .summary-card .amount {
+    margin: 4px 0;
+    font-size: clamp(1.1rem, 5.5vw, 1.5rem);
+  }
+
+  .summary-card .subtitle {
+    font-size: 0.8rem;
+  }
+
+  .charts-grid {
+    gap: 16px;
+  }
+
+  .chart-container {
+    padding: 14px;
+  }
+
+  .trends-summary {
+    padding: 0;
+  }
+
+  .category-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
