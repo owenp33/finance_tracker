@@ -167,3 +167,36 @@
   border-radius: 6px;
   font-size: 0.95rem;
 }
+
+/* Phone: the section's padding tighter, and each goal its name and status with Move up / Move down /
+   Edit / Delete on the first line, then its progress, bar, plan, a loan's payoff chart and the edit
+   form across the row under them (they were a narrow column beside the buttons) */
+@media (max-width: 600px) {
+  .goals-section {
+    padding: 14px;
+  }
+
+  .goal-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .goal-main {
+    display: contents;
+  }
+
+  .goal-heading {
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+  }
+
+  /* min-width: 0, as .goal-main had, so an open "View as table" scrolls rather than widen the row */
+  .goal-main > :not(.goal-heading) {
+    order: 1;
+    flex-basis: 100%;
+    min-width: 0;
+  }
+}

@@ -55,7 +55,8 @@
   gap: 16px;
 }
 
-@media (max-width: 768px) {
+/* Tablet: a smaller period label */
+@media (max-width: 900px) {
   .period-label { min-width: 140px; font-size: 1.05rem; }
 }
 
@@ -414,4 +415,48 @@
   color: #374151;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* Phone: the summary cards two across, the cards' padding tighter, and each budget row two lines: its
+   dot, category, amount and delete; then its Rollover and Pace by recurring under the category (an
+   empty full-width piece between them breaks the line, so the category keeps the first line's room) */
+@media (max-width: 600px) {
+  .budget-summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin: 12px 0 16px;
+  }
+
+  .budget-summary-card {
+    padding: 12px 14px;
+  }
+
+  .category-allocations-card {
+    padding: 14px;
+  }
+
+  .budget-row-inline {
+    flex-wrap: wrap;
+    gap: 3px 10px;
+  }
+
+  .budget-row-inline::after {
+    content: '';
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .bri-category {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .bri-toggle {
+    order: 2;
+  }
+
+  /* lined up under the category: the dot's 10px and the 10px gap */
+  .bri-toggle:first-of-type {
+    margin-left: 20px;
+  }
 }
