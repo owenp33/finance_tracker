@@ -55,6 +55,25 @@ body {
   margin: 0 auto;
 }
 
+/* Big screens: the whole app larger, so a big monitor shows the laptop layout scaled up rather than a
+   narrow strip of small text. Zoom re-lays everything out at the larger size (text, spacing, icons,
+   charts), so it stays sharp, and Recharts maps the mouse to the right point under it. */
+@media (min-width: 1600px) {
+  .App-header,
+  .App-main,
+  .auth-container {
+    zoom: 1.25;
+  }
+}
+
+@media (min-width: 2200px) {
+  .App-header,
+  .App-main,
+  .auth-container {
+    zoom: 1.5;
+  }
+}
+
 /* Loading Screen */
 .loading-screen {
   display: flex;
