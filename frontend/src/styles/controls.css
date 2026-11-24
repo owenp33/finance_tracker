@@ -148,6 +148,22 @@
   gap: 10px;
 }
 
+/* Phone: the title and its buttons wrap rather than run off the card */
+@media (max-width: 600px) {
+  .view-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .view-header h2 {
+    font-size: 1.4rem;
+  }
+
+  .view-header-actions {
+    flex-wrap: wrap;
+  }
+}
+
 /* === Count badge ============================================= */
 .count-badge {
   display: inline-block;
@@ -190,6 +206,31 @@
 .tab-btn.active {
   color: #667eea;
   border-bottom-color: #667eea;
+}
+
+/* Phone: smaller tabs that scroll sideways if they still don't fit. The bar's line is drawn inside it
+   (an inset shadow), since a scrolling bar would clip the active tab's underline where it overlaps a
+   border below. */
+@media (max-width: 600px) {
+  .tab-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: none;
+    box-shadow: inset 0 -2px 0 #e9ecef;
+    margin-bottom: 16px;
+  }
+
+  .tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    padding: 10px 8px;
+    font-size: 0.875rem;
+    gap: 5px;
+  }
 }
 
 /* === Info tooltip ========================================== */

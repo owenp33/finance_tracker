@@ -1,5 +1,9 @@
-/* The page itself: the reset, the chart palette, the background, the app's width, the loading
-   screen, empty-state text and colour utilities. */
+/* The page itself: the reset, the chart palette, the spacing every view shares, the background, the
+   app's width, the loading screen, empty-state text and colour utilities.
+
+   Breakpoints, the same in every file (a media query can't read a variable):
+     phone  (max-width: 600px)    tablet (max-width: 900px)
+     big    (min-width: 1600px)   huge   (min-width: 2200px) */
 
 * {
   margin: 0;
@@ -14,6 +18,22 @@
   --chart-aqua: #1baf7a;
 }
 
+/* Spacing every view shares: around the page, inside a view's white card, and the room the phone's
+   bottom nav (header.css) takes under the page */
+:root {
+  --page-gutter: 20px;
+  --card-pad: 30px;
+  --bottom-nav: 0px;
+}
+
+@media (max-width: 600px) {
+  :root {
+    --page-gutter: 10px;
+    --card-pad: 16px;
+    --bottom-nav: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
@@ -26,7 +46,8 @@ body {
 
 .App {
   min-height: 100vh;
-  padding: 20px;
+  padding: var(--page-gutter);
+  padding-bottom: calc(var(--page-gutter) + var(--bottom-nav));
 }
 
 .App-main {

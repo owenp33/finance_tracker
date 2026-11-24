@@ -125,17 +125,79 @@
   }
 }
 
-@media (max-width: 768px) {
+/* Tablet: a smaller title, Welcome and Logout wrapping under it when they don't fit beside it */
+@media (max-width: 900px) {
   .header-content {
-    flex-direction: column;
-    gap: 15px;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
   }
 
   .header-content h1 {
-    font-size: 2rem;
+    font-size: 1.8rem;
   }
 
   .view-nav {
     flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+}
+
+/* Phone: the header one slim line (the title and Logout; no Welcome), and the views a bar fixed to
+   the bottom of the screen, icon over label, always in reach (base.css keeps room for it under the
+   page) */
+@media (max-width: 600px) {
+  .header-content {
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+
+  .header-content h1 {
+    font-size: 1.05rem;
+  }
+
+  .header-actions span {
+    display: none;
+  }
+
+  .logout-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+
+  .view-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin: 0;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+    background: white;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .view-nav button {
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 6px 2px;
+    font-size: 0.72rem;
+  }
+
+  /* a tap leaves a phone's hover on: no lift */
+  .view-nav button:hover {
+    transform: none;
+  }
+
+  .view-nav button.active {
+    box-shadow: none;
   }
 }

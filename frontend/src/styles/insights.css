@@ -114,7 +114,7 @@
 /* Whole section is one card, like .transactions-view / .budgeting-view */
 .insights-view {
   background: white;
-  padding: 30px;
+  padding: var(--card-pad);
   border-radius: 15px;
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
 }
