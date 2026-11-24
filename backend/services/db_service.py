@@ -5,7 +5,7 @@ Thin CRUD operations for interacting with the database.
 Business logic and orchestration belongs in account_service.py.
 """
 from datetime import timedelta
-from sqlalchemy import case, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from extensions import db
 from models.user import User
 from models.account import AccountModel
@@ -79,7 +79,7 @@ class DbService:
     def recompute_balance(self, account_id):
         """
         Set an account's stored balance to its starting balance plus what moves it (its
-        transactions, its interest and a loan's payments: see _transaction_total), atomically.
+        transactions, its approved interest and a loan's payments: see _transaction_total), atomically.
         """
         self._update_balance(account_id, balance_cents=AccountModel.opening_balance_cents + self._transaction_total(account_id))
 
@@ -94,14 +94,14 @@ class DbService:
     def _transaction_total(self, account_id):
         """
         What moves an account's balance, as a subquery for the statements above: the sum of its
-        transactions and its interest hits, less the payments of the series that pay it down (a
-        loan's: a $75 bill paid from Checking is $75 less owed).
+        transactions and its approved interest hits, less the payments of the series that pay it down
+        (a loan's: a $75 bill paid from Checking is $75 less owed).
         """
         own = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
                .where(TransactionModel.account_id == account_id)
                .scalar_subquery())
         interest = (select(func.coalesce(func.sum(InterestHitModel.amount_cents), 0))
-                    .where(InterestHitModel.account_id == account_id)
+                    .where(InterestHitModel.account_id == account_id, InterestHitModel.approved.is_(True))
                     .scalar_subquery())
         paid = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
                 .select_from(TransactionModel)
@@ -274,11 +274,11 @@ class DbService:
         )
         return {'money_in': int(money_in), 'money_out': int(money_out), 'counted': int(counted_count), 'total': total}
 
-    def get_transaction_totals_before(self, account_ids, before_date):
+    def get_transaction_totals_before(self, account_ids, before_date, pending_interest=False):
         """
         What moved each account's balance before before_date, {account_id: cents}: its transactions
-        and interest hits dated before it, less the payments dated before it of the series that pay
-        it down (a loan's).
+        and approved interest hits dated before it (with pending_interest, those waiting for approval
+        too), less the payments dated before it of the series that pay it down (a loan's).
         """
         rows = (
             db.session.query(TransactionModel.account_id, func.sum(TransactionModel.amount_cents))
@@ -290,9 +290,10 @@ class DbService:
         interest = (
             db.session.query(InterestHitModel.account_id, func.sum(InterestHitModel.amount_cents))
             .filter(InterestHitModel.account_id.in_(account_ids), InterestHitModel.date < before_date)
-            .group_by(InterestHitModel.account_id)
-            .all()
         )
+        if not pending_interest:
+            interest = interest.filter(InterestHitModel.approved.is_(True))
+        interest = interest.group_by(InterestHitModel.account_id).all()
         for account_id, total in interest:
             totals[account_id] = totals.get(account_id, 0) + int(total)
         paid = (
@@ -410,20 +411,58 @@ class DbService:
         return db.session.get(InterestHitModel, hit_id)
 
     def get_user_interest_hits(self, user_id):
-        """The user's interest hits, newest first."""
+        """The user's interest hits, approved or waiting for approval, newest first."""
         return (InterestHitModel.query.join(AccountModel)
                 .filter(AccountModel.user_id == int(user_id))
                 .order_by(InterestHitModel.date.desc(), InterestHitModel.id.desc())
                 .all())
 
     def get_interest_hits(self, account_ids, start_date=None, end_date=None):
-        """These accounts' interest hits dated start_date through end_date (both inclusive, both optional)."""
-        query = InterestHitModel.query.filter(InterestHitModel.account_id.in_(account_ids))
+        """
+        These accounts' approved interest hits (the ones that moved their balances) dated start_date
+        through end_date (both inclusive, both optional).
+        """
+        query = InterestHitModel.query.filter(InterestHitModel.account_id.in_(account_ids),
+                                              InterestHitModel.approved.is_(True))
         if start_date is not None:
             query = query.filter(InterestHitModel.date >= start_date)
         if end_date is not None:
             query = query.filter(InterestHitModel.date <= end_date)
         return query.all()
+
+    # A hit waiting for approval changes, is approved or is deleted in one statement that checks it's
+    # still waiting, so an approval can't apply an amount changed at the same moment, or a hit deleted.
+
+    def set_pending_interest_amount(self, hit_id, amount_cents):
+        """Change a hit's amount if it's still waiting for approval; say whether it was."""
+        return self._change_pending_hit(hit_id, update(InterestHitModel).values(amount_cents=amount_cents))
+
+    def approve_interest_hit(self, hit_id):
+        """Mark a hit approved if it's still waiting; say whether it was (the caller applies it)."""
+        return self._change_pending_hit(hit_id, update(InterestHitModel).values(approved=True))
+
+    def delete_pending_interest_hit(self, hit_id):
+        """Delete a hit if it's still waiting for approval; say whether it was."""
+        hit = db.session.get(InterestHitModel, hit_id)
+        account = hit.account if hit is not None else None
+        deleted = self._change_pending_hit(hit_id, delete(InterestHitModel))
+        if deleted:
+            db.session.expunge(hit)
+            db.session.expire(account, ['interest_hits'])
+        return deleted
+
+    def _change_pending_hit(self, hit_id, statement):
+        """Run `statement` on the hit if it's still waiting for approval, say whether it was, and have
+        the session read the hit afresh."""
+        db.session.flush()
+        hit = db.session.get(InterestHitModel, hit_id)
+        changed = db.session.execute(
+            statement.where(InterestHitModel.id == hit_id, InterestHitModel.approved.is_(False))
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        if hit is not None:
+            db.session.expire(hit)
+        return changed
 
     def claim_interest_period(self, account_id, booked_through, start):
         """

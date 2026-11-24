@@ -2,10 +2,12 @@
 Interest on any account: a yearly rate (apr_bps) that hits monthly, quarterly or yearly, on the
 1st of each period, the rate's share for the period of the balance at the end of the period before.
 A loan is charged on what it owes (earlier interest included); a bank account is paid on a positive
-balance. Each hit is a record of its own (interest_hits), not a transaction: it moves the balance
-and the balance history, and counts in no income or spending total. Its amount can be changed to the
-bank's figure. Interest starts going forward from the period the rate is set in, and catches up any
-periods the app missed (at login, on page load, in the daily job), each period once.
+balance. Each hit is a record of its own (interest_hits), not a transaction, and waits for the user's
+approval: until then it moves nothing, though the next period's interest counts it (the bank charges
+it either way); while it waits, its amount can be changed to the bank's figure, or it can be deleted
+(the period stays done). Approving applies it to the balance and the balance history, once; it counts
+in no income or spending total. Interest starts going forward from the period the rate is set in,
+and catches up any periods the app missed (at login, on page load, in the daily job), each period once.
 """
 import csv
 import io
@@ -61,16 +63,32 @@ def hits(account):
     return [(h.date, h.amount_cents, h.apr_bps, h.frequency, h.base_cents) for h in rows]
 
 
+def approvals(account):
+    """Each of the account's hits: (date, whether it's approved)."""
+    rows = InterestHitModel.query.filter_by(account_id=account.id).order_by(InterestHitModel.date)
+    return [(h.date, h.approved) for h in rows]
+
+
+def only_hit(account):
+    return InterestHitModel.query.filter_by(account_id=account.id).one()
+
+
+def approve_all(account):
+    """Approve the account's hits waiting for approval, oldest first."""
+    for hit in InterestHitModel.query.filter_by(account_id=account.id, approved=False).order_by(InterestHitModel.date).all():
+        interest.approve_hit(hit.id)
+
+
 def balance(account):
     """
     The stored balance, after checking it's still the starting balance plus the account's
-    transactions and interest hits, less the payments of the series paying it down.
+    transactions and approved interest hits, less the payments of the series paying it down.
     """
     _db.session.expire(account)
     own = _db.session.query(func.coalesce(func.sum(TransactionModel.amount_cents), 0)) \
         .filter(TransactionModel.account_id == account.id).scalar()
     hit = _db.session.query(func.coalesce(func.sum(InterestHitModel.amount_cents), 0)) \
-        .filter(InterestHitModel.account_id == account.id).scalar()
+        .filter(InterestHitModel.account_id == account.id, InterestHitModel.approved.is_(True)).scalar()
     paid = _db.session.query(func.coalesce(func.sum(TransactionModel.amount_cents), 0)) \
         .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id) \
         .filter(RecurringModel.loan_account_id == account.id).scalar()
@@ -83,16 +101,20 @@ def booked_transactions(account):
 
 
 class TestALoanIsCharged:
-    def test_each_month_a_twelfth_of_the_rate_on_what_was_owed(self, loan):
+    def test_each_month_a_twelfth_of_the_rate_on_what_was_owed_applied_once_approved(self, loan):
         # $75,217.00 × 6.70% ÷ 12 = $419.96
         assert interest.accrue(loan.id, today=date(2026, 12, 15)) == 1
         assert hits(loan) == [(date(2026, 12, 1), -41996, 670, 'monthly', 7521700)]
+        assert approvals(loan) == [(date(2026, 12, 1), False)]
         assert booked_transactions(loan) == 0                              # a record of its own, not a transaction
-        assert (loan.interest_through, balance(loan)) == (date(2026, 12, 1), -7521700 - 41996)
+        assert (loan.interest_through, balance(loan)) == (date(2026, 12, 1), -7521700)   # waiting: nothing moves
+        approve_all(loan)
+        assert (approvals(loan), balance(loan)) == ([(date(2026, 12, 1), True)], -7521700 - 41996)
         assert loan.opening_balance_cents == -7521700                       # the starting balance stays
 
     def test_missed_months_catch_up_in_order_each_on_what_was_owed_then(self, loan):
-        # $75 paid on the 15th of each month; five months' interest at once, on Apr 10, 2027
+        # $75 paid on the 15th of each month; five months' interest at once, on Apr 10, 2027, each on
+        # what was owed with the charges before it, though those are still waiting for approval
         for month in (12, 1, 2, 3):
             account_svc.add_transaction(loan.id, date(2026 if month == 12 else 2027, month, 15), 'ASPIRE', 'Loan', 75.0)
         assert interest.accrue(loan.id, today=date(2027, 4, 10)) == 5
@@ -100,6 +122,8 @@ class TestALoanIsCharged:
             (date(2026, 12, 1), -41996), (date(2027, 1, 1), -42189), (date(2027, 2, 1), -42382),
             (date(2027, 3, 1), -42577), (date(2027, 4, 1), -42773),
         ]
+        assert balance(loan) == -7521700 + 30000                            # the payments, no interest yet
+        approve_all(loan)
         assert (loan.interest_through, balance(loan)) == (date(2027, 4, 1), -7703617)
 
     def test_nothing_is_charged_while_nothing_is_owed(self, loan):
@@ -114,6 +138,8 @@ class TestABankAccountIsPaid:
         assert interest.accrue(savings.id, today=date(2027, 1, 2)) == 1
         assert hits(savings) == [(date(2027, 1, 1), 1500, 50, 'yearly', 300000)]
         assert booked_transactions(savings) == 0                           # so it's in no income total
+        assert balance(savings) == 300000
+        approve_all(savings)
         assert balance(savings) == 301500
 
     def test_a_negative_balance_earns_and_owes_nothing(self, savings):
@@ -144,9 +170,15 @@ class TestOncePerPeriod:
 
     def test_a_hit_set_to_nothing_is_not_booked_again(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
-        interest.update_hit(InterestHitModel.query.filter_by(account_id=loan.id).one().id, 0)
+        interest.update_hit(only_hit(loan).id, 0)
         interest.accrue(loan.id, today=date(2026, 12, 20))
         assert (hits(loan), balance(loan)) == ([(date(2026, 12, 1), 0, 670, 'monthly', 7521700)], -7521700)
+
+    def test_a_deleted_hit_is_not_booked_again(self, loan):
+        interest.accrue(loan.id, today=date(2026, 12, 15))
+        interest.delete_hit(only_hit(loan).id)
+        assert interest.accrue(loan.id, today=date(2026, 12, 20)) == 0
+        assert (hits(loan), balance(loan), loan.interest_through) == ([], -7521700, date(2026, 12, 1))
 
     def test_another_run_that_already_booked_the_period_wins(self, loan):
         db_svc.get_account(loan.id).interest_through        # loaded now, and about to be out of date
@@ -169,20 +201,29 @@ class TestOncePerPeriod:
         assert interest.accrue(loan.id, today=date(2026, 12, 2)) == 1
 
 
-class TestChangingAHit:
-    def test_a_loans_charge_takes_the_banks_figure_and_the_balance_follows(self, loan):
+class TestWaitingForApproval:
+    def test_a_loans_charge_takes_the_banks_figure_and_is_applied_at_it(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
-        hit = interest.update_hit(InterestHitModel.query.filter_by(account_id=loan.id).one().id, 425.10)
-        assert (hit.amount_cents, balance(loan)) == (-42510, -7521700 - 42510)    # charged: what's owed grows
+        hit = interest.update_hit(only_hit(loan).id, 425.10)
+        assert (hit.amount_cents, balance(loan)) == (-42510, -7521700)          # still waiting: nothing moves
+        interest.approve_hit(hit.id)
+        assert balance(loan) == -7521700 - 42510                                # charged: what's owed grows
 
     def test_a_bank_accounts_payment_takes_the_banks_figure(self, savings):
         interest.accrue(savings.id, today=date(2027, 1, 2))
-        interest.update_hit(InterestHitModel.query.filter_by(account_id=savings.id).one().id, 16)
+        interest.update_hit(only_hit(savings).id, 16)
+        approve_all(savings)
         assert (hits(savings)[0][1], balance(savings)) == (1600, 301600)
+
+    def test_a_charge_still_waiting_counts_toward_the_next_ones_balance(self, loan):
+        interest.accrue(loan.id, today=date(2026, 12, 15))
+        interest.accrue(loan.id, today=date(2027, 1, 2))
+        # Dec 1's $419.96 isn't approved yet, but the bank charges it either way: Jan 1's is on $75,636.96
+        assert hits(loan)[1][1:] == (-42231, 670, 'monthly', 7563696)
 
     def test_the_next_hit_is_on_the_balance_with_the_changed_one(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
-        interest.update_hit(InterestHitModel.query.filter_by(account_id=loan.id).one().id, 0)
+        interest.update_hit(only_hit(loan).id, 0)
         interest.accrue(loan.id, today=date(2027, 1, 2))
         assert hits(loan)[1][1:] == (-41996, 670, 'monthly', 7521700)       # on $75,217.00 again
 
@@ -196,10 +237,36 @@ class TestChangingAHit:
     ], ids=['text', 'bool', 'none', 'nan', 'negative', 'too-much'])
     def test_it_must_be_an_amount(self, loan, amount, error):
         interest.accrue(loan.id, today=date(2026, 12, 15))
-        hit_id = InterestHitModel.query.filter_by(account_id=loan.id).one().id
+        hit_id = only_hit(loan).id
         with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
             interest.update_hit(hit_id, amount)
-        assert (hits(loan)[0][1], balance(loan)) == (-41996, -7521700 - 41996)
+        assert (hits(loan)[0][1], balance(loan)) == (-41996, -7521700)
+
+    def test_once_approved_it_stays_as_it_was_applied(self, loan):
+        interest.accrue(loan.id, today=date(2026, 12, 15))
+        hit_id = only_hit(loan).id
+        interest.approve_hit(hit_id)
+        for change, error in ((lambda: interest.update_hit(hit_id, 1), "Approved interest can't be changed."),
+                              (lambda: interest.delete_hit(hit_id), "Approved interest can't be deleted."),
+                              (lambda: interest.approve_hit(hit_id), 'That interest is already approved.')):
+            with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+                change()
+        assert (approvals(loan), balance(loan)) == ([(date(2026, 12, 1), True)], -7521700 - 41996)
+
+    def test_an_approval_that_got_there_first_wins(self, loan):
+        interest.accrue(loan.id, today=date(2026, 12, 15))
+        hit = only_hit(loan)                                # loaded now, and about to be out of date
+        _db.session.execute(text('UPDATE interest_hits SET approved = TRUE WHERE id = :id'), {'id': hit.id})
+        with pytest.raises(ValueError, match='^That interest is already approved.$'):
+            interest.approve_hit(hit.id)
+        _db.session.expire(loan)
+        assert loan.balance_cents == -7521700               # not applied a second time here
+
+    def test_a_missing_hit(self, loan):
+        for change in (lambda: interest.update_hit(999999, 1), lambda: interest.approve_hit(999999),
+                       lambda: interest.delete_hit(999999)):
+            with pytest.raises(ValueError, match='^Interest not found.$'):
+                change()
 
     def test_deleting_the_account_deletes_its_hits(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
@@ -207,10 +274,11 @@ class TestChangingAHit:
         assert InterestHitModel.query.count() == 0
 
 
-class TestTheBalanceCountsThem:
+class TestTheBalanceCountsApprovedOnes:
     @pytest.fixture
     def charged(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
+        approve_all(loan)
         account_svc.add_transaction(loan.id, date(2026, 12, 1), 'Extra', 'Loan', 100.0)
 
     def test_a_current_balance_edit_keeps_them(self, loan, charged):
@@ -230,12 +298,22 @@ class TestTheBalanceCountsThem:
         [ledger] = BalanceService().ledgers(user.id, [loan.id], start_date=date(2026, 12, 2))
         assert (ledger.opening_cents, ledger.rows) == (-7553696, [])
 
+    def test_one_waiting_for_approval_counts_in_none_of_them(self, user, loan):
+        interest.accrue(loan.id, today=date(2026, 12, 15))
+        account_svc.update_account(loan.id, {'balance': -70000})
+        assert loan.opening_balance_cents == -7000000                       # the edit leaves it out
+        [ledger] = BalanceService().ledgers(user.id, [loan.id])
+        assert (ledger.rows, ledger.closing_cents) == ([], balance(loan))
+        [later] = BalanceService().ledgers(user.id, [loan.id], start_date=date(2026, 12, 2))
+        assert later.opening_cents == -7000000
+
 
 class TestReports:
     @pytest.fixture
     def paid(self, savings):
         account_svc.add_transaction(savings.id, date(2026, 12, 20), 'Deposit', 'Income', 100.0)
         interest.accrue(savings.id, today=date(2027, 1, 2))           # $15.50 on $3,100.00
+        approve_all(savings)
 
     def test_the_csv_lists_transactions_only_its_running_balance_counting_interest(self, client, auth_headers, paid):
         rows = list(csv.reader(io.StringIO(client.get('/api/export/transactions.csv', headers=auth_headers)
@@ -268,20 +346,40 @@ class TestInterestRoutes:
     @pytest.fixture
     def charged(self, loan):
         interest.accrue(loan.id, today=date(2026, 12, 15))
-        return InterestHitModel.query.filter_by(account_id=loan.id).one()
+        return only_hit(loan)
 
     def test_listing_the_hits(self, client, auth_headers, loan, charged):
         resp = client.get('/api/interest', headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json['interest'] == [{
             'id': charged.id, 'account_id': loan.id, 'date': '2026-12-01', 'amount': -419.96, 'amount_cents': -41996,
-            'apr': 6.7, 'frequency': 'monthly', 'base_cents': 7521700,
+            'apr': 6.7, 'frequency': 'monthly', 'base_cents': 7521700, 'approved': False,
         }]
 
     def test_changing_a_hit_returns_it_and_the_account(self, client, auth_headers, loan, charged):
         resp = client.patch(f'/api/interest/{charged.id}', json={'amount': 425.10}, headers=auth_headers)
         assert resp.status_code == 200
-        assert (resp.json['interest']['amount_cents'], resp.json['account']['balance']) == (-42510, -75642.10)
+        assert (resp.json['interest']['amount_cents'], resp.json['account']['balance']) == (-42510, -75217.0)
+
+    def test_approving_a_hit_applies_it_and_returns_the_account(self, client, auth_headers, loan, charged):
+        resp = client.post(f'/api/interest/{charged.id}/approve', headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['interest']['approved'], resp.json['account']['balance']) == (True, -75636.96)
+        again = client.post(f'/api/interest/{charged.id}/approve', headers=auth_headers)
+        assert (again.status_code, again.json) == (400, {'success': False, 'error': 'That interest is already approved.'})
+
+    def test_deleting_a_hit(self, client, auth_headers, loan, charged):
+        resp = client.delete(f'/api/interest/{charged.id}', headers=auth_headers)
+        assert (resp.status_code, resp.json) == (200, {'success': True})
+        assert client.get('/api/interest', headers=auth_headers).json['interest'] == []
+        assert balance(loan) == -7521700
+
+    def test_approved_interest_cant_be_changed_or_deleted(self, client, auth_headers, charged):
+        client.post(f'/api/interest/{charged.id}/approve', headers=auth_headers)
+        changed = client.patch(f'/api/interest/{charged.id}', json={'amount': 1}, headers=auth_headers)
+        assert (changed.status_code, changed.json['error']) == (400, "Approved interest can't be changed.")
+        deleted = client.delete(f'/api/interest/{charged.id}', headers=auth_headers)
+        assert (deleted.status_code, deleted.json['error']) == (400, "Approved interest can't be deleted.")
 
     @pytest.mark.parametrize('body, error', [
         ({}, 'Interest must be a number.'),
@@ -304,8 +402,10 @@ class TestInterestRoutes:
         _db.session.add(hit)
         _db.session.commit()
         assert [h['id'] for h in client.get('/api/interest', headers=auth_headers).json['interest']] == [charged.id]
-        resp = client.patch(f'/api/interest/{hit.id}', json={'amount': 1}, headers=auth_headers)
-        assert (resp.status_code, resp.json['error']) == (403, 'Unauthorized')
+        for resp in (client.patch(f'/api/interest/{hit.id}', json={'amount': 1}, headers=auth_headers),
+                     client.post(f'/api/interest/{hit.id}/approve', headers=auth_headers),
+                     client.delete(f'/api/interest/{hit.id}', headers=auth_headers)):
+            assert (resp.status_code, resp.json['error']) == (403, 'Unauthorized')
         missing = client.patch('/api/interest/999999', json={'amount': 1}, headers=auth_headers)
         assert (missing.status_code, missing.json['error']) == (404, 'Interest not found')
 
