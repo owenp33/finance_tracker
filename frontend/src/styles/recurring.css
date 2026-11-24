@@ -229,3 +229,70 @@
   font-size: 0.9rem;
   color: #4b5563;
 }
+
+/* Phone: the tab's list sits flush in the Transactions card (not a card inside a card), and each series
+   card (Find recurring's too) is its name and amount, with Edit and Delete, on one line, and its details
+   across the card under them */
+@media (max-width: 600px) {
+  .recurring-view {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .recurring-view h2 {
+    margin-bottom: 0;
+  }
+
+  .find-recurring {
+    padding: 12px;
+  }
+
+  /* a series' bulk bar: "Change amount to", its box and Apply on one line, inside the card (on the
+     narrowest phones the box and Apply wrap under the words rather than run past the card) */
+  .recurring-bulk-amount {
+    flex-wrap: wrap;
+    white-space: nowrap;
+    padding: 4px 8px;
+  }
+
+  .recurring-bulk-amount-input {
+    width: 64px;
+  }
+
+  .recurring-item {
+    padding: 12px 14px;
+  }
+
+  /* a tap leaves a phone's hover on: no nudge, which would push the card past the edge */
+  .recurring-item:hover {
+    transform: none;
+  }
+
+  .recurring-item-row {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+
+  .recurring-info,
+  .recurring-item-right {
+    display: contents;
+  }
+
+  .recurring-info strong {
+    flex: 1 1 120px;
+    min-width: 0;
+    font-size: 1rem;
+  }
+
+  .recurring-item-right .transaction-amount {
+    font-size: 1.05rem;
+  }
+
+  .recurring-info span,
+  .recurring-info small {
+    order: 1;
+    flex-basis: 100%;
+  }
+}

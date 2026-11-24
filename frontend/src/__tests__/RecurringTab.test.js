@@ -301,6 +301,45 @@ describe('an expanded series', () => {
     expect(onEdit).toHaveBeenCalledWith(32, { date: '2026-10-02', vendor: 'Anthropic', amount: '-21', notes: '',
                                               account_id: 1, category: 'Subscriptions' });
   });
+
+  // A phone has no hover: a tap opens a payment's actions on a line under it (the row's
+  // transfer-open class, styles/grouped-list.css); laptops keep hover
+  test("on a phone, a tap opens a payment's actions, one at a time; its checkbox and buttons don't", async () => {
+    const { list } = await open();
+    const [october, september] = list.querySelectorAll('.account-transfer-row');
+    await userEvent.click(within(october).getByText('Oct 2'));
+    expect(october).toHaveClass('transfer-open');
+    await userEvent.click(within(september).getByText('Sep 2'));
+    expect(september).toHaveClass('transfer-open');
+    expect(october).not.toHaveClass('transfer-open');
+    await userEvent.click(within(september).getByRole('checkbox'));
+    expect(september).toHaveClass('transfer-open');
+    await userEvent.click(within(september).getByText('Sep 2'));
+    expect(september).not.toHaveClass('transfer-open');
+    await userEvent.click(within(october).getByText('Oct 2'));
+    await userEvent.click(within(october).getByRole('button', { name: 'Edit' }));
+    await userEvent.click(within(october).getByRole('button', { name: 'Cancel' }));
+    expect(october).not.toHaveClass('transfer-open');
+  });
+
+  test('each payment action has a word to show on a phone, under the same name', async () => {
+    const { list } = await open();
+    const [october] = list.querySelectorAll('.account-transfer-row');
+    expect(within(october).getByRole('button', { name: 'Remove from series' })).toHaveTextContent('Remove');
+    expect(within(october).getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(within(october).getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+
+  // While nothing is selected the bulk bar keeps its room on a laptop (hidden) and gives it up on a
+  // phone, so the sort menu stays on screen
+  test('the bulk bar is idle until a payment is selected', async () => {
+    const { list } = await open();
+    const bar = list.querySelector('.transfer-bulk-bar');
+    expect(bar).toHaveClass('idle');
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Transactions (3)' }));
+    expect(bar).not.toHaveClass('idle');
+    expect(bar).not.toHaveStyle({ visibility: 'hidden' });
+  });
 });
 
 test('a finished template with no occurrences left says so instead of a last date', () => {
@@ -431,8 +470,8 @@ describe('paying down a loan', () => {
     const { onEditRecurring } = renderTab([aspire({ loan_account_id: 5 })], {
       accounts: ACCOUNTS, transactions: PAYMENTS, onEditRecurring: jest.fn().mockResolvedValue(),
     });
-    // Its account, then the loan it pays down
-    expect(screen.getByText('Loan · Monthly · Next: Nov 3 · Checking · Pays down ASPIRE loan')).toBeInTheDocument();
+    // The loan it pays down, not the account it's charged to (Owen, 2026-11-24)
+    expect(screen.getByText('Loan · Monthly · Next: Nov 3 · Pays down ASPIRE loan')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(paysDown()).toHaveValue('5');
     expect(screen.queryByText(/toward ASPIRE loan/)).not.toBeInTheDocument();      // no change yet

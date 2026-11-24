@@ -186,3 +186,89 @@
 .transfer-edit-row input[type="date"] {
   width: 130px;
 }
+
+/* Nothing selected: hidden, keeping its room so the header doesn't jump when it appears */
+.transfer-bulk-bar.idle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Phone: select-all and the sort menu share the header's first line, both smaller, the label giving
+   way ("…") rather than wrapping; the bulk bar, gone while idle, takes a line of its own when shown.
+   And since a phone has no hover, a tap opens a row's actions on a line under it (the row's
+   transfer-open class, GroupedTransactionList), each with its word (.tx-action-label) */
+@media (max-width: 600px) {
+  .account-transfers-header {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .account-transfers-header .bulk-select-all {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 6px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .account-transfers-header .bulk-select-all span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .transfer-sort-controls {
+    flex-shrink: 0;
+  }
+
+  .transfer-sort-select {
+    font-size: 0.75rem;
+    padding: 3px 4px;
+  }
+
+  .transfer-bulk-bar {
+    order: 3;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .transfer-bulk-bar.idle {
+    display: none;
+  }
+
+  .account-transfer-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* the date and the actions become the row's own pieces */
+  .account-transfer-right {
+    display: contents;
+  }
+
+  .account-transfer-date {
+    margin-left: auto;
+  }
+
+  .account-transfer-row:hover .account-transfer-date {
+    opacity: 1;
+  }
+
+  .transfer-row-actions {
+    position: static;
+    transform: none;
+    display: none;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    opacity: 1;
+  }
+
+  .account-transfer-row.transfer-open .transfer-row-actions {
+    display: flex;
+  }
+
+  .transfer-row-actions .icon-btn {
+    padding: 8px 12px;
+  }
+}

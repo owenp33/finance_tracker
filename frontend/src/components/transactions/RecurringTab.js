@@ -200,13 +200,13 @@ function RecurringTab({
                 const when = displayDate
                   ? `${finishedSeries ? 'Last' : 'Next'}: ${formatDate(displayDate, finishedSeries || dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear())}`
                   : 'No occurrences';
+                // A series paying down a loan names the loan, not the account it's charged to
                 const account = accountName(r.account_id);
                 const loan = r.loan_account_id != null ? accountName(r.loan_account_id) : null;
                 return (
                   <span>
                     {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {when}
-                    {account && ` · ${account}`}
-                    {loan && ` · Pays down ${loan}`}
+                    {loan ? ` · Pays down ${loan}` : account && ` · ${account}`}
                   </span>
                 );
               })()}
@@ -316,7 +316,7 @@ function RecurringTab({
                         title="Remove from series"
                         aria-label="Remove from series"
                         onClick={() => onUnlinkFromRecurring(r.id, [t.id])}
-                      ><Unlink size={13} /></button>
+                      ><Unlink size={13} /><span className="tx-action-label">Remove</span></button>
                     )}
                     onEdit={onEdit}
                     onDelete={onDelete}
