@@ -10,6 +10,7 @@ from extensions import db
 from models.user import User
 from models.account import AccountModel
 from models.transaction import TransactionModel
+from models.interest_hit import InterestHitModel
 from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
@@ -78,7 +79,7 @@ class DbService:
     def recompute_balance(self, account_id):
         """
         Set an account's stored balance to its starting balance plus what moves it (its
-        transactions, and a loan's payments: see _transaction_total), atomically.
+        transactions, its interest and a loan's payments: see _transaction_total), atomically.
         """
         self._update_balance(account_id, balance_cents=AccountModel.opening_balance_cents + self._transaction_total(account_id))
 
@@ -93,18 +94,21 @@ class DbService:
     def _transaction_total(self, account_id):
         """
         What moves an account's balance, as a subquery for the statements above: the sum of its
-        transactions, less the payments of the series that pay it down (a loan's: a $75 bill paid
-        from Checking is $75 less owed).
+        transactions and its interest hits, less the payments of the series that pay it down (a
+        loan's: a $75 bill paid from Checking is $75 less owed).
         """
         own = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
                .where(TransactionModel.account_id == account_id)
                .scalar_subquery())
+        interest = (select(func.coalesce(func.sum(InterestHitModel.amount_cents), 0))
+                    .where(InterestHitModel.account_id == account_id)
+                    .scalar_subquery())
         paid = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
                 .select_from(TransactionModel)
                 .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
                 .where(RecurringModel.loan_account_id == account_id)
                 .scalar_subquery())
-        return own - paid
+        return own + interest - paid
 
     def _update_balance(self, account_id, **values):
         db.session.flush()   # write pending changes first (a starting balance, a new transaction)
@@ -273,7 +277,8 @@ class DbService:
     def get_transaction_totals_before(self, account_ids, before_date):
         """
         What moved each account's balance before before_date, {account_id: cents}: its transactions
-        dated before it, less the payments dated before it of the series that pay it down (a loan's).
+        and interest hits dated before it, less the payments dated before it of the series that pay
+        it down (a loan's).
         """
         rows = (
             db.session.query(TransactionModel.account_id, func.sum(TransactionModel.amount_cents))
@@ -282,6 +287,14 @@ class DbService:
             .all()
         )
         totals = {account_id: int(total) for account_id, total in rows}
+        interest = (
+            db.session.query(InterestHitModel.account_id, func.sum(InterestHitModel.amount_cents))
+            .filter(InterestHitModel.account_id.in_(account_ids), InterestHitModel.date < before_date)
+            .group_by(InterestHitModel.account_id)
+            .all()
+        )
+        for account_id, total in interest:
+            totals[account_id] = totals.get(account_id, 0) + int(total)
         paid = (
             db.session.query(RecurringModel.loan_account_id, func.sum(TransactionModel.amount_cents))
             .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
@@ -392,6 +405,25 @@ class DbService:
         return query.all()
 
     # INTEREST OPERATIONS =======================================================
+
+    def get_interest_hit(self, hit_id):
+        return db.session.get(InterestHitModel, hit_id)
+
+    def get_user_interest_hits(self, user_id):
+        """The user's interest hits, newest first."""
+        return (InterestHitModel.query.join(AccountModel)
+                .filter(AccountModel.user_id == int(user_id))
+                .order_by(InterestHitModel.date.desc(), InterestHitModel.id.desc())
+                .all())
+
+    def get_interest_hits(self, account_ids, start_date=None, end_date=None):
+        """These accounts' interest hits dated start_date through end_date (both inclusive, both optional)."""
+        query = InterestHitModel.query.filter(InterestHitModel.account_id.in_(account_ids))
+        if start_date is not None:
+            query = query.filter(InterestHitModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(InterestHitModel.date <= end_date)
+        return query.all()
 
     def claim_interest_period(self, account_id, booked_through, start):
         """

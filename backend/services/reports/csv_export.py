@@ -1,8 +1,9 @@
 """
 csv_export.py - The transactions CSV download
 
-One row per ledger row with its account's running balance (a payment paying down a loan is also a
-row on the loan, for the opposite amount). Income and expense sit in their own
+One row per transaction with its account's running balance (ReportService passes transactions
+only; the balance counts a loan's payments and interest hits, which aren't rows). Income and expense
+sit in their own
 columns as positive amounts, so the file reads well in a spreadsheet and imports again: the
 importer reads "Bank Account" as the account and ignores "Running balance". Text cells go through
 formula_guard, which the importer undoes.

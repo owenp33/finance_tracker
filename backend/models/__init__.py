@@ -11,6 +11,7 @@ from models.series_dismissal import SeriesDismissalModel
 from models.budget import BudgetModel
 from models.scheduled_pace import ScheduledPaceModel
 from models.goal import GoalModel
+from models.interest_hit import InterestHitModel
 
 __all__ = [
     'User',
@@ -23,4 +24,5 @@ __all__ = [
     'BudgetModel',
     'ScheduledPaceModel',
     'GoalModel',
+    'InterestHitModel',
 ]

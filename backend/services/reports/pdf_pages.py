@@ -586,12 +586,12 @@ def account_table_rows(rows, over_budget_ids):
     """
     (cells, over budget?) for each ledger row, one cell per ACCOUNT_COLUMNS entry. A loan's payment
     (made from another account) shows the amount on the loan, and its budget flag only on its own
-    account's page.
+    account's page; an interest hit reads "Interest" and is never over budget.
     """
     table = []
     for row in rows:
         t = row.transaction
-        over = not row.loan_payment and t.id in over_budget_ids
+        over = row.own_transaction and t.id in over_budget_ids
         table.append(([
             t.date.isoformat(),
             _shorten(t.vendor, VENDOR_CHARS),

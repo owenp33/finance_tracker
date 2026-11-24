@@ -147,7 +147,7 @@ total in the same statement; see Invariants).
   it keeps it through a change of type. `interest_frequency` (`INTEREST_FREQUENCIES`: monthly,
   quarterly or yearly; "How often must be monthly, quarterly or yearly.") needs a rate ("How often
   needs an APR."); a rate without one hits monthly, and clearing the rate clears it. Either balance
-  must be a finite number within ±`MAX_BALANCE` ($10,000,000, which keeps `balance_cents` far
+  must be a finite number within ±`MAX_BALANCE` (`models/account.py`: $10,000,000, which keeps `balance_cents` far
   from the 32-bit integer limit). Changing the starting balance moves the balance by the same
   amount; setting the current balance sets the starting balance to it less what moves the account
   (its transactions, transfers included, and a loan's payments: see `LoanService`;
@@ -207,17 +207,22 @@ it.
 (`apr_bps`) and a frequency (`interest_frequency`: monthly, quarterly or yearly,
 `INTEREST_FREQUENCIES`). `accrue(account_id, today=None)` books, on the first day of each period
 after `interest_through` up to the period today falls in (each 1st; Jan, Apr, Jul and Oct 1; Jan
-1: `period_start`, `next_period`), an ordinary transaction (vendor and category "Interest",
-`INTEREST`) of the rate's share for the period (a 12th, a 4th, or all of it) of the balance at the
-end of the day before (a loan's counting its payments), rounded half up. A loan is charged on what it owes, earlier interest
-included (notes "6.70% a year, charged monthly, on $75,217.00 owed"); being on a loan account, it
-counts in no total. A bank account is paid on a positive balance (notes "0.50% a year, paid
-yearly, on $3,000.00"), and that's income. A period with nothing to charge or pay on is done
-without a transaction. Missed periods are caught up in order, each on its balance then. An account
-without `interest_through` starts going forward from the period today falls in. Each period moves
-`interest_through` first, by compare-and-set (`DbService.claim_interest_period`), so two runs
-can't book it twice and a deleted interest transaction isn't booked again. It runs on login, on
-`GET /api/auth/me` and in the scheduler, after recurring generation; it uses `DbService` only.
+1: `period_start`, `next_period`), an interest hit (`InterestHitModel`, a record of its own, not
+a transaction) of the rate's share for the period (a 12th, a 4th, or all of it) of the balance at
+the end of the day before (counting a loan's payments and earlier hits), rounded half up, with the
+rate, frequency and that balance (`base_cents`). A loan is charged on what it owes, earlier interest
+included (a negative amount); a bank account is paid on a positive balance (a positive one). A hit
+moves the balance (`adjust_balance`) and its history, and counts in no income or spending total
+(it's in no transaction list). A period with nothing to charge or pay on is done without a hit.
+Missed periods are caught up in order, each on its balance then. An account without
+`interest_through` starts going forward from the period today falls in. Each period moves
+`interest_through` first, by compare-and-set (`DbService.claim_interest_period`), so two runs can't
+book it twice. `update_hit(hit_id, amount)` changes a hit to the bank's figure (dollars, 0 or more,
+at most `MAX_BALANCE`: "Interest must be a number.", "Interest can't be negative.", "Interest must
+be at most $10,000,000.00."), charged on a loan and paid on any other account (by the account's
+type now), moving the balance by the difference; its date stays, so a hit set to 0 isn't booked
+again. `accrue` runs on login, on `GET /api/auth/me` and in the scheduler, after recurring
+generation; the service uses `DbService` only.
 
 **`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
 Insights balance chart.
@@ -225,12 +230,14 @@ Insights balance chart.
 per account (id order; accounts without activity included): `opening_cents` (starting balance
 plus every transaction before the period), `rows` (each transaction in the period, date then id
 order, as a `LedgerRow` with the balance right after it), and `closing_cents`. Transfers and
-reimbursements count. A loan's ledger also lists the payments paying it down
+reimbursements count. An account's interest hits are rows too (`DbService.get_interest_hits`; a
+hit reads as a transaction would: date, "Interest" as vendor and category, its amount), first on
+their day; `LedgerRow.interest` says so. A loan's ledger also lists the payments paying it down
 (`DbService.get_loan_payments`, made from another account), each a `LedgerRow` whose `loan` is
 set: its `amount_cents` is the opposite of the payment's, `account` the loan, `loan_payment` true.
-The CSV lists such a row under the loan's name, the PDF shows it on the loan's page (its budget
-flag only on its own account's), and the PDF's summary pages leave it out (the payment is in its
-own account's ledger). Both dates are inclusive and optional; an account that isn't the user's, or
+`own_transaction` is neither: the CSV and the PDF's summary pages take only those rows (so the
+CSV imports again cleanly and nothing counts twice or as income), while the PDF's account pages
+show every row (a payment's budget flag only on its own account's page). Both dates are inclusive and optional; an account that isn't the user's, or
 a start after the end, raises `ValueError`. The arithmetic is the pure function
 `running_balances(opening_cents, entries)` over (transaction, loan) pairs. Ledgers are computed
 from the transactions themselves, so with no dates `closing_cents` equals the stored
@@ -316,7 +323,9 @@ taken off its category, by design (on the server only budgets do that; Owen, 202
 - `csv_export.py`: `ledger_csv(rows)`, the CSV text from `LedgerRow`s. Columns: Bank Account,
   Date (ISO), Vendor, Category, Notes, Income, Expense, Running balance. Income and expense are
   positive amounts in their own column, the other left blank (a zero amount is income); the
-  running balance is the row's own account's balance right after it. The file imports again:
+  running balance is the row's own account's balance right after it. Only transactions are rows
+  (`ReportService.csv` keeps `own_transaction` rows); the running balances count a loan's payments
+  and interest hits, which aren't. The file imports again:
   the importer reads "Bank Account" as the account and ignores "Running balance", so
   re-importing an export finds every row a duplicate (tested). Transfer and reimbursement marks
   aren't in the file; an import flags only `Transfer` / `Payment` categories as transfers.
@@ -455,6 +464,7 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 | `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
 | `goals` | `user_id`, `account_id`, `target_cents`, `monthly_cents` (the user's own monthly amount; null for the app's suggestion), `position` (1, 2, ...: the order goals run in); deleted with the user or the account |
+| `interest_hits` | `account_id`, `date` (the period's first day; unique per account), `amount_cents` (as it moves the balance: charged negative, paid positive), `apr_bps` and `frequency` (the rate and how often, when booked), `base_cents` (the balance it was on); deleted with the account |
 | `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
@@ -469,20 +479,23 @@ Every change must keep these true.
 
 - **Sign.** `amount_cents < 0` is an expense; `> 0` is income or a reimbursement.
 - **Balance = starting balance + transactions.** `balance_cents` always equals
-  `opening_balance_cents` plus the sum of the account's `amount_cents`, less, for a loan, the
-  `amount_cents` of the payments in the series that pay it down. The starting balance is
+  `opening_balance_cents` plus the sum of the account's `amount_cents` and its interest hits'
+  `amount_cents`, less, for a loan, the `amount_cents` of the payments in the series that pay it
+  down. The starting balance is
   what the account held before its earliest transaction in the app. It is a field on the account,
   not a transaction, so it never counts as income in reports, budgets, or analytics. Importing
   older history later means lowering it by that history's total. Entering the current balance
   instead (as the bank shows it) sets the starting balance to that less the transactions, so the
   invariant holds either way; it's right once every transaction up to that day is in the app.
-- **A loan account's transactions count in no total.** A loan's own transactions (interest, or
-  anything entered on it) only move what's owed, so like transfers they're left out of
+- **A loan account's transactions count in no total.** A loan's own transactions (anything
+  entered on it by hand) only move what's owed, so like transfers they're left out of
   cash flow, budgets and their flags, the PDF's summary pages, `/api/analytics` and finding
   series (`TransactionModel.on_loan_account`; in SQL, `AccountModel.kind != 'loan'`). Balances
   include them: the account's own balance, its PDF pages, `GET /api/balances` and so Net position.
 - **Interest is booked once a period.** `interest_through` only moves forward, by compare-and-set,
-  before the period's interest is booked.
+  before the period's interest is booked; an account has at most one hit a date.
+- **Interest counts in no total.** A hit isn't a transaction, so cash flow, budgets, the PDF's
+  summary pages and `/api/analytics` never see it; balances, ledgers and `GET /api/balances` do.
 - **A loan's payments are counted, not copied.** Nothing is booked on a loan for the payments
   that pay it down; its balance and ledger count them (see `LoanService`), and they count in
   totals once, in their own account. A new path that adds, changes or removes a payment in a
@@ -769,6 +782,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
 | `/balances` | `GET ?account_ids=&start_date=&end_date=` |
 | `/goals` | `GET`, `POST`, `PATCH` / `DELETE /<id>`, `PUT /order` |
+| `/interest` | `GET`, `PATCH /<id>` |
 
 Details worth knowing:
 - `POST /accounts` takes `account_id` and optionally `account_name`, `kind` (`bank` or `loan`),
@@ -852,6 +866,10 @@ Details worth knowing:
   `target` and/or `monthly` (`null` for the app's suggestion) and returns `{goal}`; `PUT
   /goals/order` takes `{goal_ids}` and returns `{goals}`; invalid input is a 400, another user's
   goal a 403.
+- `GET /interest` returns the user's interest hits, newest first: `{interest: [{id, account_id,
+  date, amount, amount_cents, apr, frequency, base_cents}]}`. `PATCH /interest/<id>` takes
+  `{amount}` (dollars, 0 or more: the bank's figure) and returns `{interest, account}`; a bad
+  amount is a 400, another user's hit a 403, a missing one a 404.
 
 ## Schema changes
 
@@ -908,7 +926,7 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
 | `test_loan_payments.py` | A series paying down a loan: the loan's balance following its payments' edits, deletes and series membership, its ledger, balance history, interest, CSV and PDF, and the routes |
-| `test_interest.py` | Interest on any account: a loan charged, a bank account paid, each frequency, catching up missed periods, once a period, setting the rate and frequency, and login / page load |
+| `test_interest.py` | Interest on any account, as records of their own: a loan charged, a bank account paid, each frequency, catching up missed periods, once a period, changing a hit, the balance, history and exports counting them, the routes, setting the rate and frequency, and login / page load |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
 | `test_goals.py` | Goals: reached and active from the balances and the order, a loan's goal, the monthly amount, editing, reordering, deleting, validation, and the routes |

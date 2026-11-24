@@ -3,14 +3,16 @@ balance_service.py - Account ledgers: balances over time
 
 For each account: the balance at the start of a period (its starting balance plus every earlier
 transaction), each transaction in the period with the balance right after it, and the balance at
-the end. Transfers and reimbursements count, since money really moved. A loan's ledger also lists
-the payments of the series that pay it down (made from another account), for the opposite amount
-(loan_service.py). Read-only; used by the exports, and (as end-of-day balances) by GET
-/api/balances for the Insights balance chart.
+the end. Transfers and reimbursements count, since money really moved. An account's interest hits
+(InterestHitModel) are rows too, first on their day, and a loan's ledger also lists the payments of
+the series that pay it down (made from another account), for the opposite amount (loan_service.py).
+Read-only; used by the exports, and (as end-of-day balances) by GET /api/balances for the Insights
+balance chart.
 """
 from collections import defaultdict
 from dataclasses import dataclass
 from models.account import AccountModel
+from models.interest_hit import InterestHitModel
 from models.transaction import TransactionModel
 from services.db_service import DbService
 
@@ -19,7 +21,7 @@ db_service = DbService()
 
 @dataclass(frozen=True)
 class LedgerRow:
-    transaction: TransactionModel
+    transaction: TransactionModel | InterestHitModel   # a hit reads as one (date, vendor, category, amount)
     balance_cents: int                  # the account's balance right after this row
     loan: AccountModel | None = None    # set on a payment paying down this loan: the loan
 
@@ -27,6 +29,16 @@ class LedgerRow:
     def loan_payment(self):
         """A payment made from another account, in a series paying down this ledger's loan."""
         return self.loan is not None
+
+    @property
+    def interest(self):
+        """An interest hit on the ledger's account (a record of its own, not a transaction)."""
+        return isinstance(self.transaction, InterestHitModel)
+
+    @property
+    def own_transaction(self):
+        """A transaction of the ledger's own account: neither a loan's payment nor an interest hit."""
+        return not self.loan_payment and not self.interest
 
     @property
     def amount_cents(self):
@@ -74,7 +86,7 @@ def end_of_day(rows):
 def running_balances(opening_cents, entries):
     """
     Each (transaction, loan) in the order given, as a row with the balance right after it: loan is
-    None for the account's own transaction, else the loan a payment pays down.
+    None for the account's own transaction or interest hit, else the loan a payment pays down.
     """
     rows, balance = [], opening_cents
     for t, loan in entries:
@@ -113,11 +125,18 @@ class BalanceService:
             in_period[t.account_id].append((t, None))
         for loan_id, t in db_service.get_loan_payments(ids, start_date, end_date):
             in_period[loan_id].append((t, by_id[loan_id]))
+        for hit in db_service.get_interest_hits(ids, start_date, end_date):
+            in_period[hit.account_id].append((hit, None))
+
+        # By date; a day's interest first (it's on the balance at the end of the day before)
+        def order(entry):
+            t = entry[0]
+            return (t.date, not isinstance(t, InterestHitModel), t.id)
 
         ledgers = []
         for a in accounts:
             opening = a.opening_balance_cents + earlier.get(a.id, 0)
-            rows = running_balances(opening, sorted(in_period[a.id], key=lambda entry: (entry[0].date, entry[0].id)))
+            rows = running_balances(opening, sorted(in_period[a.id], key=order))
             ledgers.append(AccountLedger(a, opening, rows))
         return ledgers
 

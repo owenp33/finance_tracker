@@ -5,6 +5,10 @@ from extensions import db
 
 ACCOUNT_KINDS = ('bank', 'loan')   # 'bank' covers checking, savings and cards
 
+# The most a balance may be, in dollars either way (a starting or current balance, an interest hit).
+# Keeps balance_cents (a 32-bit INTEGER in Postgres) far from overflowing.
+MAX_BALANCE = 10_000_000
+
 
 class AccountModel(db.Model):
     __tablename__ = 'accounts'

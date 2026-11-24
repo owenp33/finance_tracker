@@ -14,6 +14,7 @@ from sqlalchemy import func
 
 from extensions import db as _db
 from models.account import AccountModel
+from models.interest_hit import InterestHitModel
 from models.recurring import RecurringModel
 from models.transaction import TransactionModel
 from models.user import User
@@ -249,16 +250,16 @@ class TestTheLoansHistory:
         _db.session.commit()
         InterestService().accrue(loan.id, today=date(2026, 4, 2))
         # Owed on Mar 31: $1,000 - $150 + $10 = $860; 12% / 12 of it is $8.60
-        assert TransactionModel.query.filter_by(account_id=loan.id, date=date(2026, 4, 1)).one().amount_cents == -860
+        assert InterestHitModel.query.filter_by(account_id=loan.id, date=date(2026, 4, 1)).one().amount_cents == -860
 
-    def test_the_csv_lists_each_payment_on_the_loan_too(self, client, auth_headers, account, loan, paid):
+    def test_the_csv_lists_each_payment_once_in_its_own_account(self, client, auth_headers, account, loan, paid):
+        # Transactions only, so it imports again cleanly; the loan's running balance counts the payments
         resp = client.get('/api/export/transactions.csv', headers=auth_headers)
         rows = list(csv.reader(io.StringIO(resp.get_data(as_text=True))))
-        assert [r for r in rows[1:] if r[2] == 'ASPIRE'] == [
+        assert rows[1:] == [
             ['Test Checking', '2026-01-31', 'ASPIRE', 'Loan', '', '', '75.00', '-75.00'],
-            ['ASPIRE loan', '2026-01-31', 'ASPIRE', 'Loan', '', '75.00', '', '-925.00'],
             ['Test Checking', '2026-02-28', 'ASPIRE', 'Loan', '', '', '75.00', '-150.00'],
-            ['ASPIRE loan', '2026-02-28', 'ASPIRE', 'Loan', '', '75.00', '', '-850.00'],
+            ['ASPIRE loan', '2026-03-01', 'Interest', 'Interest', '', '', '10.00', '-860.00'],
         ]
 
     def test_the_pdf_shows_them_on_the_loans_page_and_counts_them_once(self, client, auth_headers, monkeypatch,

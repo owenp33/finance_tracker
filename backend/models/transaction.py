@@ -33,9 +33,9 @@ class TransactionModel(db.Model):
     @property
     def on_loan_account(self):
         """
-        On a loan account. Such transactions (interest, or anything entered on the loan) only move
-        what's owed, so like transfers they count in no total: not in cash flow, budgets, reports or
-        series detection. Balances include them.
+        On a loan account. Such transactions (anything entered on the loan by hand) only move what's
+        owed, so like transfers they count in no total: not in cash flow, budgets, reports or series
+        detection. Balances include them.
         """
         return bool(self.account and self.account.kind == 'loan')
 

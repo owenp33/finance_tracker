@@ -2,23 +2,24 @@
 interest_service.py - Interest on accounts: a yearly rate that hits monthly, quarterly or yearly
 
 An account with a rate (AccountModel.apr_bps, a yearly percentage) and a frequency
-(interest_frequency) gets an "Interest" transaction on the 1st of each period: the rate's share
-for the period (a 12th monthly, a 4th quarterly, all of it yearly) of the balance at the end of the
-period before. A loan is charged on what it owes, earlier interest included, so it adds to the
-debt (and, being on a loan account, counts in no total); a bank account is paid on a positive
-balance, and that's income. Periods start on Jan 1 (yearly), Jan/Apr/Jul/Oct 1 (quarterly) or each
-1st (monthly). interest_through is the start of the last period booked: each period moves it by
-compare-and-set before its interest is booked, so it's booked once however many runs overlap.
+(interest_frequency) gets an interest hit on the 1st of each period (InterestHitModel, a record of
+its own, not a transaction): the rate's share for the period (a 12th monthly, a 4th quarterly, all
+of it yearly) of the balance at the end of the period before. A loan is charged on what it owes,
+earlier interest included, so it adds to the debt; a bank account is paid on a positive balance.
+Either way it moves the balance and counts in no income or spending total, and its amount can be
+changed to the bank's figure. Periods start on Jan 1 (yearly), Jan/Apr/Jul/Oct 1 (quarterly) or
+each 1st (monthly). interest_through is the start of the last period booked: each period moves it
+by compare-and-set before its interest is booked, so it's booked once however many runs overlap.
 Depends on db_service.py only, so the account service can use its period helpers.
 """
+import math
 from datetime import date
 from extensions import db
-from models.transaction import TransactionModel
+from models.account import MAX_BALANCE
+from models.interest_hit import InterestHitModel
 from services.db_service import DbService
 
 db_service = DbService()
-
-INTEREST = 'Interest'   # the vendor and category of an interest charge or payment
 
 INTEREST_FREQUENCIES = {'monthly': 1, 'quarterly': 3, 'yearly': 12}   # how often -> months between hits
 
@@ -35,8 +36,15 @@ def next_period(start, frequency):
     return date(total // 12, total % 12 + 1, 1)
 
 
-def _dollars(cents):
-    return f'${cents / 100:,.2f}'
+def _interest_cents(amount):
+    """A changed hit's amount: dollars, 0 or more, as cents; ValueError in the account form's words."""
+    if isinstance(amount, bool) or not isinstance(amount, (int, float)) or not math.isfinite(amount):
+        raise ValueError('Interest must be a number.')
+    if amount < 0:
+        raise ValueError("Interest can't be negative.")
+    if amount > MAX_BALANCE:
+        raise ValueError(f'Interest must be at most ${MAX_BALANCE:,.2f}.')
+    return int(round(amount * 100))
 
 
 class InterestService:
@@ -50,7 +58,7 @@ class InterestService:
         period still counts as done. Missed periods are caught up in order, each on its balance
         then. An account without a start (interest_through None) starts going forward from the
         period today falls in. Accounts without a rate and frequency are left alone. Commits;
-        returns how many interest transactions it booked.
+        returns how many interest hits it booked.
         """
         account = db_service.get_account(account_id)
         if account is None or account.apr_bps is None or account.interest_frequency is None:
@@ -75,15 +83,28 @@ class InterestService:
             base = max(-held if loan else held, 0)
             cents = (base * account.apr_bps * months + 60_000) // 120_000   # rate (bps) × months / 12, half up
             if cents:
-                db.session.add(TransactionModel(
-                    account_id=account.id, date=start, vendor=INTEREST, category=INTEREST,
-                    amount_cents=-cents if loan else cents,
-                    notes=(f'{account.apr_bps / 100:.2f}% a year, {"charged" if loan else "paid"} {frequency}, '
-                           f'on {_dollars(base)}{" owed" if loan else ""}'),
-                ))
+                db.session.add(InterestHitModel(account_id=account.id, date=start, amount_cents=-cents if loan else cents,
+                                                apr_bps=account.apr_bps, frequency=frequency, base_cents=base))
                 db.session.flush()
                 db_service.adjust_balance(account.id, -cents if loan else cents)
                 booked += 1
             booked_through, start = start, next_period(start, frequency)
         db.session.commit()
         return booked
+
+    def update_hit(self, hit_id, amount):
+        """
+        Change a hit's amount to `amount` (dollars, 0 or more: the bank's figure), charged on a loan
+        (what's owed grows) and paid on any other account, moving the balance by the difference. Its
+        date and period stay, so a hit set to 0 isn't booked again. Raises ValueError for a missing
+        hit or an amount that isn't one; commits and returns the hit.
+        """
+        hit = db_service.get_interest_hit(hit_id)
+        if hit is None:
+            raise ValueError('Interest not found.')
+        cents = _interest_cents(amount)
+        signed = -cents if hit.account.kind == 'loan' else cents
+        db_service.adjust_balance(hit.account_id, signed - hit.amount_cents)
+        hit.amount_cents = signed
+        db.session.commit()
+        return hit

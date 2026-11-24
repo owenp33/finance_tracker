@@ -9,7 +9,7 @@ import math
 import numbers
 from datetime import date
 from extensions import db
-from models.account import AccountModel, ACCOUNT_KINDS
+from models.account import AccountModel, ACCOUNT_KINDS, MAX_BALANCE
 from models.transaction import TransactionModel
 from services.db_service import DbService
 from services.loan_service import LoanService
@@ -33,10 +33,6 @@ def _account_label(value, column, shown_as):
         raise ValueError(f'{shown_as} must be at most {column.type.length} characters.')
     return label
 
-
-# Dollars, for a starting or current balance. Keeps balance_cents (a 32-bit INTEGER in Postgres)
-# far from overflowing.
-MAX_BALANCE = 10_000_000
 
 BALANCE_LIMIT_TEXT = f'between -${MAX_BALANCE:,} and ${MAX_BALANCE:,}'
 
