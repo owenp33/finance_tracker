@@ -434,9 +434,10 @@ describe('interest waiting for approval', () => {
     expect(accountItem('Checking').querySelector('.account-interest')).toBeNull();
     const loan = accountItem('Student Loan');
     expect(within(loan).getByText('Interest to approve (2)')).toBeInTheDocument();
+    // Oldest first, the order they're approved in (the server lists them newest first)
     expect(rows('Student Loan')).toEqual([
-      ['Jan 1, 2027', '6.70% a year, charged monthly, on $75,636.96 owed', '-$422.31'],
       ['Dec 1, 2026', '6.70% a year, charged monthly, on $75,217.00 owed', '-$419.96'],
+      ['Jan 1, 2027', '6.70% a year, charged monthly, on $75,636.96 owed', '-$422.31'],
     ]);
     expect(within(accountItem('Savings')).getByText('Interest to approve (1)')).toBeInTheDocument();
     expect(rows('Savings')).toEqual([['Jan 1, 2027', '0.50% a year, paid yearly, on $3,000.00', '+$15.00']]);
@@ -448,7 +449,7 @@ describe('interest waiting for approval', () => {
     const onApproveInterest = jest.fn().mockResolvedValue(true);
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onApproveInterest });
     const loan = accountItem('Student Loan');
-    const [, december] = loan.querySelectorAll('.account-interest-row');
+    const [december] = loan.querySelectorAll('.account-interest-row');
     await userEvent.click(within(december).getByRole('button', { name: 'Approve interest' }));
     expect(onApproveInterest).toHaveBeenLastCalledWith([7]);
     await userEvent.click(within(loan).getByRole('button', { name: 'Approve all' }));
@@ -473,7 +474,7 @@ describe('interest waiting for approval', () => {
     const onEditInterest = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     renderAccounts(ACCOUNTS, jest.fn(), { interest: INTEREST, onEditInterest });
     const loan = accountItem('Student Loan');
-    const [, december] = loan.querySelectorAll('.account-interest-row');
+    const [december] = loan.querySelectorAll('.account-interest-row');
     await userEvent.click(within(december).getByRole('button', { name: 'Edit interest' }));
     const amount = within(loan).getByLabelText('Interest charged on Dec 1, 2026');
     expect(amount).toHaveValue(419.96);

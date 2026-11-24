@@ -8,19 +8,20 @@ import { formatDate } from './transactions/utils';
 const basis = (hit, loan) =>
   `${hit.apr.toFixed(2)}% a year, ${loan ? 'charged' : 'paid'} ${hit.frequency}, on ${formatCents(hit.base_cents)}${loan ? ' owed' : ''}`;
 
-// An account's interest waiting for approval (its GET /api/interest rows not yet approved, newest
-// first) under its row in Transactions → Accounts: records of their own, not transactions. Each can
-// be changed to the bank's figure (typed as a positive amount: charged on a loan, paid on any other
-// account), approved (it then moves the balance and leaves the list) or deleted once confirmed (it
-// won't be booked again); "Approve all" approves them oldest first. onSave(id, dollars), onApprove(ids)
-// and onDelete(id) resolve to whether they worked, and an edit stays open when it didn't. Nothing
-// when none are waiting.
+// An account's interest waiting for approval (its GET /api/interest rows not yet approved) under its
+// row in Transactions → Accounts, oldest first, the order to approve them in: records of their own,
+// not transactions. Each can be changed to the bank's figure (typed as a positive amount: charged on
+// a loan, paid on any other account), approved (it then moves the balance and leaves the list) or
+// deleted once confirmed (it won't be booked again); "Approve all" approves them in the same order.
+// onSave(id, dollars), onApprove(ids) and onDelete(id) resolve to whether they worked, and an edit
+// stays open when it didn't. Nothing when none are waiting.
 function InterestHits({ hits, loan, onSave, onApprove, onDelete }) {
   const [editingId, setEditingId] = useState(null);
   const [amountText, setAmountText] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (hits.length === 0) return null;
+  const oldestFirst = [...hits].sort((a, b) => a.date.localeCompare(b.date));
 
   // One change at a time, so a second click can't send it twice
   const run = async (change) => {
@@ -44,13 +45,13 @@ function InterestHits({ hits, loan, onSave, onApprove, onDelete }) {
         <span>Interest to approve ({hits.length})</span>
         {hits.length > 1 && (
           <button className="btn btn-secondary btn-sm" disabled={busy}
-                  onClick={() => run(() => onApprove(hits.map(hit => hit.id).reverse()))}>
+                  onClick={() => run(() => onApprove(oldestFirst.map(hit => hit.id)))}>
             Approve all
           </button>
         )}
       </div>
       <ul className="account-interest-list">
-        {hits.map(hit => {
+        {oldestFirst.map(hit => {
           const date = formatDate(hit.date, true);
           return (
             <li key={hit.id} className="account-interest-row">
