@@ -1,0 +1,188 @@
+/* transactions/GroupedTransactionList: an account's or a series' expanded list, grouped by
+   vendor, with select-all, bulk actions, sort and in-place edit. */
+
+/* An account's expanded list (a bank account's transfers, a loan's transactions), under its row */
+.account-transfers {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.account-transfers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  min-height: 28px;
+}
+
+.account-transfers-header .bulk-select-all {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.transfer-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transfer-bulk-bar select {
+  font-size: 0.82rem;
+  padding: 3px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.account-transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #444;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+
+.account-transfer-row.transfer-selected {
+  background: #f0f4ff;
+}
+
+.transfer-checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.account-transfer-date {
+  color: #888;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.transfer-vendor-group + .transfer-vendor-group {
+  border-top: 1px solid #e0e0e0;
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.transfer-vendor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 2px;
+}
+
+.transfer-vendor-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.transfer-vendor-flows {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.transfer-rel-out {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.transfer-rel-in {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.account-transfer-amount {
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.account-transfer-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 90px;   /* expands for year-inclusive dates; peer column never shifts */
+}
+
+.transfer-row-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.account-transfer-row:hover .transfer-row-actions {
+  opacity: 1;
+}
+
+.account-transfer-row:hover .account-transfer-date {
+  opacity: 0;
+}
+
+.transfer-action-btn {
+  flex-shrink: 0;
+}
+
+.transfer-sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.transfer-sort-select {
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.transfer-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.transfer-edit-row input {
+  font-size: 0.82rem;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.transfer-edit-row input[type="text"],
+.transfer-edit-row input[type="number"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.transfer-edit-row input[type="date"] {
+  width: 130px;
+}

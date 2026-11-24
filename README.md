@@ -52,6 +52,7 @@ finance_tracker/
 │   │   ├── api/                # Per-domain wrappers; every request goes through api/client.js
 │   │   ├── hooks/              # Data fetching (accounts, transactions, budgets, ...)
 │   │   ├── components/         # Views and UI components (feature folders insights/, transactions/)
+│   │   ├── styles/             # One stylesheet per feature; index.css imports them in cascade order
 │   │   └── utils/              # Shared pure helpers (money, dates, sequencing, money rules, budget pace, recurring costs)
 │   ├── nginx.conf
 │   └── Dockerfile

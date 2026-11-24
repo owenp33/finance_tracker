@@ -1,0 +1,77 @@
+/* The page itself: the reset, the chart palette, the background, the app's width, the loading
+   screen, empty-state text and colour utilities. */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Chart palette (Phase V). Orange means over budget or a warning, always with text. */
+:root {
+  --chart-blue: #2a78d6;
+  --chart-orange: #eb6834;
+  --chart-aqua: #1baf7a;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+}
+
+.App {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.App-main {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Loading Screen */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: white;
+}
+
+.loading-screen h1 {
+  font-size: 3rem;
+  margin-bottom: 20px;
+}
+
+.no-data {
+  text-align: center;
+  color: #999;
+  padding: 40px;
+  font-size: 1.1rem;
+}
+
+/* Color utilities */
+.green {
+  color: #51cf66;
+}
+
+.red {
+  color: #ff6b6b;
+}
+
+.purple {
+  color: #7c3aed;
+}
+
+.positive { color: #00C49F; font-weight: 600; }
+
+.negative { color: #FF8042; font-weight: 600; }
+
+/* === Orange utility ======================================== */
+.orange { color: #e67700; }

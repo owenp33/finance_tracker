@@ -1,0 +1,169 @@
+/* Goals on Budgeting: the section, each goal's row and form, a loan's payoff legend and notes, and
+   the month's saving line in Category Allocations. */
+
+/* ── Goals (Phase F, F2b): on Budgeting, above the category budgets ───────────── */
+.goals-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.goals-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.goals-header h3 { margin: 0; }
+
+.goals-section .chart-note { margin: 0 0 6px; }
+
+.goals-room {
+  margin: 0 0 12px;
+  color: #374151;
+  font-size: 0.85rem;
+}
+
+.goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.goal-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.goal-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-status {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.goal-status.active { background: #eef2ff; color: #3b4fa8; }
+
+.goal-status.held   { background: #e7f6ef; color: #12795a; }
+
+.goal-progress { font-size: 0.9rem; }
+
+.goal-bar {
+  max-width: 360px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e5e7eb;
+}
+
+.goal-bar-fill {
+  height: 100%;
+  background: var(--chart-aqua);
+}
+
+.goal-plan {
+  color: #4b5563;
+  font-size: 0.82rem;
+}
+
+.goal-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 360px;
+  margin: 6px 0 10px;
+}
+
+/* A loan goal's payoff under its row (F2g): what's owed with the extra and with the regular
+   payments only. The lines' colours are set on the chart; these keys match them. */
+.loan-payoff {
+  margin-top: 8px;
+}
+
+.payoff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.payoff-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.payoff-key {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid var(--chart-blue);
+}
+
+.payoff-key.regular {
+  border-top: 2px dashed #6b7280;
+}
+
+.payoff-end-label {
+  fill: #4b5563;
+  font-size: 11px;
+}
+
+.payoff-note {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+/* The active goal's saving, beside this month's category budgets (F2c) */
+.budget-goal-saving {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e7f6ef;
+  color: #12795a;
+  font-size: 0.88rem;
+}
+
+.goal-form input,
+.goal-form select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}

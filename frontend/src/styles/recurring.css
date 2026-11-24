@@ -1,0 +1,231 @@
+/* Transactions → Recurring: series cards, Find recurring, suggested transactions, the edit
+   form, and the details column of a series' expanded list. */
+
+/* Recurring View */
+.recurring-view {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.recurring-view h2 {
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 1.8rem;
+}
+
+.recurring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* "Find recurring": found series, in the templates' own card style, framed above the list */
+.find-recurring {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 20px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 10px;
+}
+
+.find-recurring h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.find-recurring .recurring-info small {
+  color: #999;
+  font-size: 0.85rem;
+}
+
+/* Templates that never generate again, below the active ones */
+.recurring-finished-heading {
+  margin: 35px 0 15px;
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.recurring-item {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+
+.recurring-item:hover {
+  background: #e9ecef;
+  transform: translateX(5px);
+}
+
+.recurring-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recurring-generated-toggle {
+  background: none;
+  border: none;
+  padding: 6px 0 0;
+  font-size: 0.8rem;
+  color: #999;
+  cursor: pointer;
+  text-align: left;
+  width: fit-content;
+}
+
+.recurring-generated-toggle:hover {
+  color: #444;
+}
+
+.recurring-generated-list {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dee2e6;
+}
+
+.recurring-generated-list .transaction-list {
+  gap: 4px;
+}
+
+.recurring-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dee2e6;
+}
+
+.recurring-suggestions > .btn { align-self: flex-start; }
+
+.recurring-suggestion-head {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.recurring-suggestion-series {
+  opacity: 0.7;
+}
+
+.recurring-suggestion-series small {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+/* Series rows have no actions, so hovering keeps their amount in view */
+.recurring-suggestion-series .transaction-item:hover .tx-default-info {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.suggestion-unrelated-btn {
+  color: #868e96;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.recurring-generated-list .transaction-item {
+  padding: 8px 10px;
+  font-size: 0.88rem;
+}
+
+.recurring-bulk-amount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #f1f3f5;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #555;
+}
+
+.recurring-bulk-amount-input {
+  width: 90px;
+  padding: 3px 6px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
+.recurring-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.recurring-info strong {
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.recurring-info span {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.recurring-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* === Recurring Tab Edit ==================================== */
+.recurring-edit-form {
+  width: 100%;
+  background: #f8f9fa;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.recurring-edit-form .form-actions,
+.recurring-edit-form .recurring-number-group {
+  grid-column: 1 / -1;
+}
+
+/* A recurring series' row on Transactions → Recurring: its notes and chips where an account's row
+   has "To" / "From" and the other account */
+.series-row-details {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.series-row-notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Recurring number limit ────────────────────────────────────────────────── */
+.recurring-number-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* The Transactions → Recurring tab's line under its header */
+.recurring-summary {
+  margin: -8px 0 14px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}

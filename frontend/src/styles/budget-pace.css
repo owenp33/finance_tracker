@@ -1,0 +1,126 @@
+/* BudgetPace, on Budgeting and the Dashboard: the bar, its marker, bills still due, the label
+   under it and the tooltip. */
+
+/* ── Budget pace inside budget row (Phase V, V1) ──────────────────────────── */
+.budget-pace {
+  padding: 2px 4px 6px;
+}
+
+.budget-pace-chart {
+  position: relative;
+}
+
+/* The padding gives the marker room and the bar a bigger hit target */
+.budget-pace-bar {
+  position: relative;
+  padding: 4px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.budget-pace-bar:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* The track is a lighter step of the bar's own colour (set inline) */
+.budget-pace-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.budget-pace-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.budget-pace-fill {
+  position: relative;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Over budget: orange with a hatch, so it never reads as an orange category */
+.budget-pace-fill.over {
+  background: repeating-linear-gradient(135deg, var(--chart-orange) 0 4px, #f6b49a 4px 7px);
+}
+
+/* Bills still due this month: stripes of the bar's colour (set inline as `color`) after what's
+   spent, orange when they'd go over the budget */
+.budget-pace-due {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px);
+}
+
+.budget-pace-due.over {
+  color: var(--chart-orange);
+}
+
+/* Where the expected spend sits by now; the white ring keeps it visible over any fill */
+.budget-pace-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #1a1a2e;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.budget-pace-details {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 8px 10px;
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.budget-pace-details dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 14px;
+}
+
+.budget-pace-details dt {
+  color: #cbd5e1;
+}
+
+.budget-pace-details dd {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-pace-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.budget-pace-status {
+  font-weight: 600;
+}
+
+/* A darker step of the chart orange, readable as text on white */
+.budget-pace-status.over,
+.budget-pace-due-note.over {
+  color: #b5441c;
+  font-weight: 600;
+}

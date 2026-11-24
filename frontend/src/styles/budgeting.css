@@ -1,0 +1,417 @@
+/* Budgeting: the view's card, the period nav, summary cards, Category Allocations and each
+   budget row (colour picker, rollover and pace toggles, amount, its transactions), and the add form. */
+
+/* === Budgeting View ========================================= */
+.budgeting-view {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Period navigation */
+.period-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+.period-label {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #333;
+  min-width: 180px;
+  text-align: center;
+}
+
+/* Budget rows list */
+.budget-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.budget-save-error {
+  font-size: 0.8rem;
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+/* Add category form */
+.add-budget-form {
+  background: #f0f3ff;
+  border: 1.5px solid #c5cff5;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .period-label { min-width: 140px; font-size: 1.05rem; }
+}
+
+/* ── Budget summary cards ──────────────────────────────────────────────────── */
+.budget-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 16px 0 24px;
+}
+
+.budget-summary-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.budget-summary-card.income-card {
+  cursor: pointer;
+  border-color: #c7d2fe;
+  background: #f5f7ff;
+}
+
+.budget-summary-card.income-card:hover {
+  border-color: #818cf8;
+}
+
+.budget-summary-card.muted {
+  opacity: 0.45;
+}
+
+.budget-summary-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.budget-summary-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  line-height: 1.1;
+}
+
+.budget-summary-value.green { color: #16a34a; }
+
+.budget-summary-value.red   { color: #dc2626; }
+
+.budget-summary-sub {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.income-hint {
+  font-size: 0.78rem;
+  color: #818cf8;
+  margin-top: 2px;
+}
+
+.income-inline-input {
+  width: 100%;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  border: none;
+  border-bottom: 2px solid #818cf8;
+  background: transparent;
+  outline: none;
+  padding: 2px 0;
+}
+
+/* ── Budget row card ───────────────────────────────────────────────────────── */
+.budget-row-card {
+  border-bottom: 1px solid #f1f3f5;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.budget-row-card:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.budget-row-card.has-error .budget-row-inline { opacity: 0.7; }
+
+/* ── Budget inline row ─────────────────────────────────────────────────────── */
+.budget-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 4px;
+}
+
+.bri-dot-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bri-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.bri-dot:hover {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
+}
+
+.color-picker-popover {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  z-index: 200;
+  background: white;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 148px;
+}
+
+.color-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.color-swatch:hover { transform: scale(1.2); }
+
+.color-swatch.selected {
+  border-color: #1a1a2e;
+  transform: scale(1.15);
+}
+
+.color-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.color-custom-row input[type="color"] {
+  width: 28px;
+  height: 22px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px;
+  cursor: pointer;
+  background: none;
+}
+
+.bri-category {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bri-amount-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 3px 8px;
+  transition: border-color 0.2s;
+}
+
+.bri-amount-wrap:focus-within {
+  border-color: #667eea;
+  background: #fff;
+}
+
+.bri-prefix {
+  font-size: 0.88rem;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.bri-amount-input {
+  width: 72px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  outline: none;
+  text-align: right;
+}
+
+.bri-pct {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 32px;
+  text-align: right;
+}
+
+.bri-error {
+  font-size: 0.78rem;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.bri-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bri-toggle input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: #667eea;
+  cursor: pointer;
+}
+
+.bri-delete {
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+/* ── Expand button ────────────────────────────────────────────────────────── */
+.bri-expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px 6px;
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.bri-expand-btn:hover {
+  color: #6b7280;
+}
+
+/* ── Expanded transaction list ────────────────────────────────────────────── */
+.bri-tx-list {
+  border-top: 1px solid #f1f3f5;
+  padding: 4px 4px 2px;
+}
+
+.bri-tx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px;
+  border-bottom: 1px solid #f9fafb;
+}
+
+.bri-tx-item:last-child {
+  border-bottom: none;
+}
+
+.bri-tx-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bri-tx-vendor {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bri-tx-date {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.bri-tx-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.bri-tx-amount {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.bri-tx-amount.green { color: #16a34a; }
+
+.bri-tx-amount.red   { color: #dc2626; }
+
+/* ── Category Allocations card ─────────────────────────────────────────────── */
+.category-allocations-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 8px;
+}
+
+.category-allocations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* Budgeting's section titles: CATEGORY ALLOCATIONS and GOALS */
+.category-allocations-header h3,
+.goals-header h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

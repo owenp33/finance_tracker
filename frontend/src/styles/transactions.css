@@ -1,0 +1,416 @@
+/* Transactions → All: the view's card, the add / edit form (Mark as, recurring fields), the
+   transaction list and its chips, select-all and bulk actions, load more and search. */
+
+/* Transactions View */
+.transactions-view {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Transaction Form */
+.transaction-form {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+/* Add / Cancel on their own line at the end, whatever fields come before them */
+.transaction-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+/* Transaction List */
+.transaction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 6px;
+  border-bottom: 1px solid #e9ecef;
+  gap: 10px;
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-item.tx-selected {
+  background: #eef1ff;
+  border-radius: 6px;
+}
+
+.tx-cat-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tx-over-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e03131;
+  background: #ffe3e3;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.tx-transfer-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #3b5bdb;
+  background: #e7f0ff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.tx-transfer-chip.tx-transfer-unlinked {
+  color: #888;
+  background: #f3f4f6;
+}
+
+.tx-transfer-active {
+  color: #3b5bdb !important;
+  background: #e7f0ff !important;
+}
+
+/* The Add Transaction form's "Mark as" line spans the form, so a transfer's To account and the
+   recurring fields come under it */
+.mark-as-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1.5px solid #e9ecef;
+}
+
+.mark-as-label {
+  font-size: 0.82rem;
+  color: #6b7280;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.mark-as-btn {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 99px;
+  padding: 3px 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.mark-as-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.mark-as-btn.active {
+  background: #e7f0ff;
+  color: #3b5bdb;
+  border-color: #c7d7f9;
+  font-weight: 600;
+}
+
+.tx-reimburse-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.tx-unrelated-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.tx-recurring-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #f3e8ff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.transaction-info strong {
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.transaction-info span {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.transaction-info small {
+  color: #999;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.transaction-right {
+  display: grid;
+  align-items: center;
+}
+
+.tx-default-info,
+.tx-hover-actions {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  transition: opacity 0.15s;
+}
+
+.tx-hover-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.transaction-item:hover .tx-default-info {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.transaction-item:hover .tx-hover-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.transaction-amount {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.transaction-amount.green {
+  color: #51cf66;
+}
+
+.transaction-amount.red {
+  color: #ff6b6b;
+}
+
+/* Recurring toggle in TransactionForm */
+.recurring-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #495057;
+  cursor: pointer;
+  user-select: none;
+}
+
+.recurring-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #667eea;
+  cursor: pointer;
+}
+
+.recurring-past-note {
+  grid-column: 1 / -1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fff4e6;
+  color: #8a4b00;
+  font-size: 0.85rem;
+}
+
+.recurring-past-note p { margin: 0 0 8px; }
+
+.recurring-series-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff4e6;
+  color: #8a4b00;
+  font-size: 0.85rem;
+}
+
+.recurring-extra-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  background: #f0f3ff;
+  border: 1.5px solid #c5cff5;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+/* Transaction inline edit */
+.transaction-edit-form {
+  width: 100%;
+  background: #f8f9fa;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.transaction-edit-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .transaction-form {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .transaction-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ── Bulk action bar ───────────────────────────────────────────────────────── */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 4px;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #495057;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bulk-select-all input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.tx-checkbox {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ── Load more bar ─────────────────────────────────────────────────────────── */
+.load-more-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 4px 4px;
+  border-top: 1px solid #e9ecef;
+  margin-top: 4px;
+}
+
+.load-more-bar > * + * {
+  margin-left: 8px;
+}
+
+.load-more-bar > :last-child {
+  margin-left: auto;
+}
+
+.load-more-label {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+/* Transaction search bar */
+.tx-search-bar {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.tx-search-input {
+  width: 100%;
+  padding: 9px 36px 9px 14px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: #333;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.tx-search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.tx-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.tx-search-clear:hover {
+  color: #333;
+}

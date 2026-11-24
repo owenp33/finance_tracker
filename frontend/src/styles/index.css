@@ -1,0 +1,20 @@
+/* Every stylesheet, in cascade order. Where two rules can style the same element with equal
+   specificity, the one imported later wins, so this order keeps the cascade the single App.css had
+   (for example, controls after recurring: .btn overrides .suggestion-unrelated-btn; grouped-list before
+   accounts). Before moving a file up or down, check the rules it shares elements with. */
+
+@import './base.css';
+@import './header.css';
+@import './dashboard.css';
+@import './transactions.css';
+@import './auth.css';
+@import './import.css';
+@import './recurring.css';
+@import './controls.css';
+@import './insights.css';
+@import './budgeting.css';
+@import './grouped-list.css';
+@import './accounts.css';
+@import './goals.css';
+@import './budget-pace.css';
+@import './charts.css';

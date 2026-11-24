@@ -1,0 +1,93 @@
+/* Shared by the charts: the dark tooltip, the short note under a heading, and "View as table". */
+
+/* A chart's hover and tap details, dark like the budget pace tooltip */
+.chart-tooltip {
+  padding: 8px 10px;
+  background: #1a1a2e;
+  color: #fff;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 0.78rem;
+}
+
+.chart-tooltip dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 14px;
+  margin: 6px 0 0;
+}
+
+.chart-tooltip dt {
+  color: #cbd5e1;
+}
+
+.chart-tooltip dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A short line under an Overview chart's heading (or after its panels) */
+.chart-note {
+  margin: -12px 0 14px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* ── "View as table" under a chart (Phase V) ──────────────────────────────── */
+.view-as-table {
+  margin-top: 14px;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+.view-as-table summary {
+  width: fit-content;
+  color: #6b7280;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.view-as-table-note {
+  margin: 8px 0 0;
+  color: #6b7280;
+}
+
+.view-as-table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.view-as-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.view-as-table caption {
+  padding-bottom: 6px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.view-as-table th,
+.view-as-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.view-as-table thead th {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.view-as-table th:first-child {
+  text-align: left;
+}
+
+.view-as-table tbody th {
+  font-weight: 500;
+}
