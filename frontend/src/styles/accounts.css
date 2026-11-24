@@ -377,3 +377,86 @@
   align-items: center;
   gap: 8px;
 }
+
+/* Phone: the list sits flush in the Transactions card (not a card inside a card), and each account row
+   is its name, balance and Edit / Delete on one line, with its details, goal progress and interest
+   across the row under them, lined up under the name */
+@media (max-width: 600px) {
+  .accounts-view {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .account-item {
+    padding: 12px;
+  }
+
+  .account-item-row {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+
+  .account-info {
+    display: contents;
+  }
+
+  .account-info strong {
+    flex: 1 1 100px;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+
+  .account-balance {
+    min-width: 0;
+  }
+
+  /* if the name and balance fill the line, Edit and Delete wrap to the right, not under the chevron */
+  .account-actions {
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  /* everything under the name gets a line (or more) of its own, lined up under the name (the expand
+     button's 19px and the 6px gap) */
+  .account-info > small,
+  .account-info > .account-goal,
+  .account-info > .account-interest {
+    order: 1;
+    flex-basis: calc(100% - 25px);
+    margin-left: 25px;
+  }
+
+  .account-interest {
+    align-items: stretch;
+  }
+
+  /* a charge's date, amount and three buttons on one line (its basis on the next) */
+  .account-interest-row {
+    column-gap: 8px;
+  }
+
+  .account-interest-date {
+    flex: 0 0 auto;
+  }
+
+  .account-interest-actions .icon-btn {
+    padding: 4px 6px;
+  }
+
+  /* a transfer on one line (styles/grouped-list.css): To / From as wide as its word, the other account
+     taking the room that's left, and the date without its year (Owen, 2026-11-24) */
+  .account-transfer-direction {
+    width: auto;
+  }
+
+  .account-transfer-peer {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .accounts-list .transfer-date-year {
+    display: none;
+  }
+}

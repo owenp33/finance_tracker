@@ -72,6 +72,14 @@ function AccountsView({
   const toggleAccountExpand = (id) =>
     setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // A label that acts as a button: focusable, Enter or Space presses it, and a tap on it doesn't
+  // also open its row's actions (GroupedTransactionList skips role="button")
+  const pressable = (onPress) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick: onPress,
+    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress(); } },
+  });
 
   // A row's "To" / "From" and its other account: a transfer's peer (click to move it, or to link an
   // unlinked one); on a loan, a payment's account it was paid from, and none for the loan's own
@@ -110,7 +118,7 @@ function AccountsView({
             <span
               className="account-transfer-peer-name"
               title="Click to change linked account"
-              onClick={() => { setMovingPeerId(t.id); setMovingToAccountId(''); }}
+              {...pressable(() => { setMovingPeerId(t.id); setMovingToAccountId(''); })}
             >{t.transfer_peer_account}</span>
           )
         ) : (
@@ -137,7 +145,7 @@ function AccountsView({
             <span
               className="account-transfer-unlinked"
               title="Click to link to another account"
-              onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
+              {...pressable(() => { setPairingTxId(t.id); setPairingToAccountId(''); })}
             >Unlinked</span>
           )
         )}

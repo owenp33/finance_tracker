@@ -236,9 +236,17 @@
     display: none;
   }
 
+  /* Each row one line: its checkbox, amount, its middle (a transfer's To / From and other account, or a
+     series' notes and chips) and date; the actions on a line of their own while the row is open. An
+     account's list leaves the year out of its dates to make the room (styles/accounts.css). */
   .account-transfer-row {
     flex-wrap: wrap;
+    column-gap: 6px;
     row-gap: 4px;
+  }
+
+  .account-transfer-amount {
+    min-width: 62px;
   }
 
   /* the date and the actions become the row's own pieces */

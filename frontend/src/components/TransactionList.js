@@ -89,7 +89,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
   // has any to open
   const hasActions = !compact && !!(renderActions || onToggleTransfer || showAll || (unrelatedTo && onAddToSeries));
   const toggleOpen = (e, id) => {
-    if (e.target.closest('button, input, select, label, a')) return;
+    if (e.target.closest('button, input, select, label, a, [role="button"]')) return;
     setOpenId(open => (open === id ? null : id));
   };
 

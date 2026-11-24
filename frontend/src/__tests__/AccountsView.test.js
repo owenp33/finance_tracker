@@ -407,6 +407,30 @@ describe("a bank account's transfers", () => {
     await userEvent.click(within(list).getByRole('button', { name: 'Delete 2' }));
     expect(onDeleteTransferBulk).toHaveBeenCalledWith([1, 2]);
   });
+
+  // On a phone a tap on a row opens its actions (GroupedTransactionList); the other account's name and
+  // "Unlinked" are buttons of their own, so a tap there opens their picker and leaves the row alone
+  test("a tap on the other account's name, or on Unlinked, opens its picker, not the row's actions", async () => {
+    const list = await open();
+    const [first, second] = list.querySelectorAll('.account-transfer-row');
+    await userEvent.click(within(first).getByRole('button', { name: 'Savings' }));
+    expect(within(first).getByRole('button', { name: 'Move' })).toBeInTheDocument();
+    expect(first).not.toHaveClass('transfer-open');
+    await userEvent.click(within(second).getByRole('button', { name: 'Unlinked' }));
+    expect(within(second).getByRole('button', { name: 'Link' })).toBeInTheDocument();
+    expect(second).not.toHaveClass('transfer-open');
+  });
+
+  // Across years each date shows its year, in a piece of its own that a phone leaves out of an
+  // account's list (styles/accounts.css), so a transfer fits one line there (Owen, 2026-11-24)
+  test('across years a date carries its year in a piece a phone can leave out', async () => {
+    renderAccounts(ACCOUNTS, jest.fn(), { transactions: [...TRANSACTIONS, tx(4, 6, '2025-12-30', 'Venmo', 20)] });
+    const checking = accountItem('Checking');
+    await userEvent.click(within(checking).getByTitle('Expand transfers'));
+    const dates = [...checking.querySelectorAll('.account-transfer-date')];
+    expect(dates.map(d => d.textContent)).toEqual(['Oct 5, 2026', 'Sep 20, 2026', 'Dec 30, 2025']);
+    expect(dates.map(d => d.querySelector('.transfer-date-year')?.textContent)).toEqual([', 2026', ', 2026', ', 2025']);
+  });
 });
 
 describe('interest waiting for approval', () => {

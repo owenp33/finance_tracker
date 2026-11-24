@@ -58,7 +58,7 @@ function GroupedTransactionList({
 
   // A tap on the row, not on its checkbox or an action, opens or closes its actions (phones)
   const toggleOpen = (e, id) => {
-    if (e.target.closest('button, input, select, label, a')) return;
+    if (e.target.closest('button, input, select, label, a, [role="button"]')) return;
     setOpenId(open => (open === id ? null : id));
   };
 
@@ -142,7 +142,10 @@ function GroupedTransactionList({
                     </span>
                     {renderMiddle(t)}
                     <div className="account-transfer-right">
-                      <span className="account-transfer-date">{formatDate(t.date, showYear)}</span>
+                      {/* the year a piece of its own, which a phone leaves out of an account's list */}
+                      <span className="account-transfer-date">
+                        {formatDate(t.date)}{showYear && <span className="transfer-date-year">, {t.date.slice(0, 4)}</span>}
+                      </span>
                       <div className="transfer-row-actions">
                         {extraActions(t)}
                         <button
