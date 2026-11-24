@@ -158,3 +158,62 @@ test('other transactions show no pill', () => {
   expect(screen.queryByText('Unrelated')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Add to/ })).not.toBeInTheDocument();
 });
+
+// ── On a phone: a tap opens a row's actions (a phone has no hover) ──────────
+// The class does the showing (styles/transactions.css); laptops keep hover.
+
+describe("on a phone, a tap opens a row's actions", () => {
+  const row = (vendor) => screen.getByText(vendor).closest('.transaction-item');
+  const TARGET = { ...TX, id: 2, vendor: 'Target', category: 'Grocery', amount: -31.4, amount_cents: -3140 };
+
+  test('a tap opens a row, a second tap closes it, and only one row is open at a time', async () => {
+    renderList({ transactions: [TX, TARGET] });
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Target'));
+    expect(row('Target')).toHaveClass('tx-open');
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Target'));
+    expect(row('Target')).not.toHaveClass('tx-open');
+  });
+
+  test('its checkbox and buttons do their own job without opening or closing it', async () => {
+    const onToggle = jest.fn(), onToggleTransfer = jest.fn();
+    renderList({ onToggle, selectedIds: new Set(), onToggleTransfer });
+    await userEvent.click(screen.getByRole('checkbox'));
+    expect(onToggle).toHaveBeenCalledWith(1);
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Netflix'));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as transfer' }));
+    expect(onToggleTransfer).toHaveBeenCalledWith(1);
+    expect(row('Netflix')).toHaveClass('tx-open');
+  });
+
+  test('Edit opens the editor, and the row comes back closed', async () => {
+    renderList();
+    await userEvent.click(screen.getByText('Netflix'));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByDisplayValue('Netflix')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+
+  test('each action has a word to show on a phone, under the same name', () => {
+    renderList();
+    expect(screen.getByRole('button', { name: 'Mark as transfer' })).toHaveTextContent('Transfer');
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+
+  test('a compact list (the Dashboard) has no actions to open', async () => {
+    renderList({ compact: true });
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+
+  test('neither does a list without actions (Find recurring\'s payments)', async () => {
+    render(<TransactionList transactions={[TX]} />);
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+});

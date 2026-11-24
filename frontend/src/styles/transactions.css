@@ -227,6 +227,11 @@
   color: #ff6b6b;
 }
 
+/* Each row action's word, shown only on a phone (below), where no hover explains an icon */
+.tx-action-label {
+  display: none;
+}
+
 /* Recurring toggle in TransactionForm */
 .recurring-toggle-label {
   display: flex;
@@ -294,20 +299,91 @@
   grid-column: 1 / -1;
 }
 
-@media (max-width: 768px) {
+/* Phone: each transaction is two lines (vendor and amount; its details and chips), and its actions a
+   line under it while the row is tapped open (TransactionList's tx-open), since a phone has no hover */
+@media (max-width: 600px) {
   .transaction-form {
     grid-template-columns: 1fr;
   }
 
   .transaction-item {
-    flex-direction: column;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: 10px;
+    gap: 4px 8px;
+    padding: 10px 2px;
   }
 
+  .transaction-item > .tx-checkbox,
+  .transaction-item > .tx-cat-dot {
+    margin-top: 4px;
+  }
+
+  .transaction-edit-form {
+    flex: 1 1 100%;
+  }
+
+  .transaction-info {
+    gap: 2px;
+  }
+
+  .transaction-info strong,
+  .transaction-info span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .transaction-info strong {
+    font-size: 1rem;
+  }
+
+  .transaction-info span {
+    font-size: 0.8rem;
+  }
+
+  /* the amount (with the chips under it) and the actions become the row's own pieces */
   .transaction-right {
-    width: 100%;
-    justify-content: space-between;
+    display: contents;
+  }
+
+  .tx-default-info {
+    flex-wrap: wrap;
+    max-width: 45%;
+    gap: 4px 6px;
+  }
+
+  .tx-default-info .transaction-amount {
+    order: -1;
+    flex-basis: 100%;
+    text-align: right;
+    font-size: 1.05rem;
+  }
+
+  .transaction-item:hover .tx-default-info {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .tx-hover-actions {
+    display: none;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .transaction-item.tx-open .tx-hover-actions {
+    display: flex;
+  }
+
+  .tx-hover-actions .icon-btn {
+    padding: 8px 12px;
+  }
+
+  .tx-action-label {
+    display: inline;
+    font-size: 0.8rem;
   }
 }
 
@@ -327,6 +403,12 @@
   gap: 8px;
 }
 
+/* Nothing selected: hidden, keeping its room so the bar doesn't jump when it appears */
+.bulk-actions.idle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .bulk-select-all {
   display: flex;
   align-items: center;
@@ -341,6 +423,22 @@
   width: 15px;
   height: 15px;
   cursor: pointer;
+}
+
+/* Phone: "Select all" keeps to one line; the bulk buttons, gone while idle, wrap under it when shown */
+@media (max-width: 600px) {
+  .bulk-action-bar {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .bulk-select-all {
+    white-space: nowrap;
+  }
+
+  .bulk-actions.idle {
+    display: none;
+  }
 }
 
 .tx-checkbox {
