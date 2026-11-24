@@ -52,11 +52,18 @@ describe('the months a period covers', () => {
 describe('the small multiples', () => {
   const panels = () => categoryPanels(TRANSACTIONS, ['2026-09', '2026-10', '2026-11'], ['2026-11']);
 
-  test("the top 8 categories by spending (reimbursements aren't taken off), then the rest as Other", () => {
+  test("8 panels at most, Other included: the top 7 categories by spending (reimbursements aren't taken off), then the rest as Other", () => {
     expect(panels().map(p => [p.category, p.total, p.count])).toEqual([
       ['Rent', 270000, 3], ['Groceries', 80000, 3], ['Gas', 24000, 2], ['Fun', 13000, 2],
-      ['Dining', 10000, 2], ['Medical', 8700, 1], ['Subscriptions', 4000, 2], ['Shopping', 3000, 1],
-      ['Other', 4000, 2],
+      ['Dining', 10000, 2], ['Medical', 8700, 1], ['Subscriptions', 4000, 2],
+      ['Other', 7000, 3],
+    ]);
+  });
+
+  test('8 categories get a panel each, with no Other', () => {
+    const eight = TRANSACTIONS.filter(t => !['Gifts', 'Pets'].includes(t.category));
+    expect(categoryPanels(eight, ['2026-09', '2026-10', '2026-11'], ['2026-11']).map(p => p.category)).toEqual([
+      'Rent', 'Groceries', 'Gas', 'Fun', 'Dining', 'Medical', 'Subscriptions', 'Shopping',
     ]);
   });
 
@@ -75,10 +82,12 @@ describe('the small multiples', () => {
     expect(medical.average).toBe(4350);
   });
 
-  test('Other adds up the rest month by month, and names them', () => {
-    expect(panels()[8]).toMatchObject({
-      category: 'Other', others: ['Gifts', 'Pets'], months: [{ cents: 1500 }, { cents: 2500 }, { cents: 0 }],
+  test("Other adds up the rest month by month, and doesn't name them", () => {
+    const other = panels()[7];
+    expect(other).toMatchObject({
+      category: 'Other', months: [{ cents: 1500 }, { cents: 5500 }, { cents: 0 }], average: 3500,
     });
+    expect(other).not.toHaveProperty('others');
   });
 
   test('without a full month there is no average and no last full month', () => {

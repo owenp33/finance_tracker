@@ -1,4 +1,6 @@
-import { isIncome, isSpending, cashFlow, cashFlowByMonth, categorySpendingByMonth } from '../utils/moneyRules';
+import {
+  isIncome, isSpending, isReimbursement, cashFlow, cashFlowByMonth, categorySpendingByMonth, unbudgetableCategories,
+} from '../utils/moneyRules';
 
 const tx = (date, amountCents, overrides) => ({
   date, amount_cents: amountCents, is_transfer: false, is_reimbursement: false, ...overrides,
@@ -17,6 +19,25 @@ test('spending is money out; transfers and zero amounts are neither', () => {
   expect(isSpending(tx('2026-11-04', -50000, { is_transfer: true }))).toBe(false);
   expect(isSpending(tx('2026-11-05', 0))).toBe(false);
   expect(isSpending(tx('2026-11-05', 100))).toBe(false);
+});
+
+test('a reimbursement is money in marked as one; paying someone back (money out) is spending, and transfers are neither', () => {
+  expect(isReimbursement(tx('2026-11-03', 3000, { is_reimbursement: true }))).toBe(true);
+  expect(isReimbursement(tx('2026-11-03', 3000))).toBe(false);
+  expect(isReimbursement(tx('2026-11-03', -3000, { is_reimbursement: true }))).toBe(false);
+  expect(isSpending(tx('2026-11-03', -3000, { is_reimbursement: true }))).toBe(true);
+  expect(isReimbursement(tx('2026-11-04', 3000, { is_reimbursement: true, is_transfer: true }))).toBe(false);
+});
+
+test("a loan account's transactions are never income, spending or a reimbursement: they only move what's owed", () => {
+  const onLoan = (amountCents, overrides) => tx('2026-11-30', amountCents, { on_loan_account: true, ...overrides });
+  expect(isIncome(onLoan(7500))).toBe(false);                              // a payment's entry
+  expect(isSpending(onLoan(-1250))).toBe(false);                           // an interest charge
+  expect(isReimbursement(onLoan(3000, { is_reimbursement: true }))).toBe(false);
+  const transactions = [tx('2026-11-30', -7500, { category: 'Loan' }), onLoan(7500, { category: 'Loan' }), onLoan(-1250, { category: 'Loan' })];
+  expect(cashFlow(transactions, '2026-11-01', '2026-11-30')).toEqual({ income: 0, expenses: 7500, net: -7500 });
+  expect(cashFlowByMonth(transactions)).toEqual({ '2026-11': { income: 0, expenses: 7500, net: -7500 } });
+  expect(categorySpendingByMonth(transactions)).toEqual({ Loan: { '2026-11': 7500 } });
 });
 
 test('cash flow totals income, expenses (as a positive amount) and net between two dates, both included', () => {
@@ -67,4 +88,38 @@ test("category spending by month is plain money out: reimbursements aren't taken
 
 test('no transactions, no money', () => {
   expect(cashFlow([], '2026-11-01', '2026-11-05')).toEqual({ income: 0, expenses: 0, net: 0 });
+});
+
+describe("the categories that can't have a budget (the server's rule)", () => {
+  const spent = (category, cents, overrides) => tx('2026-10-01', cents, { category, ...overrides });
+
+  test('money in outweighing money out, in dollars over all time, rules a category out', () => {
+    const transactions = [
+      spent('Income', 300000), spent('Income', -8395),
+      // Loan: one disbursement in outweighs five payments out
+      spent('Loan', 100000), ...[1, 2, 3, 4, 5].map(() => spent('Loan', -7500)),
+      // Utility: three deposits, but more out in dollars
+      spent('Utility', 4000), spent('Utility', 4000), spent('Utility', 4000), spent('Utility', -15000),
+      // Gifts: as much in as out
+      spent('Gifts', 5000), spent('Gifts', -5000),
+      spent('Grocery', -6000),
+    ];
+    expect([...unbudgetableCategories(transactions)].sort()).toEqual(['Income', 'Loan']);
+  });
+
+  test('so does having transactions none of which count: transfers, or on a loan account', () => {
+    const transactions = [
+      spent('Transfer', -50000, { is_transfer: true }), spent('Transfer', 20000, { is_transfer: true }),
+      spent('Interest', -41996, { on_loan_account: true }),
+      // Bills: the loan's mirrored entries never count; the bill paid from the bank does
+      spent('Bills', -7500), spent('Bills', 7500, { on_loan_account: true }), spent('Bills', 7500, { on_loan_account: true }),
+      // Money in and out on transfers aside, Rent is spending
+      spent('Rent', -90000), spent('Rent', 200000, { is_transfer: true }),
+    ];
+    expect([...unbudgetableCategories(transactions)].sort()).toEqual(['Interest', 'Transfer']);
+  });
+
+  test('no transactions, nothing ruled out', () => {
+    expect(unbudgetableCategories([]).size).toBe(0);
+  });
 });

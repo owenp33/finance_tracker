@@ -15,10 +15,12 @@ from models.series_dismissal import SeriesDismissalModel
 from services import series_detection
 from services.account_service import AccountService
 from services.db_service import DbService
+from services.loan_service import LoanService
 from services.vendor_match import clean_vendor, vendor_key
 
 db_service = DbService()
 account_service = AccountService()
+loan_service = LoanService()
 
 ALIAS_LENGTH = RecurringAliasModel.alias.type.length
 
@@ -57,6 +59,23 @@ def _apply_to_series(rec, changes):
             setattr(t, field, value)
             if t.is_transfer and t.transfer_peer:
                 setattr(t.transfer_peer, field, value)
+
+
+def _pays_down(rec, loan_account_id):
+    """
+    The loan account a series may pay down: None (none), or the id of one of the user's loan
+    accounts other than the series' own. Raises ValueError otherwise, in the edit form's words.
+    """
+    if loan_account_id is None:
+        return None
+    loan = None
+    if isinstance(loan_account_id, int) and not isinstance(loan_account_id, bool):
+        loan = db_service.get_account(loan_account_id)
+    if not loan or loan.kind != 'loan' or loan.user_id != rec.account.user_id:
+        raise ValueError('Pays down must be one of your loan accounts.')
+    if loan.id == rec.account_id:
+        raise ValueError("A series can't pay down the account it's paid from.")
+    return loan.id
 
 
 def _series_and_transaction(recurring_id, transaction_id):
@@ -114,6 +133,9 @@ class RecurringService:
         transactions already generated for this recurring item. A template that becomes
         monthly, or whose next date moves, falls on the day of its (new) next date from then on.
         A changed vendor and/or category is applied to every transaction in the series too.
+        loan_account_id (one of the user's loan accounts, or None) is the loan the series pays
+        down: each of its payments then counts on that loan's balance, negated (LoanService), so
+        setting it moves the loan, switching moves both loans and None takes them off.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
@@ -121,6 +143,8 @@ class RecurringService:
 
         if 'frequency' in kwargs or 'frequency_unit' in kwargs:
             _check_schedule(kwargs.get('frequency', rec.frequency), kwargs.get('frequency_unit', rec.frequency_unit))
+        if 'loan_account_id' in kwargs:
+            loan_account_id = _pays_down(rec, kwargs['loan_account_id'])
         if 'number' in kwargs:
             new_number = kwargs['number']
             if new_number == 0:
@@ -154,6 +178,9 @@ class RecurringService:
 
         if series_changes:
             _apply_to_series(rec, series_changes)
+        if 'loan_account_id' in kwargs:
+            paid_down_before, rec.loan_account_id = rec.loan_account_id, loan_account_id
+            loan_service.refresh(paid_down_before, loan_account_id)
 
         db.session.commit()
         return rec
@@ -163,12 +190,14 @@ class RecurringService:
         Delete a recurring transaction template.
         If delete_generated=True, also deletes all auto-generated transactions
         from this recurring and reverses their effect on the account balance.
-        Otherwise, those transactions are kept but unlinked from the recurring.
+        Otherwise, those transactions are kept but unlinked from the recurring. Either way, the
+        loan the series paid down no longer counts its payments.
         """
         rec = db_service.get_recurring(recurring_id)
         if not rec:
             return False
 
+        paid_down = rec.loan_account_id
         if delete_generated:
             transactions = TransactionModel.query.filter_by(recurring_id=recurring_id).all()
             for trans in transactions:
@@ -178,6 +207,7 @@ class RecurringService:
             TransactionModel.query.filter_by(recurring_id=recurring_id).update({'recurring_id': None})
 
         db.session.delete(rec)
+        loan_service.refresh(paid_down)
         db.session.commit()
         return True
 
@@ -227,6 +257,7 @@ class RecurringService:
         if dismissal:
             db.session.delete(dismissal)
         tx.recurring_id = rec.id
+        loan_service.refresh(rec.loan_account_id)
         _renumber(rec)
         db.session.commit()
         return rec
@@ -243,6 +274,7 @@ class RecurringService:
 
         tx.recurring_id = None
         tx.recurring_index = None
+        loan_service.refresh(rec.loan_account_id)
         if rec.number > 0:
             rec.number -= 1
         _renumber(rec)
@@ -274,6 +306,7 @@ class RecurringService:
                 peer.notes = notes
 
         rec = tx.recurring_source
+        loan_service.refresh(rec.loan_account_id)
         rec.start_date = min(rec.start_date, date_obj)
         _renumber(rec)
         db.session.commit()
@@ -477,14 +510,17 @@ class RecurringService:
         """
         Fill every due occurrence of the account's templates. An occurrence that already has an
         exact match (see match_candidates; e.g. the same charge imported from the bank) links the
-        nearest one; otherwise a transaction is generated. Returns the number generated.
+        nearest one; otherwise a transaction is generated. In a series that pays down a loan,
+        either way the payment counts on the loan. Returns the number generated.
         """
         recurring_list = db_service.get_account_recurring(account_id)
         transactions_created = 0
         today = date.today()
 
         for rec in recurring_list:
+            filled = False
             while rec.next_date <= today and (rec.number == -1 or rec.idx <= rec.number):
+                filled = True
                 matches = self.match_candidates(rec, rec.next_date)
                 if matches:
                     matches[0].recurring_id = rec.id
@@ -507,6 +543,8 @@ class RecurringService:
 
                 if rec.number != -1 and rec.idx > rec.number:
                     break
+            if filled:
+                loan_service.refresh(rec.loan_account_id)
 
         db.session.commit()   # persist the next dates and adopted links
         return transactions_created

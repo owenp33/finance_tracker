@@ -46,7 +46,9 @@ class RecurringModel(db.Model):
     day_of_month = db.Column(db.Integer)  # monthly templates: the day they fall on (the last day in shorter months)
     number = db.Column(db.Integer, default=-1)
     idx = db.Column(db.Integer, default=0)
-    
+    # The loan account the series pays down: each payment then counts on it, negated (loan_service.py)
+    loan_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id', ondelete='SET NULL'), nullable=True)
+
     generated_transactions = db.relationship('TransactionModel',
                                             foreign_keys='TransactionModel.recurring_id',
                                             backref='recurring_source',
@@ -84,5 +86,6 @@ class RecurringModel(db.Model):
             'frequency': int(self.frequency),
             'frequency_unit': self.frequency_unit,
             'number': int(self.number),
-            'idx': int(self.idx)
+            'idx': int(self.idx),
+            'loan_account_id': self.loan_account_id,
         }

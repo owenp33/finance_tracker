@@ -12,6 +12,7 @@ const EMPTY_BASE = (accounts) => ({
   notes: '',
   is_transfer: false,
   is_reimbursement: false,
+  transfer_to_account_id: null,   // a transfer's other account, which gets the matching transaction
 });
 
 const EMPTY_RECURRING = {
@@ -29,14 +30,30 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
   const setB = (field, value) => setBase(prev => ({ ...prev, [field]: value }));
   const setR = (field, value) => setRecurring(prev => ({ ...prev, [field]: value }));
 
+  // "Mark as": Transfer, Reimbursement or Recurring, one at a time; choosing the marked one again
+  // clears it. Leaving Transfer forgets its To account.
+  const MARKS = [['transfer', 'Transfer', base.is_transfer], ['reimbursement', 'Reimbursement', base.is_reimbursement],
+                 ['recurring', 'Recurring', isRecurring]];
+  const mark = (kind) => {
+    const on = !MARKS.find(([k]) => k === kind)[2];
+    setBase(prev => ({
+      ...prev,
+      is_transfer: on && kind === 'transfer',
+      is_reimbursement: on && kind === 'reimbursement',
+      transfer_to_account_id: on && kind === 'transfer' ? prev.transfer_to_account_id : null,
+    }));
+    setIsRecurring(on && kind === 'recurring');
+  };
+
   // A recurring template dated in the past would generate every missed occurrence at once
   const isPastDate = base.date < todayISO();
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (isRecurring) {
+      const { transfer_to_account_id, ...fields } = base;
       onSubmitRecurring({
-        ...base,
+        ...fields,
         start_date: base.date,
         next_date: base.date,
         frequency: recurring.frequency,
@@ -58,7 +75,16 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
       {/* Base fields */}
       <div className="form-group">
         <label>Account</label>
-        <select value={base.account_id} onChange={e => setB('account_id', parseInt(e.target.value))} required>
+        <select
+          value={base.account_id}
+          onChange={e => {
+            // A transfer can't go to the account it comes from
+            const id = parseInt(e.target.value);
+            setBase(prev => ({ ...prev, account_id: id,
+                               transfer_to_account_id: prev.transfer_to_account_id === id ? null : prev.transfer_to_account_id }));
+          }}
+          required
+        >
           <option value="">— select account —</option>
           {accounts?.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
         </select>
@@ -84,46 +110,35 @@ function TransactionForm({ onSubmit, onSubmitRecurring, onCancel, accounts, defa
         <input type="text" value={base.notes} onChange={e => setB('notes', e.target.value)} />
       </div>
 
-      {/* Mark as pill group + recurring toggle — hidden when form is locked to recurring mode */}
+      {/* "Mark as": hidden when the form is locked to recurring (the Recurring tab's form) */}
       {!defaultRecurring && (
-        <>
-          <div className="mark-as-row">
-            <span className="mark-as-label">Mark as</span>
-            <button
-              type="button"
-              className={`mark-as-btn${base.is_transfer ? ' active' : ''}`}
-              onClick={() => {
-                const next = !base.is_transfer;
-                setB('is_transfer', next);
-                setB('is_reimbursement', false);
-                if (next) setIsRecurring(false);
-              }}
-            >Transfer</button>
-            <button
-              type="button"
-              className={`mark-as-btn${base.is_reimbursement ? ' active' : ''}`}
-              onClick={() => {
-                const next = !base.is_reimbursement;
-                setB('is_reimbursement', next);
-                setB('is_transfer', false);
-                if (next) setIsRecurring(false);
-              }}
-            >Reimbursement</button>
-          </div>
-          <div className="recurring-toggle-row">
-            <label className="recurring-toggle-label">
-              <input
-                type="checkbox"
-                checked={isRecurring}
-                onChange={e => { setIsRecurring(e.target.checked); if (e.target.checked) { setB('is_transfer', false); setB('is_reimbursement', false); } }}
-              />
-              Make this recurring
-            </label>
-          </div>
-        </>
+        <div className="mark-as-row">
+          <span className="mark-as-label">Mark as</span>
+          {MARKS.map(([kind, label, on]) => (
+            <button key={kind} type="button" className={`mark-as-btn${on ? ' active' : ''}`} onClick={() => mark(kind)}>
+              {label}
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* Recurring fields — always visible when defaultRecurring, otherwise expandable */}
+      {/* A transfer's other account, optional: it gets the matching transaction, linked to this one */}
+      {base.is_transfer && (
+        <div className="form-group">
+          <label htmlFor="transfer-to-account">To account</label>
+          <select
+            id="transfer-to-account"
+            value={base.transfer_to_account_id ?? ''}
+            onChange={e => setB('transfer_to_account_id', e.target.value ? parseInt(e.target.value) : null)}
+          >
+            <option value="">None</option>
+            {accounts?.filter(a => a.id !== base.account_id).map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+          </select>
+          <small className="account-field-hint">Adds the matching transaction there.</small>
+        </div>
+      )}
+
+      {/* Recurring fields: always shown in the Recurring tab's form, else when Recurring is marked */}
       {isRecurring && (
         <div className="recurring-extra-fields">
           {isPastDate && (

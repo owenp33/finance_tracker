@@ -3,9 +3,10 @@ import {
   BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, ZIndexLayer, DefaultZIndexes, usePlotArea,
 } from 'recharts';
 import { formatDate } from '../../transactions/utils';
-import { dayNumber, shiftPeriod } from '../../../utils/dates';
+import { dayNumber, monthsFrom } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { paymentComparison, paymentComparisonLines } from '../../../utils/recurring';
+import { dayAxis } from '../../../utils/monthTicks';
 
 const ROW_HEIGHT = 44;
 const BAR_SIZE = 8;
@@ -15,20 +16,6 @@ const LABEL_GAP = 9;     // between a row's text and its bar, clear of its marks
 const HIT_HALF = 8;      // a payment's hover target reaches this far either side, less where payments crowd
 const TIP_HALF = 130;    // about half a payment tip's width, to keep it inside the chart
 const TIP_HEIGHT = 110;  // about a payment tip's height: nearer the chart's top, it opens below the payment
-
-// The quarter starts (Jan, Apr, Jul, Oct) from `startPeriod` through `endPeriod`, each named with
-// its year when it's January or the first
-const quarterTicks = (startPeriod, endPeriod) => {
-  const ticks = [];
-  for (let period = startPeriod; period <= endPeriod; period = shiftPeriod(period, 1)) {
-    const [year, month] = period.split('-').map(Number);
-    if ((month - 1) % 3 !== 0) continue;
-    const withYear = month === 1 || ticks.length === 0;
-    const label = new Date(year, month - 1, 1).toLocaleDateString('en-US', withYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
-    ticks.push({ day: `${period}-01`, label });
-  }
-  return ticks;
-};
 
 // A row's spans: posted solid, still scheduled light and dashed; ended rows lighter, income in aqua
 const PostedSpan = ({ x, y, width, height, payload }) => (payload.payments.length === 0 ? null : (
@@ -110,16 +97,16 @@ function PaymentTip({ tip, byMonth, today }) {
 // payment marks drawn over it and a dashed "Today" line. Only a payment responds to hover (Owen,
 // 2026-11-08: no tooltip for the whole row). `rows` are RecurringTimeline's: seriesTimeline's rows
 // plus their label (`name`), account, counts and scheduled label; `byMonth` is moneyRules
-// cashFlowByMonth of every transaction.
+// cashFlowByMonth of every transaction. As many month labels as its width fits.
 function RecurringTimelineChart({ rows, today, windowEnd, byMonth }) {
   const [tip, setTip] = useState(null);
+  const [width, setWidth] = useState(null);     // measured by the container (no Y axis, no margins)
   const starts = rows.map(row => row.posted?.from ?? row.scheduled?.from).filter(Boolean).sort();
   const startPeriod = (starts[0] ?? today).slice(0, 7);
   const origin = dayNumber(`${startPeriod}-01`);
   const at = (day) => dayNumber(day) - origin;
   const span = at(windowEnd);
-  const ticks = quarterTicks(startPeriod, windowEnd.slice(0, 7));
-  const tickLabels = Object.fromEntries(ticks.map(tick => [at(tick.day), tick.label]));
+  const axis = dayAxis(monthsFrom(startPeriod, windowEnd.slice(0, 7)), width, origin);
 
   const data = rows.map(row => {
     const postedTo = row.posted ? at(row.posted.to) : null;
@@ -135,11 +122,11 @@ function RecurringTimelineChart({ rows, today, windowEnd, byMonth }) {
 
   return (
     <div className="timeline-chart">
-    <ResponsiveContainer width="100%" height={data.length * ROW_HEIGHT + TOP + AXIS_HEIGHT}>
+    <ResponsiveContainer width="100%" height={data.length * ROW_HEIGHT + TOP + AXIS_HEIGHT} onResize={setWidth}>
       <BarChart data={data} layout="vertical" margin={{ top: TOP, right: 0, bottom: 0, left: 0 }}>
         <XAxis
-          type="number" domain={[0, span]} allowDataOverflow ticks={ticks.map(tick => at(tick.day))}
-          tickFormatter={value => tickLabels[value] ?? ''} height={AXIS_HEIGHT} interval="preserveStartEnd"
+          type="number" domain={[0, span]} allowDataOverflow ticks={axis.ticks}
+          tickFormatter={axis.format} height={AXIS_HEIGHT} interval={0}
           tickLine={false} axisLine={{ stroke: '#d1d5db' }} tick={{ fontSize: 12, fill: '#6b7280' }}
         />
         <YAxis type="category" dataKey="name" hide />
@@ -169,7 +156,7 @@ export function TimelineLegend() {
           <line x1="7" x2="7" y1="1" y2="9" className="timeline-key-tick" />
           <line x1="15" x2="15" y1="1" y2="9" className="timeline-key-tick" />
         </svg>
-        Posted, a tick per payment
+        Posted
       </li>
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1.5" width="22" height="7" rx="3" className="timeline-scheduled cost" /></svg>Still scheduled</li>
       <li><svg width="22" height="10" aria-hidden="true"><rect y="1" width="22" height="8" rx="3" className="timeline-posted income" /></svg>Income</li>

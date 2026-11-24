@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Pencil, Trash2, ArrowLeftRight, Info, Check, Unlink } from 'lucide-react';
+import { Pencil, Trash2, ArrowLeftRight, Info, Check } from 'lucide-react';
 import { useCategoryColors } from '../CategoryColorContext';
+import TransactionChips from './transactions/TransactionChips';
 
 const formatDate = (dateStr, includeYear = false) => {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -15,8 +16,7 @@ const formatAmount = (amount) =>
 // renderActions(t), when given, replaces the default hover actions (transfer, edit, delete).
 // unrelatedTo (transaction id → [{ id, vendor }]) marks transactions dismissed from a recurring
 // series with an "Unrelated" pill and a hover action that calls onAddToSeries(seriesId, txId).
-// onRemoveFromSeries(txId), when given, adds a hover action to take a transaction out of its series.
-function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions, unrelatedTo, onAddToSeries, onRemoveFromSeries }) {
+function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions, unrelatedTo, onAddToSeries }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const { getColor } = useCategoryColors();
@@ -179,18 +179,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
               </div>
               <div className="transaction-right">
                 <div className="tx-default-info">
-                  {t.over_budget && <span className="tx-over-chip">Over budget</span>}
-                  {t.is_transfer && (
-                    <span className={`tx-transfer-chip${t.transfer_peer_id ? '' : ' tx-transfer-unlinked'}`}
-                      title={t.transfer_peer_id ? undefined : 'Go to Accounts tab to link this transfer'}>
-                      {t.transfer_peer_id ? 'Transfer' : 'Transfer · unlinked'}
-                    </span>
-                  )}
-                  {t.is_reimbursement && (
-                    <span className="tx-reimburse-chip" title="Offsets spending in budget calculations">
-                      Reimbursement
-                    </span>
-                  )}
+                  <TransactionChips t={t} />
                   {unrelatedTo?.[t.id] && (
                     <span className="tx-unrelated-chip"
                           title={`Marked unrelated to ${unrelatedTo[t.id].map(s => s.vendor).join(', ')}`}>
@@ -224,16 +213,6 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                           <Check size={14} />
                         </button>
                       ))}
-                      {onRemoveFromSeries && (
-                        <button
-                          className="btn btn-ghost btn-sm icon-btn"
-                          title="Remove from series"
-                          aria-label="Remove from series"
-                          onClick={() => onRemoveFromSeries(t.id)}
-                        >
-                          <Unlink size={14} />
-                        </button>
-                      )}
                       {onToggleTransfer && (
                         <button
                           className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}

@@ -7,12 +7,16 @@ Depends on db_service.py for raw data access.
 """
 import math
 import numbers
+from datetime import date
 from extensions import db
-from models.account import AccountModel
+from models.account import AccountModel, ACCOUNT_KINDS, MAX_BALANCE
 from models.transaction import TransactionModel
 from services.db_service import DbService
+from services.loan_service import LoanService
+from services.interest_service import INTEREST_FREQUENCIES, period_start
 
 db_service = DbService()
+loan_service = LoanService()
 
 
 def _account_label(value, column, shown_as):
@@ -30,17 +34,66 @@ def _account_label(value, column, shown_as):
     return label
 
 
-# Dollars. Keeps balance_cents (a 32-bit INTEGER in Postgres) far from overflowing.
-MAX_OPENING_BALANCE = 10_000_000
+BALANCE_LIMIT_TEXT = f'between -${MAX_BALANCE:,} and ${MAX_BALANCE:,}'
 
 
-def _opening_balance(value):
-    """The starting balance in dollars. Raises ValueError unless it's a finite number within ±MAX_OPENING_BALANCE."""
+def balance_dollars(value, label):
+    """A balance in dollars (`label` names it in errors). Raises ValueError unless it's a finite number within ±MAX_BALANCE."""
     if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
-        raise ValueError('Starting balance must be a number.')
-    if abs(value) > MAX_OPENING_BALANCE:
-        raise ValueError(f'Starting balance must be between -${MAX_OPENING_BALANCE:,} and ${MAX_OPENING_BALANCE:,}.')
+        raise ValueError(f'{label} must be a number.')
+    if abs(value) > MAX_BALANCE:
+        raise ValueError(f'{label} must be {BALANCE_LIMIT_TEXT}.')
     return value
+
+
+def _money(cents):
+    """Cents as dollars for a message: '$1,234.50', '-$815.07'."""
+    return f"{'-' if cents < 0 else ''}${abs(cents) / 100:,.2f}"
+
+
+def _account_kind(value):
+    """An account's kind, one of ACCOUNT_KINDS. Raises ValueError otherwise."""
+    if value not in ACCOUNT_KINDS:
+        raise ValueError('Account type must be bank or loan.')
+    return value
+
+
+MAX_APR = 100  # percent
+
+
+def _apr_bps(value):
+    """
+    An APR in percent as hundredths of a percent (6.8 → 680), or None (not known yet). Raises
+    ValueError unless it's None or a finite number from 0 to MAX_APR.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError('APR must be a number.')
+    if not 0 <= value <= MAX_APR:
+        raise ValueError(f'APR must be between 0% and {MAX_APR}%.')
+    return int(round(value * 100))
+
+
+_NOT_GIVEN = object()
+
+
+def _interest_frequency(apr_bps, data, current=None):
+    """
+    How often an account's interest hits (InterestService): `interest_frequency` from `data`
+    (monthly, quarterly or yearly), else the `current` one, else monthly; None without a rate.
+    Raises ValueError for an unknown frequency, or one without a rate.
+    """
+    given = data.get('interest_frequency') if 'interest_frequency' in data else _NOT_GIVEN
+    if apr_bps is None:
+        if given is not _NOT_GIVEN and given is not None:
+            raise ValueError('How often needs an APR.')
+        return None
+    if given is _NOT_GIVEN:
+        return current or 'monthly'
+    if not isinstance(given, str) or given not in INTEREST_FREQUENCIES:
+        raise ValueError('How often must be monthly, quarterly or yearly.')
+    return given
 
 
 class AccountService:
@@ -49,24 +102,35 @@ class AccountService:
 
     def create_account(self, user_id, data: dict):
         """
-        Create an account from account_id (the bank's label, required) and account_name (defaults
-        to the id string). Both are trimmed and must be text within the column length; raises
-        ValueError otherwise.
+        Create an account from account_id (the bank's label, required), account_name (defaults
+        to the id string), kind ('bank', the default, or 'loan') and, for a loan, apr (in percent;
+        may be left out until it's known). Labels are trimmed and must be text within the column
+        length; raises ValueError for anything invalid.
         """
         id_str = _account_label(data.get('account_id', ''), AccountModel.acct_id_str, 'Account ID')
         name = data.get('account_name')
         if isinstance(name, str) and not name.strip():
             name = None
         name = id_str if name is None else _account_label(name, AccountModel.acct_name, 'Display name')
-        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name)
+        kind = _account_kind(data.get('kind', 'bank'))
+        apr_bps = _apr_bps(data.get('apr'))
+        frequency = _interest_frequency(apr_bps, data)
+        # Interest starts going forward: the period it's set in counts as done
+        start = period_start(date.today(), frequency) if frequency else None
+        return db_service.create_account(user_id=user_id, acct_id_str=id_str, account_name=name, kind=kind,
+                                         apr_bps=apr_bps, interest_frequency=frequency, interest_through=start)
 
     def update_account(self, account_id, data: dict):
         """
-        Apply field updates to an account. Editing the name, id string, or starting balance
-        (opening_balance, in dollars), or sending needs_attention=False ("Looks good"), marks an
-        import-created account as reviewed. Names and id strings are trimmed; changing the
-        starting balance moves the balance by the same amount. Returns (updated_account,
-        error_message); raises ValueError for invalid input, before changing anything.
+        Apply field updates to an account. Editing the name, id string, kind, APR, starting
+        balance (opening_balance, in dollars) or current balance (balance, in dollars), or sending
+        needs_attention=False ("Looks good"), marks an import-created account as reviewed. Names
+        and id strings are trimmed. Only a loan has an APR (in percent; None clears it), and a
+        loan made a bank account again loses it. Changing the starting balance moves the balance
+        by the same amount; setting the current balance sets the starting balance to it less the
+        account's transactions (transfers included), so the two always add up. One balance or the
+        other, not both. Returns (updated_account, error_message); raises ValueError for invalid
+        input, before changing anything.
         """
         account = db_service.get_account(account_id)
         if not account:
@@ -75,23 +139,52 @@ class AccountService:
         # Validate every field before changing any
         if 'needs_attention' in data and data['needs_attention'] is not False:
             raise ValueError('needs_attention can only be set to false')
+        if 'opening_balance' in data and 'balance' in data:
+            raise ValueError('Send either the starting balance or the current balance, not both.')
         name = account.acct_name
         if 'account_name' in data:
             name = _account_label(data['account_name'], AccountModel.acct_name, 'Display name')
         id_str = account.acct_id_str
         if 'account_id' in data:
             id_str = _account_label(data['account_id'], AccountModel.acct_id_str, 'Account ID')
+        kind = _account_kind(data['kind']) if 'kind' in data else account.kind
+        paying_down = db_service.get_series_paying_down(account.id) if kind != 'loan' else []
+        if paying_down:
+            raise ValueError(f'{paying_down[0].vendor} pays down this loan; choose another account for it first.')
+        apr_bps = _apr_bps(data['apr']) if 'apr' in data else account.apr_bps
+        frequency = _interest_frequency(apr_bps, data, account.interest_frequency)
         opening = account.opening_balance
         if 'opening_balance' in data:
-            opening = _opening_balance(data['opening_balance'])
+            opening = balance_dollars(data['opening_balance'], 'Starting balance')
+        balance_cents = None
+        if 'balance' in data:
+            balance_cents = int(round(balance_dollars(data['balance'], 'Current balance') * 100))
+            # The transactions add up to the stored balance less the starting balance
+            implied = balance_cents - (account.balance_cents - account.opening_balance_cents)
+            if abs(implied) > MAX_BALANCE * 100:
+                raise ValueError(f'Starting balance must be {BALANCE_LIMIT_TEXT}; '
+                                 f'this current balance would make it {_money(implied)}.')
 
         account.acct_name   = name
         account.acct_id_str = id_str
-        # The balance includes the starting balance, so it moves by the same difference
-        old_opening_cents = account.opening_balance_cents
-        account.opening_balance = opening
-        db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
-        if {'needs_attention', 'account_name', 'account_id', 'opening_balance'} & data.keys():
+        # Interest keeps the periods it has done through a new rate or type; stopping it clears its
+        # start, and starting it, or a new frequency, starts from the period today falls in
+        if frequency is None:
+            account.interest_through = None
+        elif account.interest_through is None or frequency != account.interest_frequency:
+            account.interest_through = period_start(date.today(), frequency)
+        account.kind               = kind
+        account.apr_bps            = apr_bps
+        account.interest_frequency = frequency
+        if balance_cents is not None:
+            db_service.set_balance(account.id, balance_cents)
+        else:
+            # The balance includes the starting balance, so it moves by the same difference
+            old_opening_cents = account.opening_balance_cents
+            account.opening_balance = opening
+            db_service.adjust_balance(account.id, account.opening_balance_cents - old_opening_cents)
+        if {'needs_attention', 'account_name', 'account_id', 'kind', 'apr', 'interest_frequency', 'opening_balance',
+                'balance'} & data.keys():
             account.needs_attention = False
 
         db.session.commit()
@@ -100,7 +193,8 @@ class AccountService:
     def delete_account(self, account_id):
         """
         Delete an account. Cascade rules on the model remove all associated
-        transactions and recurring items automatically.
+        transactions and recurring items automatically. A loan its series paid down no longer
+        counts their payments, and a loan's series stop paying it down.
         Returns (success, error_message).
         """
         account = db_service.get_account(account_id)
@@ -113,8 +207,14 @@ class AccountService:
         for tx_id in transfer_ids:
             self.unlink_transfer(tx_id)
 
+        paid_down = [rec.loan_account_id for rec in db_service.get_account_recurring(account_id)]
+        for rec in db_service.get_series_paying_down(account_id):
+            rec.loan_account_id = None
+
         account = db_service.get_account(account_id)
         db.session.delete(account)
+        db.session.flush()
+        loan_service.refresh(*paid_down)
         db.session.commit()
         return True, None
 
@@ -162,7 +262,8 @@ class AccountService:
     def update_transaction(self, transaction_id, data: dict):
         """
         Parse raw request data and update a transaction.
-        Handles type coercion so routes don't have to.
+        Handles type coercion so routes don't have to. The loan a payment's series pays down
+        follows its amount.
         Returns (updated_transaction, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
@@ -220,6 +321,7 @@ class AccountService:
                         peer.amount = -update_fields['amount']
                         db_service.adjust_balance(peer.account_id, peer.amount_cents - old_peer_amount_cents)
 
+            loan_service.refresh(loan_service.loan_paid_down_by(trans))
             db.session.commit()
             return trans, None
 
@@ -229,7 +331,8 @@ class AccountService:
     def delete_transaction(self, transaction_id):
         """
         Delete a transaction and reverse its effect on the account balance; a generated
-        recurring transaction also shrinks its series. Returns (success, error_message).
+        recurring transaction also shrinks its series, and the loan the series pays down no longer
+        counts it. Returns (success, error_message).
         """
         trans = db_service.get_transaction(transaction_id)
         if not trans:
@@ -243,9 +346,10 @@ class AccountService:
             if not trans:
                 return False, 'Transaction not found'
 
-        # Capture the series position before the row is gone
+        # Capture the series position, and the loan it pays down, before the row is gone
         recurring_id  = trans.recurring_id
         deleted_index = trans.recurring_index
+        paid_down = loan_service.loan_paid_down_by(trans)
 
         db_service.adjust_balance(trans.account_id, -trans.amount_cents)
         db.session.delete(trans)
@@ -269,6 +373,7 @@ class AccountService:
                      synchronize_session='fetch',
                  ))
 
+        loan_service.refresh(paid_down)
         db.session.commit()
         return True, None
 

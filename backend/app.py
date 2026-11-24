@@ -25,13 +25,33 @@ def _run_migrations(db):
             'ALTER TABLE accounts ALTER COLUMN acct_name TYPE VARCHAR(100)',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT FALSE',
             'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
+            "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'bank'",
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS apr_bps INTEGER',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_through DATE',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_frequency VARCHAR(10)',
+            # Rates set before interest had a frequency were loans charged monthly
+            "UPDATE accounts SET interest_frequency = 'monthly' WHERE apr_bps IS NOT NULL AND interest_frequency IS NULL",
             "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
             'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
+            'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',
+            # Interest waits for approval; hits booked before that were applied to their balances already
+            'ALTER TABLE interest_hits ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT TRUE',
+            'ALTER TABLE interest_hits ALTER COLUMN approved SET DEFAULT FALSE',
             # Over-budget flags are computed when read (BudgetFlagService); the stored copy is gone
             'ALTER TABLE transactions DROP COLUMN IF EXISTS over_budget',
         ]
         for sql in migrations:
             conn.execute(text(sql))
+
+        # Loan entries are gone: a loan's balance counts the payments of the series paying it down
+        # itself (services/loan_service.py), so the rows that mirrored them, and their column, go.
+        # Stored balances stay as they are: they counted each payment once, through its entry.
+        has_entries = conn.execute(text(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'loan_payment_id'"
+        )).first()
+        if has_entries:
+            conn.execute(text('DELETE FROM transactions WHERE loan_payment_id IS NOT NULL'))
+            conn.execute(text('ALTER TABLE transactions DROP COLUMN loan_payment_id'))
 
         # Backfill recurring_index for rows generated before this column existed,
         # so existing recurring chips show the correct occurrence number.
@@ -97,6 +117,8 @@ def create_app(test_config=None):
     from routes.budgets import budgets_bp
     from routes.export import export_bp
     from routes.balances import balances_bp
+    from routes.goals import goals_bp
+    from routes.interest import interest_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -108,6 +130,8 @@ def create_app(test_config=None):
     app.register_blueprint(budgets_bp, url_prefix='/api/budgets')
     app.register_blueprint(export_bp, url_prefix='/api/export')
     app.register_blueprint(balances_bp, url_prefix='/api/balances')
+    app.register_blueprint(goals_bp, url_prefix='/api/goals')
+    app.register_blueprint(interest_bp, url_prefix='/api/interest')
 
     from middleware.error_handlers import register_error_handlers
     from middleware.auth_errors import register_auth_error_handlers

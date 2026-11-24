@@ -30,7 +30,7 @@ class TestAccountReview:
 
     @pytest.mark.parametrize('changes', [
         {'account_name': 'Renamed'}, {'account_id': 'new-id'}, {'needs_attention': False},
-        {'opening_balance': 250},
+        {'opening_balance': 250}, {'balance': 250}, {'kind': 'loan'}, {'kind': 'loan', 'apr': 6.8},
     ])
     def test_editing_or_marking_reviewed_clears_needs_attention(self, account, changes):
         account.needs_attention = True
@@ -146,6 +146,136 @@ class TestStartingBalance:
         assert (account.opening_balance, account.balance) == (50, 50)
 
 
+class TestCurrentBalance:
+    """
+    Entering the current balance (as the bank shows it) sets the starting balance to it less the
+    account's transactions, transfers included, so starting balance + transactions = current balance.
+    """
+
+    def test_sets_the_starting_balance_from_the_transactions(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Grocer', 'Groceries', -20.00)
+        svc.add_transaction(account.id, date(2026, 1, 16), 'Payroll', 'Income', 500.00)
+        svc.add_transaction(account.id, date(2026, 1, 17), 'To savings', 'Transfer', -100.00, is_transfer=True)
+        updated, error = svc.update_account(account.id, {'balance': 1234.56})
+        assert error is None
+        assert (updated.balance_cents, updated.opening_balance_cents) == (123_456, 123_456 - 38_000)
+
+    def test_money_owed_is_a_negative_balance(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Target', 'Grocery', -42.10)
+        svc.update_account(account.id, {'balance': -719.99})
+        assert (account.balance_cents, account.opening_balance_cents) == (-71_999, -67_789)
+
+    def test_recalculating_keeps_it(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Grocer', 'Groceries', -20.00)
+        svc.update_account(account.id, {'balance': 80})
+        assert svc.recalculate_account_balance(account.id) == 80
+
+    def test_sending_both_balances_is_rejected(self, account):
+        with pytest.raises(ValueError, match=r'^Send either the starting balance or the current balance, not both\.$'):
+            svc.update_account(account.id, {'opening_balance': 10, 'balance': 20})
+
+    @pytest.mark.parametrize('value, error', [
+        ('1000', 'Current balance must be a number.'),
+        (None, 'Current balance must be a number.'),
+        (True, 'Current balance must be a number.'),
+        (float('nan'), 'Current balance must be a number.'),
+        (10_000_000.01, 'Current balance must be between -$10,000,000 and $10,000,000.'),
+        (-10_000_000.01, 'Current balance must be between -$10,000,000 and $10,000,000.'),
+    ], ids=['string', 'null', 'bool', 'nan', 'too-high', 'too-low'])
+    def test_rejects_invalid_values(self, account, value, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_account(account.id, {'balance': value})
+
+    def test_the_starting_balance_it_makes_must_be_within_the_limit(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Big purchase', 'Misc', -1000.00)
+        error = ('Starting balance must be between -$10,000,000 and $10,000,000; '
+                 'this current balance would make it $10,001,000.00.')
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_account(account.id, {'balance': 10_000_000})
+        assert (account.opening_balance_cents, account.balance_cents) == (0, -100_000)
+
+    def test_a_rejected_edit_changes_nothing(self, account):
+        svc.update_account(account.id, {'opening_balance': 50})
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'balance': 75, 'account_name': ''})
+        assert (account.opening_balance, account.balance) == (50, 50)
+
+
+class TestLoanAccounts:
+    """
+    An account is a bank account (checking, savings, a card) or a loan, and either can carry a
+    yearly interest rate (apr, in percent, kept as hundredths of a percent; test_interest.py has
+    how often it hits). Money owed on a loan is a negative balance, as on a card.
+    """
+
+    def test_accounts_are_bank_accounts_without_an_apr_by_default(self, account, user):
+        created = svc.create_account(user.id, {'account_id': 'savings-2'})
+        for acc in (account, created):
+            assert (acc.to_dict()['kind'], acc.to_dict()['apr']) == ('bank', None)
+
+    def test_creating_a_loan_with_its_apr(self, user):
+        loan = svc.create_account(user.id, {'account_id': 'aspire-1', 'account_name': 'ASPIRE loan',
+                                            'kind': 'loan', 'apr': 6.8})
+        assert (loan.kind, loan.apr_bps) == ('loan', 680)
+        assert (loan.to_dict()['kind'], loan.to_dict()['apr']) == ('loan', 6.8)
+
+    def test_a_loan_can_wait_for_its_apr(self, user):
+        loan = svc.create_account(user.id, {'account_id': 'aspire-1', 'kind': 'loan'})
+        assert (loan.kind, loan.to_dict()['apr']) == ('loan', None)
+
+    def test_turning_an_account_into_a_loan_then_changing_and_clearing_its_apr(self, account):
+        updated, error = svc.update_account(account.id, {'kind': 'loan', 'apr': 5.25})
+        assert error is None
+        assert (updated.kind, updated.apr_bps) == ('loan', 525)
+        svc.update_account(account.id, {'apr': 0})
+        assert account.apr_bps == 0
+        svc.update_account(account.id, {'apr': None})
+        assert account.apr_bps is None
+
+    def test_a_bank_account_can_have_an_apr_too(self, user, account):
+        savings = svc.create_account(user.id, {'account_id': 'savings-2', 'apr': 0.5})
+        assert (savings.kind, savings.to_dict()['apr']) == ('bank', 0.5)
+        svc.update_account(account.id, {'kind': 'loan', 'apr': 5.25})
+        svc.update_account(account.id, {'kind': 'bank'})
+        assert (account.kind, account.apr_bps) == ('bank', 525)
+
+    def test_an_apr_rounds_to_hundredths_of_a_percent(self, account):
+        svc.update_account(account.id, {'kind': 'loan', 'apr': 6.8749})
+        assert account.apr_bps == 687
+        svc.update_account(account.id, {'apr': 100})
+        assert account.apr_bps == 10_000
+
+    @pytest.mark.parametrize('data, error', [
+        ({'kind': 'card'}, 'Account type must be bank or loan.'),
+        ({'kind': None}, 'Account type must be bank or loan.'),
+        ({'kind': 'loan', 'apr': '6.8'}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': True}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': float('nan')}, 'APR must be a number.'),
+        ({'kind': 'loan', 'apr': -0.01}, 'APR must be between 0% and 100%.'),
+        ({'kind': 'loan', 'apr': 100.01}, 'APR must be between 0% and 100%.'),
+        ({'apr': 6.8, 'interest_frequency': 'weekly'}, 'How often must be monthly, quarterly or yearly.'),
+        ({'apr': 6.8, 'interest_frequency': None}, 'How often must be monthly, quarterly or yearly.'),
+        ({'interest_frequency': 'monthly'}, 'How often needs an APR.'),
+    ], ids=['unknown-kind', 'null-kind', 'string-apr', 'bool-apr', 'nan-apr', 'negative-apr', 'apr-over-100',
+            'unknown-frequency', 'no-frequency-with-a-rate', 'frequency-without-a-rate'])
+    def test_rejects_invalid_kinds_and_aprs_when_creating_or_editing(self, user, account, data, error):
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.create_account(user.id, {'account_id': 'new-1', **data})
+        with pytest.raises(ValueError, match=f'^{re.escape(error)}$'):
+            svc.update_account(account.id, data)
+
+    def test_a_rejected_edit_changes_nothing(self, account):
+        with pytest.raises(ValueError):
+            svc.update_account(account.id, {'kind': 'loan', 'apr': 6.8, 'account_name': ''})
+        assert (account.kind, account.apr_bps, account.acct_name) == ('bank', None, 'Test Checking')
+
+    def test_transactions_say_whether_they_are_on_a_loan_account(self, account):
+        tx = svc.add_transaction(account.id, date(2026, 1, 31), 'ASPIRE', 'Loan', 75.00)
+        assert tx.to_dict()['on_loan_account'] is False
+        svc.update_account(account.id, {'kind': 'loan'})
+        assert tx.to_dict()['on_loan_account'] is True
+
+
 # ── Transaction CRUD ──────────────────────────────────────────────────────────
 
 class TestAddTransaction:
@@ -225,6 +355,18 @@ class TestBalancesUnderConcurrentRequests:
         self._another_request_adds(account, 500)
         svc.update_account(account.id, {'opening_balance': 100})
         assert self._stored(account) == 500 + 10_000
+
+    def test_setting_the_current_balance_counts_a_transaction_another_request_saved(self, account):
+        svc.add_transaction(account.id, date(2026, 1, 15), 'Netflix', 'Subscriptions', -20.00)
+        db_svc.get_account(account.id).balance_cents   # loaded now, and about to be out of date
+        _db.session.execute(text(
+            "INSERT INTO transactions (account_id, date, vendor, category, amount_cents, is_transfer, is_reimbursement) "
+            "VALUES (:id, '2026-01-20', 'Elsewhere', 'Misc', -500, 0, 0)"), {'id': account.id})
+        _db.session.execute(text('UPDATE accounts SET balance_cents = balance_cents - 500 WHERE id = :id'), {'id': account.id})
+        svc.update_account(account.id, {'balance': 100})
+        stored = _db.session.execute(text('SELECT opening_balance_cents, balance_cents FROM accounts WHERE id = :id'),
+                                     {'id': account.id}).one()
+        assert tuple(stored) == (10_000 + 2_000 + 500, 10_000)
 
     def test_pairing_a_transfer(self, account):
         other = AccountModel(user_id=account.user_id, acct_id_str='sav-1', acct_name='Savings')

@@ -32,7 +32,11 @@ def get_accounts():
 @accounts_bp.route('', methods=['POST'])
 @jwt_required()
 def create_account():
-    """Create an account for the current user from account_id and (optionally) account_name."""
+    """
+    Create an account for the current user from account_id and, optionally, account_name, kind
+    ('bank' or 'loan'), apr (a yearly interest rate, percent) and interest_frequency (monthly,
+    quarterly or yearly).
+    """
     try:
         account = account_service.create_account(get_jwt_identity(), json_body())
     except ValueError as e:
@@ -76,7 +80,12 @@ def delete_account(account_id):
 @jwt_required()
 @owns_account
 def update_account(account_id):
-    """Update account name or id string, or mark it reviewed with {"needs_attention": false}."""
+    """
+    Update the account name, id string, kind ('bank' or 'loan'), apr (a yearly interest rate,
+    percent; null clears it), interest_frequency, and starting balance (opening_balance) or
+    current balance (balance, which sets the starting balance to it less the transactions), or
+    mark it reviewed with {"needs_attention": false}.
+    """
     try:
         acc, error = account_service.update_account(account_id, json_body())
     except ValueError as e:

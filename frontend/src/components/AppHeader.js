@@ -3,8 +3,8 @@ import { LayoutDashboard, Receipt, Wallet, TrendingUp } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'dashboard',    label: 'Dashboard',    Icon: LayoutDashboard },
-  { key: 'transactions', label: 'Transactions', Icon: Receipt  },
   { key: 'budgeting',    label: 'Budgeting',    Icon: Wallet          },
+  { key: 'transactions', label: 'Transactions', Icon: Receipt         },
   { key: 'insights',     label: 'Insights',     Icon: TrendingUp      },
 ];
 

@@ -5,15 +5,19 @@ import { CategoryColorProvider } from '../CategoryColorContext';
 import { SESSION_EXPIRED_EVENT } from '../api/client';
 import { login, me } from '../api/auth';
 import { getAccounts } from '../api/accounts';
-import { getAllTransactions } from '../api/transactions';
+import { getAllTransactions, addTransaction, pairTransfer } from '../api/transactions';
 import { getBudgetProgress } from '../api/budgets';
 import { getProjection, getAccountRecurring } from '../api/recurring';
+import { getGoals } from '../api/goals';
+import { getInterest, approveInterest } from '../api/interest';
 
 jest.mock('../api/auth');
 jest.mock('../api/accounts');
 jest.mock('../api/transactions');
 jest.mock('../api/budgets');
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
+jest.mock('../api/interest');
 
 const EXPIRED = 'Your session has expired. Please log in again.';
 const USER = { id: 1, username: 'owen' };
@@ -34,6 +38,8 @@ beforeEach(() => {
   getAllTransactions.mockResolvedValue([]);
   getBudgetProgress.mockResolvedValue([]);
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
+  getInterest.mockResolvedValue([]);
 });
 
 const renderApp = () => render(<CategoryColorProvider><App /></CategoryColorProvider>);
@@ -88,6 +94,14 @@ test("the Dashboard's errors show in the banner", async () => {
   getProjection.mockRejectedValue(new Error('Could not load the projection'));
   renderApp();
   expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
+test('the nav bar runs Dashboard, Budgeting, Transactions, Insights', async () => {
+  localStorage.setItem('token', 'good-token');
+  renderApp();
+  await loggedIn();
+  expect([...document.querySelectorAll('.view-nav button')].map(button => button.textContent))
+    .toEqual(['Dashboard', 'Budgeting', 'Transactions', 'Insights']);
 });
 
 test('switching views clears the banner; clicking the view you are on keeps it', async () => {
@@ -147,4 +161,55 @@ test('a login that expires while you use the app sends you to the login screen, 
   act(() => { window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: EXPIRED })); });
   expect(await screen.findByText(EXPIRED)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
+});
+
+test('adding a transfer with a To account also creates and links the matching transaction there', async () => {
+  localStorage.setItem('token', 'token');
+  getAccounts.mockResolvedValue([
+    { id: 6, account_id: 'checking', account_name: 'Checking', balance: 100, opening_balance: 0, kind: 'bank', apr: null },
+    { id: 7, account_id: 'savings', account_name: 'Savings', balance: 50, opening_balance: 0, kind: 'bank', apr: null },
+  ]);
+  getAccountRecurring.mockResolvedValue([]);
+  addTransaction.mockResolvedValue({ id: 99 });
+  pairTransfer.mockResolvedValue({});
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
+  await userEvent.click(await screen.findByRole('button', { name: '+ Add Transaction' }));
+  await userEvent.type(screen.getByPlaceholderText('e.g., Netflix'), 'To savings');
+  await userEvent.type(screen.getByPlaceholderText('e.g., Subscriptions'), 'Transfer');
+  await userEvent.type(document.querySelector('.transaction-form input[step="0.01"]'), '-250');
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer' }));
+  await userEvent.selectOptions(screen.getByLabelText('To account'), 'Savings');
+  await userEvent.click(screen.getByRole('button', { name: 'Add Transaction' }));
+  await act(async () => {});
+  expect(addTransaction).toHaveBeenCalledWith(6, expect.objectContaining({ vendor: 'To savings', is_transfer: true }));
+  expect(addTransaction.mock.calls[0][1]).not.toHaveProperty('transfer_to_account_id');
+  expect(pairTransfer).toHaveBeenCalledWith(99, 7);
+});
+
+test('approving interest applies each charge in turn, then reloads the accounts and the interest', async () => {
+  localStorage.setItem('token', 'token');
+  getAccounts.mockResolvedValue([{
+    id: 16, account_id: 'loan', account_name: 'Student Loan', balance: -75217, opening_balance: -77107, kind: 'loan',
+    apr: 6.7, interest_frequency: 'monthly',
+  }]);
+  getAccountRecurring.mockResolvedValue([]);
+  const hit = (id, date, cents) => ({
+    id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+    approved: false,
+  });
+  getInterest.mockResolvedValue([hit(8, '2027-01-01', -42231), hit(7, '2026-12-01', -41996)]);
+  const order = [];
+  approveInterest.mockImplementation(async (id) => { order.push(id); });
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Accounts/ }));
+  const [accountLoads, interestLoads] = [getAccounts.mock.calls.length, getInterest.mock.calls.length];
+  await userEvent.click(await screen.findByRole('button', { name: 'Approve all' }));
+  await act(async () => {});
+  expect(order).toEqual([7, 8]);
+  expect(getAccounts).toHaveBeenCalledTimes(accountLoads + 1);
+  expect(getInterest).toHaveBeenCalledTimes(interestLoads + 1);
 });

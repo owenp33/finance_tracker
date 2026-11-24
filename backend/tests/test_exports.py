@@ -399,11 +399,14 @@ class TestSummaryPage:
         assert [line for line in self.lines(None) if 'income category' in line] == []
 
 
-def _panel(category, cents, average, last, count, others=None):
+TEN_YEARS = [f'{2017 + i // 12}-{i % 12 + 1:02d}' for i in range(119)]    # Jan 2017 through Nov 2026
+
+
+def _panel(category, cents, average, last, count):
     """A summary_data.category_panels panel over Sep–Nov 2026, November so far; `last` is October's cents."""
     months = ['2026-09', '2026-10', '2026-11']
     return {
-        'category': category, **({'others': others} if others else {}), 'total': sum(cents), 'count': count,
+        'category': category, 'total': sum(cents), 'count': count,
         'months': [{'month': m, 'cents': c, 'partial': m == '2026-11'} for m, c in zip(months, cents)],
         'average': average, 'last': None if last is None else {'month': '2026-10', 'cents': last},
     }
@@ -416,7 +419,7 @@ class TestSpendingByCategoryPage:
         _panel('Rent', [90000, 90000, 90000], 90000, 90000, 3),
         _panel('Groceries', [30000, 40000, 10000], 35000, 40000, 3),
         _panel('Medical', [8700, 0, 0], 4350, 0, 1),
-        _panel('Other', [1500, 2500, 0], 2000, 2500, 2, others=['Gifts', 'Pets']),
+        _panel('Other', [1500, 2500, 0], 2000, 2500, 2),
     ]
 
     def render(self, panels):
@@ -434,8 +437,24 @@ class TestSpendingByCategoryPage:
             ['Rent', 'Oct: $900, about its $900 average'],
             ['Groceries', 'Oct: $400, 14% above its $350 average'],
             ['Medical', 'Oct: $0, 100% below its $44 average'],
-            ['Other', 'Oct: $25, 25% above its $20 average', 'Gifts, Pets'],
+            ['Other', 'Oct: $25, 25% above its $20 average'],
         ]
+
+    def test_8_charts_fill_three_rows_of_three_three_and_two(self):
+        page = self.render([_panel(f'Category {i}', [100, 100, 100], 100, 100, 3) for i in range(8)])
+        charts = page.axes[:-1]
+        rows = sorted({round(chart.get_position().y0, 3) for chart in charts}, reverse=True)
+        assert [sum(round(c.get_position().y0, 3) == row for c in charts) for row in rows] == [3, 3, 2]
+        # the table sits under the last row's month labels
+        assert page.axes[-1].get_position().y1 < min(chart.get_position().y0 for chart in charts) - 0.02
+
+    def test_a_long_history_labels_a_small_chart_by_year_evenly(self):
+        panel = {'category': 'Rent', 'total': 119 * 120000, 'count': 119, 'average': 120000,
+                 'months': [{'month': m, 'cents': 120000, 'partial': m == '2026-11'} for m in TEN_YEARS],
+                 'last': {'month': '2026-10', 'cents': 120000}}
+        chart = self.render([panel]).axes[0]
+        # a 132pt axis fits 4 labels: every other year would be 5, so every third
+        assert [t.get_text() for t in chart.get_xticklabels()] == ['2019', '2022', '2025']
 
     def test_each_chart_has_a_bar_per_month_the_partial_month_lighter_and_its_average_dashed(self):
         groceries = self.render(self.PANELS).axes[1]
@@ -470,13 +489,9 @@ class TestSpendingByCategoryPage:
         ]
 
     def test_long_names_are_shortened(self):
-        page = self.render([
-            _panel('C' * 50, [100, 100, 100], 100, 100, 3),
-            _panel('Other', [100, 100, 100], 100, 100, 12, others=[f'Category {i}' for i in range(12)]),
-        ])
-        category, others = page.axes[0].texts[0].get_text(), page.axes[1].texts[2].get_text()
+        page = self.render([_panel('C' * 50, [100, 100, 100], 100, 100, 3)])
+        category = page.axes[0].texts[0].get_text()
         assert (len(category), category[-1]) == (pdf_pages.PANEL_CATEGORY_CHARS, '…')
-        assert (len(others), others[-1]) == (pdf_pages.OTHERS_CHARS, '…')
         assert _table_cells(page.axes[-1])[1][0] == category
 
     def test_no_spending_says_so(self):
@@ -633,10 +648,10 @@ class TestTopVendorsPage:
 class TestNetPerMonthPages:
     """Net per month as the app's Insights Overview draws it: bars around $0, the average, a table."""
 
-    ROWS = [   # summary_data.monthly_net's: three full months, then this month so far
+    ROWS = [   # summary_data.monthly_net's: three full months (their average on the middle one), then this month so far
         {'month': '2025-12', 'income': 300000, 'expenses': 120000, 'net': 180000, 'partial': False, 'average': None},
-        {'month': '2026-01', 'income': 100000, 'expenses': 150050, 'net': -50050, 'partial': False, 'average': None},
-        {'month': '2026-02', 'income': 80000, 'expenses': 50000, 'net': 30000, 'partial': False, 'average': 53317},
+        {'month': '2026-01', 'income': 100000, 'expenses': 150050, 'net': -50050, 'partial': False, 'average': 53317},
+        {'month': '2026-02', 'income': 80000, 'expenses': 50000, 'net': 30000, 'partial': False, 'average': None},
         {'month': '2026-03', 'income': 0, 'expenses': 2500, 'net': -2500, 'partial': True, 'average': None},
     ]
 
@@ -659,35 +674,44 @@ class TestNetPerMonthPages:
 
     def test_the_3_month_average_is_a_line_with_gaps_where_there_is_none(self):
         chart = self.render(self.ROWS)[0].axes[0]
-        (line,) = [line for line in chart.lines if line.get_label() == '3-month average of full months']
-        assert [None if math.isnan(y) else y for y in line.get_ydata()] == [None, None, 533.17, None]
+        (line,) = [line for line in chart.lines
+                   if line.get_label() == '3-month average of each month and the months either side']
+        assert [None if math.isnan(y) else y for y in line.get_ydata()] == [None, 533.17, None, None]
 
     def test_a_heading_a_note_and_a_legend(self):
         (page,) = self.render(self.ROWS)
         assert [t.get_text() for t in page.texts] == [
             'Net per month', '2025-12-01 to 2026-03-12',
-            'Money in minus money out each month, transfers left out; a month only partly in the period is lighter.',
+            'Money in minus money out each month, transfers left out; '
+            'a month only partly in the period is lighter and in no average.',
         ]
         assert [t.get_text() for t in page.axes[0].get_legend().get_texts()] == [
-            'More in than out', 'More out than in', '3-month average of full months']
+            'More in than out', 'More out than in', '3-month average of each month and the months either side']
 
     def test_the_numbers_as_a_table_under_the_chart(self):
         (page,) = self.render(self.ROWS)
         assert _table_cells(page.axes[1]) == [
             ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
             ['Dec 2025', '$3,000.00', '$1,200.00', '+$1,800.00', '—'],
-            ['Jan 2026', '$1,000.00', '$1,500.50', '-$500.50', '—'],
-            ['Feb 2026', '$800.00', '$500.00', '+$300.00', '+$533.17'],
+            ['Jan 2026', '$1,000.00', '$1,500.50', '-$500.50', '+$533.17'],
+            ['Feb 2026', '$800.00', '$500.00', '+$300.00', '—'],
             ['Mar 2026 (partial)', '$0.00', '$25.00', '-$25.00', '—'],
         ]
 
-    def test_a_long_run_labels_its_first_month_januaries_and_julys_and_continues_the_table(self):
+    def test_a_long_run_labels_months_evenly_as_many_as_fit_and_continues_the_table(self):
         months = [f'{2024 + i // 12}-{i % 12 + 1:02d}' for i in range(pdf_pages.FIRST_PAGE_ROWS + 1)]
         rows = [{'month': m, 'income': 0, 'expenses': 0, 'net': 0, 'partial': False, 'average': None} for m in months]
         first, second = self.render(rows)
-        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == ['Jan 2024', 'Jul', 'Jan 2025', 'Jul']
+        # 21 months on a 490pt axis: every other month would be 11 labels, too many; every third fits
+        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == [
+            'Jan 2024', 'Apr', 'Jul', 'Oct', 'Jan 2025', 'Apr', 'Jul']
         assert second.texts[0].get_text() == 'Net per month (continued)'
         assert _table_cells(second.axes[0])[1:] == [['Sep 2025', '$0.00', '$0.00', '$0.00', '—']]
+
+    def test_ten_years_are_labelled_by_year(self):
+        rows = [{'month': m, 'income': 0, 'expenses': 0, 'net': 0, 'partial': False, 'average': None} for m in TEN_YEARS]
+        first = self.render(rows)[0]
+        assert [t.get_text() for t in first.axes[0].get_xticklabels()] == [str(year) for year in range(2017, 2027)]
 
 
 class TestAccountPageLayout:

@@ -27,7 +27,7 @@ def get_recurring(recurring_id):
 @jwt_required()
 @owns_recurring
 def update_recurring(recurring_id):
-    """Update a recurring transaction"""
+    """Update a recurring transaction; loan_account_id (a loan account's id, or null) is the loan it pays down."""
     data = request.get_json()
 
     update_fields = {}
@@ -49,11 +49,17 @@ def update_recurring(recurring_id):
         update_fields['number'] = int(data['number'])
     if 'notes' in data:
         update_fields['notes'] = data['notes']
+    if 'loan_account_id' in data:
+        update_fields['loan_account_id'] = data['loan_account_id']
 
     try:
         updated = recurring_service.update_recurring(recurring_id, **update_fields)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+    # Fill the occurrences the change makes due (a limit lifted, the next date moved back), as
+    # creating does, rather than at the next page load
+    recurring_service.process_due_recurring(updated.account_id)
 
     return jsonify({
         'success': True,

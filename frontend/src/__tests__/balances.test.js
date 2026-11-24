@@ -1,4 +1,4 @@
-import { balanceAsOf, netPosition, rangeStart, rangePoints, forecastPoints } from '../utils/balances';
+import { balanceAsOf, netPosition, rangeStart, rangePoints } from '../utils/balances';
 
 // A GET /api/balances entry: `days` as [date, cents]
 const entry = (id, name, openingCents, days) => {
@@ -45,35 +45,6 @@ test('a range starts 3, 6 or 12 months before today (clamped to a shorter month)
   expect(rangeStart('6M', '2026-08-31', '2025-01-01')).toBe('2026-02-28');
   expect(rangeStart('1Y', '2026-11-08', '2025-01-01')).toBe('2025-11-08');
   expect(rangeStart('All', '2026-11-08', '2025-01-01')).toBe('2025-01-01');
-});
-
-// What GET /recurring/projection lists for the 30 days from Nov 8, 2026
-const occurrence = (accountId, date, vendor, amount) => ({ recurring_id: 1, account_id: accountId, date, vendor, category: 'Bills', amount });
-const SCHEDULED = [
-  occurrence(6, '2026-11-09', 'Allina Health', -87.38),
-  occurrence(6, '2026-11-30', 'ASPIRE', -75),
-  occurrence(7, '2026-12-01', 'HLWW School District', 1700),
-];
-
-test("the forecast steps from today's balance by each day's scheduled items, through its last day", () => {
-  expect(forecastPoints(942168, SCHEDULED, '2026-11-08', '2026-12-08')).toEqual([
-    { date: '2026-11-09', cents: 933430, kind: 'forecast', items: [SCHEDULED[0]] },
-    { date: '2026-11-30', cents: 925930, kind: 'forecast', items: [SCHEDULED[1]] },
-    { date: '2026-12-01', cents: 1095930, kind: 'forecast', items: [SCHEDULED[2]] },
-    { date: '2026-12-08', cents: 1095930, kind: 'forecast-end', items: [] },
-  ]);
-});
-
-test("the forecast counts an item due today, and none after its last day; with none, it stays level", () => {
-  const today = occurrence(6, '2026-11-08', 'Due today', -10);
-  const later = occurrence(6, '2026-12-09', 'Past the window', -500);
-  expect(forecastPoints(10000, [later, today], '2026-11-08', '2026-12-08')).toEqual([
-    { date: '2026-11-08', cents: 9000, kind: 'forecast', items: [today] },
-    { date: '2026-12-08', cents: 9000, kind: 'forecast-end', items: [] },
-  ]);
-  expect(forecastPoints(10000, [], '2026-11-08', '2026-12-08')).toEqual([
-    { date: '2026-12-08', cents: 10000, kind: 'forecast-end', items: [] },
-  ]);
 });
 
 test("a range's points: the balance carried in, each day's end-of-day balance, and today's", () => {

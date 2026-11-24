@@ -9,6 +9,8 @@ import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
+import { useInterest } from './hooks/useInterest';
+import * as interestAPI from './api/interest';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -34,6 +36,7 @@ function App() {
   const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
+  const { interest, loadInterest } = useInterest({ setError });
   // AUTH HANDLERS =============================================================
 
   // Forgets the login; the caller decides what the login screen says
@@ -103,15 +106,17 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadInterest()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   // ACTION HANDLERS ===========================================================
 
+  // A transfer can name its other account: the matching transaction is created there and linked
   const handleAddTransaction = async (formData) => {
-    const { account_id, ...rest } = formData;
+    const { account_id, transfer_to_account_id, ...rest } = formData;
     try {
-      await transactionsAPI.addTransaction(account_id, rest);
+      const created = await transactionsAPI.addTransaction(account_id, rest);
+      if (transfer_to_account_id) await transactionsAPI.pairTransfer(created.id, transfer_to_account_id);
       await refreshAll();
     } catch (err) {
       setError(err.message);
@@ -233,10 +238,10 @@ function App() {
     await refreshAll();
   };
 
-  // Keeps the transaction; the series shrinks and renumbers
-  const handleUnlinkFromRecurring = async (recurringId, transactionId) => {
+  // Keeps the transactions; the series shrinks and renumbers after each, so one at a time
+  const handleUnlinkFromRecurring = async (recurringId, transactionIds) => {
     try {
-      await recurringAPI.unlinkFromRecurring(recurringId, transactionId);
+      await forEachInOrder(transactionIds, id => recurringAPI.unlinkFromRecurring(recurringId, id));
     } catch (err) {
       setError(err.message);
     }
@@ -271,9 +276,9 @@ function App() {
     }
   };
 
-  const handleCreateAccount = async (accountId, accountName) => {
+  const handleCreateAccount = async (fields) => {
     try {
-      const account = await accountsAPI.createAccount(accountId, accountName);
+      const account = await accountsAPI.createAccount(fields);
       await loadAccounts();
       return account;
     } catch (err) {
@@ -300,10 +305,30 @@ function App() {
     await Promise.all([loadBudgetProgress(), loadTransactions()]);
   }, [loadBudgetProgress, loadTransactions]);
 
+  // Interest waiting for approval: changing a charge or deleting it moves no balance, so only the
+  // interest reloads; approving moves its account's balance, so both do. Each resolves to whether it
+  // worked, so a form can stay open after an error.
+  const changeInterest = async (change, reloads) => {
+    try {
+      await change();
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      await Promise.all(reloads.map(load => load()));
+    }
+  };
+  const handleEditInterest = (id, amount) => changeInterest(() => interestAPI.updateInterest(id, amount), [loadInterest]);
+  const handleDeleteInterest = (id) => changeInterest(() => interestAPI.deleteInterest(id), [loadInterest]);
+  // One at a time, oldest first (each moves the balance)
+  const handleApproveInterest = (ids) =>
+    changeInterest(() => forEachInOrder(ids, id => interestAPI.approveInterest(id)), [loadAccounts, loadInterest]);
+
   const handleDeleteAccount = async (id) => {
     try {
       await accountsAPI.deleteAccount(id);
-      await Promise.all([loadAccounts(), loadTransactions()]);
+      await Promise.all([loadAccounts(), loadTransactions(), loadInterest()]);
     } catch (err) {
       setError(err.message);
     }
@@ -343,8 +368,9 @@ function App() {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
+      loadInterest();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
@@ -385,6 +411,8 @@ function App() {
             budgetData={budgetData}
             onNavigate={changeView}
             onError={setError}
+            accounts={accounts}
+            recurring={recurringTransactions}
           />
         )}
         {view === 'transactions' && (
@@ -392,6 +420,7 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             recurringTransactions={recurringTransactions}
+            interest={interest}
             onAdd={handleAddTransaction}
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
@@ -413,12 +442,20 @@ function App() {
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
+            onEditInterest={handleEditInterest}
+            onApproveInterest={handleApproveInterest}
+            onDeleteInterest={handleDeleteInterest}
+            onError={setError}
           />
         )}
         {view === 'budgeting' && (
           <BudgetingView
             transactions={transactions}
             onBudgetChange={handleBudgetChange}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            interest={interest}
+            onError={setError}
           />
         )}
         {view === 'insights' && (
@@ -426,6 +463,7 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             recurring={recurringTransactions}
+            interest={interest}
             onError={setError}
           />
         )}

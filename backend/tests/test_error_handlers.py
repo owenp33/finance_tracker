@@ -16,8 +16,9 @@ class TestHttpErrors:
         assert resp.status_code == 405
         assert resp.json == {'success': False, 'error': 'Method Not Allowed'}
 
-    def test_non_json_body_is_415_not_500(self, client, auth_headers):
-        resp = client.post('/api/budgets', data='not json', content_type='text/plain',
+    def test_non_json_body_is_415_not_500(self, client, auth_headers, account):
+        # A route that still reads its body with request.get_json(), which refuses anything but JSON
+        resp = client.post(f'/api/accounts/{account.id}/transactions', data='not json', content_type='text/plain',
                            headers=auth_headers)
         assert resp.status_code == 415
         assert 'application/json' in resp.json['error']

@@ -1,9 +1,11 @@
-import { render, screen, within, fireEvent, act } from '@testing-library/react';
+import { render, screen, within, fireEvent, act, waitFor } from '@testing-library/react';
 import DashboardView from '../components/DashboardView';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getProjection } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 const tx = (id, date, amount, overrides) => ({
   id, account_id: 1, account_name: 'Checking', date, vendor: `Vendor ${id}`, category: 'Groceries', notes: '',
@@ -52,15 +54,18 @@ const SIX_BUDGETS = [
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date(2026, 10, 5, 12));   // Nov 5, 2026
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
 });
 afterEach(() => jest.useRealTimers());
 
 // Renders the Dashboard, then lets this month's projection arrive
-const renderDashboard = async ({ transactions = TRANSACTIONS, budgetData = BUDGETS, onError = jest.fn() } = {}) => {
+const renderDashboard = async ({ transactions = TRANSACTIONS, budgetData = BUDGETS, onError = jest.fn(),
+                                 accounts = [], recurring = [], onNavigate = jest.fn() } = {}) => {
   render(
     <CategoryColorProvider>
       <DashboardView
-        transactions={transactions} budgetData={budgetData} onNavigate={jest.fn()} onError={onError}
+        transactions={transactions} budgetData={budgetData} onNavigate={onNavigate} onError={onError}
+        accounts={accounts} recurring={recurring}
       />
     </CategoryColorProvider>
   );
@@ -92,6 +97,16 @@ describe("this month's cards", () => {
     expect(card('Expenses this month')).toEqual(['$389.40', '$45 less than Oct 1–5']);
     expect(card('Net this month')).toEqual(['$890.60', '$325 more than Oct 1–5']);
     expect(screen.queryByText('Total Transactions')).not.toBeInTheDocument();
+  });
+
+  test("a loan account's transactions are left out of the cards, like transfers", async () => {
+    await renderDashboard({ transactions: [
+      ...TRANSACTIONS,
+      tx(11, '2026-11-02', 75, { category: 'Loan', vendor: 'ASPIRE', on_loan_account: true }),
+      tx(12, '2026-11-03', -12.5, { category: 'Loan', vendor: 'Interest', on_loan_account: true }),
+    ] });
+    expect(card('Income this month')).toEqual(['$1,280.00', '$280 more than Oct 1–5']);
+    expect(card('Expenses this month')).toEqual(['$389.40', '$45 less than Oct 1–5']);
   });
 
   test("left to spend is this month's budgets less what they've spent", async () => {
@@ -204,5 +219,131 @@ describe('the next 30 days', () => {
   test('with nothing scheduled, it says so', async () => {
     await renderDashboard();
     expect(within(agenda()).getByText('Nothing scheduled in the next 30 days.')).toBeInTheDocument();
+  });
+});
+
+describe('the goal card', () => {
+  const ACCOUNTS = [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3000 },
+                    { id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -75217 }];
+  const RECURRING = [{ id: 5, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1, loan_account_id: 16 }];
+  const goalRow = (id, position, accountId, name, kind, balanceCents, targetCents, monthlyCents = 50000) => ({
+    id, position, account_id: accountId, account_name: name, account_kind: kind, balance: balanceCents / 100,
+    balance_cents: balanceCents, target: targetCents / 100, target_cents: targetCents,
+    remaining_cents: Math.max(targetCents - balanceCents, 0), monthly: monthlyCents / 100, monthly_cents: monthlyCents,
+    reached: balanceCents >= targetCents, active: false,
+  });
+  const goalCard = () => document.querySelector('.goal-card');
+  const texts = () => ['h3', '.value', '.stat-sub'].map(sel => goalCard().querySelector(sel).textContent);
+  const open = (goals, extra = {}) => {
+    getGoals.mockResolvedValue(goals);
+    return renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, ...extra });
+  };
+
+  test("the active goal: where it stands, what to leave this month, and when it's reached", async () => {
+    // $4,500 to go at $500 a month: 9 months from November
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 300000, 750000), goalRow(2, 2, 16, 'Student Loan', 'loan', -7521700, 0)]);
+    expect(texts()).toEqual(['Savings goal', '$3,000 of $7,500', 'Leave $500.00 in Savings this month · reached by Aug 2027']);
+    // "Goals →" sits on the title's line, like the other cards' links
+    const header = within(goalCard()).getByRole('heading', { name: 'Savings goal' }).parentElement;
+    expect(header).toHaveClass('section-header');
+    expect(within(header).getByRole('button', { name: 'Goals →' })).toBeInTheDocument();
+  });
+
+  test("every card's title sits in the same header line", async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 300000, 750000)]);
+    const titles = [...document.querySelectorAll('.dashboard-view h3')];
+    expect(titles.map(h => h.textContent)).toEqual(expect.arrayContaining(
+      ['Savings goal', 'Income this month', 'Budget Pace', 'Recent Transactions', 'Next 30 days']));
+    titles.forEach(h => expect(h.parentElement).toHaveClass('section-header'));
+  });
+
+  test("a loan goal: what's owed, the extra to pay this month, and when it's paid off", async () => {
+    await open([goalRow(2, 1, 16, 'Student Loan', 'loan', -7521700, 0)]);
+    expect(texts()).toEqual(['Student Loan goal', '$75,217 owed', 'Pay $500.00 extra this month · paid off by Jul 2046']);
+  });
+
+  test('with every goal reached, it says so; without goals, it offers to set one', async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 800000, 750000)]);
+    expect(texts()).toEqual(['Goals', 'All reached', 'Every goal is reached and held']);
+  });
+
+  test('a reached goal the forecast dips under gets an orange warning', async () => {
+    getProjection.mockResolvedValue([{ recurring_id: 9, account_id: 7, date: '2026-11-20', vendor: 'Gym', category: 'Fun',
+                                       amount: -200 }]);
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 760000, 750000)], {
+      accounts: [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 7600 }],
+      recurring: [{ id: 9, amount: -200, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 }],
+      transactions: [],
+    });
+    expect(texts()).toEqual(['Goals', 'All reached', 'Every goal is reached and held']);
+    // $7,600 less the $200 on Nov 20
+    await waitFor(() => expect(goalCard().querySelector('.goal-card-warning')).not.toBeNull());
+    expect([...goalCard().querySelectorAll('.goal-card-warning')].map(w => w.textContent))
+      .toEqual(['Savings: forecast dips under $7,500 on Nov 20']);
+  });
+
+  test('no warning while the forecast stays at or above every reached goal', async () => {
+    await open([goalRow(1, 1, 7, 'Savings', 'bank', 760000, 750000)], {
+      accounts: [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 7600 }], transactions: [],
+    });
+    expect(goalCard().querySelector('.goal-card-warning')).toBeNull();
+  });
+
+  test('without goals, it offers to set one on Budgeting, and the link goes there', async () => {
+    const onNavigate = jest.fn();
+    await open([], { onNavigate });
+    expect(texts()).toEqual(['Goals', '—', 'No goals yet']);
+    fireEvent.click(within(goalCard()).getByRole('button', { name: 'Set a goal →' }));
+    expect(onNavigate).toHaveBeenCalledWith('budgeting');
+  });
+
+  test("a goal not reached at this pace says so", async () => {
+    await open([goalRow(2, 1, 16, 'Student Loan', 'loan', -7521700, 0, 0)].map(g => ({ ...g, monthly: null, monthly_cents: null })));
+    expect(texts()[2]).toBe('Nothing goes toward it this month · not reached at this pace');
+  });
+});
+
+describe('the 90-day projection', () => {
+  const ACCOUNTS = [{ id: 6, account_name: 'Checking', kind: 'bank', apr: null, balance: 7000 },
+                    { id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3000 }];
+  const RECURRING = [{ id: 5, amount: -75, frequency: 1, frequency_unit: 'months', number: -1, idx: 1 },
+                     { id: 13, amount: 1700, frequency: 14, frequency_unit: 'days', number: -1, idx: 1 }];
+  const OCCURRENCES = [
+    { recurring_id: 5, account_id: 6, date: '2026-11-30', vendor: 'ASPIRE', category: 'Loan', amount: -75 },
+    { recurring_id: 13, account_id: 7, date: '2026-12-01', vendor: 'Paycheck', category: 'Income', amount: 1700 },
+  ];
+  const card = () => document.querySelector('.projection-card');
+
+  test('sits beside the goal card, both just above Next 30 days', async () => {
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING });
+    const row = document.querySelector('.dashboard-goal-row');
+    expect([...row.children].map(child => child.classList.contains('goal-card') || child.classList.contains('projection-card')))
+      .toEqual([true, true]);
+    expect(row.children[0]).toHaveClass('goal-card');
+    expect(document.querySelector('.stats-grid .goal-card')).toBeNull();
+    const follows = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(document.querySelector('.dashboard-columns'), row)).toBe(true);
+    expect(follows(row, document.querySelector('.agenda-section'))).toBe(true);
+  });
+
+  test('shows net position at the end of the next 90 days, from today', async () => {
+    getProjection.mockResolvedValue(OCCURRENCES);
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, transactions: [] });
+    // $10,000 today, less ASPIRE's $75 and plus the $1,700 paycheck, by Feb 3 (90 days from Nov 5)
+    await waitFor(() => expect(card().querySelector('.value').textContent).toBe('$11,625'));
+    expect(card().querySelector('h3').textContent).toBe('90-day projection');
+    expect(card().querySelector('.stat-sub').textContent).toBe('Net position by Feb 3 · now $10,000');
+  });
+
+  test('its link goes to Insights', async () => {
+    const onNavigate = jest.fn();
+    await renderDashboard({ accounts: ACCOUNTS, recurring: RECURRING, onNavigate });
+    fireEvent.click(within(card()).getByRole('button', { name: 'Insights →' }));
+    expect(onNavigate).toHaveBeenCalledWith('insights');
+  });
+
+  test('without accounts it says so', async () => {
+    await renderDashboard();
+    expect(['.value', '.stat-sub'].map(sel => card().querySelector(sel).textContent)).toEqual(['—', 'No accounts yet']);
   });
 });

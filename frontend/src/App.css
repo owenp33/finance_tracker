@@ -225,26 +225,24 @@ body {
   margin-bottom: 30px;
 }
 
+/* The Dashboard's cards (stat cards, the goal card, the two columns, the agenda) share one look,
+   the Budgeting cards': a light border, rounded corners, no shadow */
 .stat-card {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
 }
 
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-}
-
-.stat-card h3 {
-  color: #666;
-  font-size: 0.9rem;
-  font-weight: 600;
+/* Every Dashboard card's title, in the style of Budgeting's CATEGORY ALLOCATIONS; each sits in a
+   .section-header line with its card's link, if any */
+.dashboard-view h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #374151;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
+  letter-spacing: 0.05em;
 }
 
 .stat-card .value {
@@ -336,6 +334,11 @@ body {
   gap: 20px;
 }
 
+/* Add / Cancel on their own line at the end, whatever fields come before them */
+.transaction-form .form-actions {
+  grid-column: 1 / -1;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -408,11 +411,6 @@ body {
   border-radius: 6px;
 }
 
-.recurring-generated-list .transaction-item.tx-selected {
-  background: #eef1ff;
-  border-radius: 4px;
-}
-
 .tx-cat-dot {
   width: 9px;
   height: 9px;
@@ -474,11 +472,15 @@ body {
   background: #e7f0ff !important;
 }
 
+/* The Add Transaction form's "Mark as" line spans the form, so a transfer's To account and the
+   recurring fields come under it */
 .mark-as-row {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
+  padding-top: 10px;
+  border-top: 1.5px solid #e9ecef;
 }
 
 .mark-as-label {
@@ -692,16 +694,6 @@ body {
 }
 
 /* Recurring toggle in TransactionForm */
-.recurring-toggle-row {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 10px 0 4px;
-  border-top: 1.5px solid #e9ecef;
-  margin-top: 4px;
-}
-
 .recurring-toggle-label {
   display: flex;
   align-items: center;
@@ -985,7 +977,8 @@ body {
   pointer-events: auto;
 }
 
-.series-link-btn { color: #16a34a; }
+/* Green, over .btn-ghost's grey (which comes later): link to a series, approve interest */
+.btn-ghost.series-link-btn { color: #16a34a; }
 
 .suggestion-unrelated-btn {
   color: #868e96;
@@ -996,22 +989,6 @@ body {
 .recurring-generated-list .transaction-item {
   padding: 8px 10px;
   font-size: 0.88rem;
-}
-
-.recurring-bulk-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-  background: transparent;
-  border-radius: 6px;
-}
-
-.recurring-bulk-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .recurring-bulk-amount {
@@ -1882,8 +1859,9 @@ body {
   color: white;
 }
 
+/* Room under the Reports heading (the header card's own header has no bottom margin) */
 .report-period-selector {
-  margin-bottom: 10px;
+  margin: 16px 0 10px;
 }
 
 .report-period-nav {
@@ -2082,13 +2060,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-}
-
-.section-header h3 {
-  color: #333;
-  font-size: 1.3rem;
-  margin: 0;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .link-btn {
@@ -2109,17 +2082,11 @@ body {
 
 /* === Next 30 days (Dashboard; Phase V, V6a) ================= */
 .agenda-section {
-  background: white;
-  padding: 25px;
-  border-radius: 15px;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
   margin-bottom: 30px;
-}
-
-.agenda-section h3 {
-  color: #333;
-  font-size: 1.3rem;
-  margin-bottom: 16px;
 }
 
 /* Date, item, amount, running total (a week's total sits under the amounts it adds up) */
@@ -2281,6 +2248,7 @@ body {
   font-weight: 500;
 }
 
+/* An account's expanded list (a bank account's transfers, a loan's transactions), under its row */
 .account-transfers {
   margin-top: 10px;
   padding-top: 10px;
@@ -2545,6 +2513,29 @@ body {
   width: 130px;
 }
 
+/* A recurring series' row on Transactions → Recurring: its notes and chips where an account's row
+   has "To" / "From" and the other account */
+.series-row-details {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.series-row-notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The account a loan's payment was paid from: a name, not a link to change */
+.account-loan-payer {
+  font-size: 0.82rem;
+  color: #444;
+}
+
 .account-transfer-peer-name {
   color: #4f46e5;
   cursor: pointer;
@@ -2598,6 +2589,11 @@ body {
   max-width: 440px;
 }
 
+/* The Add Account form's Add / Cancel: clear of the hint text above them */
+.account-form .form-actions {
+  margin-top: 16px;
+}
+
 .account-edit-form input {
   padding: 6px 10px;
   border: 1px solid #d1d5db;
@@ -2613,6 +2609,14 @@ body {
   font-size: 0.8rem;
 }
 
+/* Between the starting and current balance fields: how the two add up */
+.account-balance-sum {
+  max-width: 440px;
+  margin: 0 0 12px;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
 .account-opening-balance {
   margin-left: 6px;
 }
@@ -2621,6 +2625,30 @@ body {
   display: flex;
   gap: 8px;
 }
+
+/* A loan account (Phase F, F2a): its badge; any account's interest rate */
+.loan-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3b4fa8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.account-apr {
+  margin-left: 6px;
+}
+
+.account-edit-form select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
 
 /* ── Bulk action bar ───────────────────────────────────────────────────────── */
 .bulk-action-bar {
@@ -2791,6 +2819,321 @@ body {
   gap: 6px;
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+/* ── Goals (Phase F, F2b): on Budgeting, above the category budgets ───────────── */
+.goals-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.goals-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.goals-header h3 { margin: 0; }
+
+.goals-section .chart-note { margin: 0 0 6px; }
+
+.goals-room {
+  margin: 0 0 12px;
+  color: #374151;
+  font-size: 0.85rem;
+}
+
+.goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goal-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.goal-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.goal-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-status {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.goal-status.active { background: #eef2ff; color: #3b4fa8; }
+.goal-status.held   { background: #e7f6ef; color: #12795a; }
+
+.goal-progress { font-size: 0.9rem; }
+
+.goal-bar {
+  max-width: 360px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #e5e7eb;
+}
+
+.goal-bar-fill {
+  height: 100%;
+  background: var(--chart-aqua);
+}
+
+.goal-plan {
+  color: #4b5563;
+  font-size: 0.82rem;
+}
+
+.goal-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 360px;
+  margin: 6px 0 10px;
+}
+
+/* Where the forecast takes a goal on the account shown (F2e); a held goal it dips under is a warning */
+.balance-goal-note {
+  margin: 2px 0;
+  color: #12795a;
+  font-size: 0.85rem;
+}
+
+.balance-goal-note.warning { color: #b5441c; }
+
+/* A loan goal's payoff under its row (F2g): what's owed with the extra and with the regular
+   payments only. The lines' colours are set on the chart; these keys match them. */
+.loan-payoff {
+  margin-top: 8px;
+}
+
+.payoff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.payoff-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.payoff-key {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid var(--chart-blue);
+}
+
+.payoff-key.regular {
+  border-top: 2px dashed #6b7280;
+}
+
+.payoff-end-label {
+  fill: #4b5563;
+  font-size: 11px;
+}
+
+.payoff-note {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+/* An account's interest waiting for approval under its row in Transactions → Accounts: a list of its
+   own, each charge with its amount and Approve / Edit (the bank's figure) / Delete. The row's info is
+   centred, so the list takes a fixed width there, and an open editor doesn't shift it */
+.account-interest {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.account-interest-heading,
+.account-interest-list {
+  width: 100%;
+  max-width: 600px;
+}
+
+.account-interest-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
+.account-interest-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.account-interest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 30px;
+}
+
+.account-interest-date {
+  flex: 0 0 96px;
+}
+
+.account-interest-basis {
+  flex: 1;
+  min-width: 0;
+  color: #6b7280;
+}
+
+.account-interest-amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.account-interest-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.account-interest-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-interest-edit input {
+  width: 100px;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* On a phone, what a charge was worked out on takes a line of its own under its date and amount */
+@media (max-width: 600px) {
+  .account-interest-basis {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .account-interest-amount,
+  .account-interest-edit {
+    margin-left: auto;
+  }
+}
+
+/* An account's goal progress on its row in Transactions → Accounts (F2f) */
+.account-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.account-goal-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The Dashboard's goal card (F2d): its own row above this month's cards */
+/* The goal card and the 90-day projection, side by side above the agenda (2026-11-17) */
+.dashboard-goal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 700px) {
+  .dashboard-goal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.projection-chart {
+  margin-top: 10px;
+}
+
+/* A reached goal the forecast dips under, on the goal card: a warning, in the darker orange */
+.goal-card-warning {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
+.goal-card .link-btn {
+  padding: 0;
+}
+
+/* The active goal's saving, beside this month's category budgets (F2c) */
+.budget-goal-saving {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e7f6ef;
+  color: #12795a;
+  font-size: 0.88rem;
+}
+
+.goal-form input,
+.goal-form select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
 }
 
 /* ── Budget summary cards ──────────────────────────────────────────────────── */
@@ -3172,10 +3515,38 @@ body {
 }
 
 /* ── Insights → Recurring (Phase V, V3) ───────────────────────────────────── */
-.recurring-costs {
+.recurring-costs,
+.accounts-tab {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Insights → Accounts' goal plan (Phase F): a reached goal in a line, then a small chart per goal on
+   one month axis, each titled with where it's headed */
+.goal-plan-held,
+.goal-plan-handoff {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.goal-plan-panel {
+  margin: 16px 0 0;
+}
+
+.goal-plan-panel figcaption {
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.goal-plan-panel figcaption strong {
+  color: #1f2937;
+}
+
+.goal-plan .view-as-table {
+  margin-top: 12px;
 }
 
 .recurring-costs-headline h3 {
@@ -3428,7 +3799,7 @@ body {
   color: #6b7280;
 }
 
-/* The forecast (V6b): dashed, and labelled as known recurring items only */
+/* The forecast (Phase F, F1): dashed, and labelled with what it counts */
 .balance-forecast-line {
   margin: -6px 0 12px;
   font-size: 0.85rem;
@@ -3511,10 +3882,6 @@ body {
   color: #6b7280;
 }
 
-.category-panels + .chart-note {
-  margin: 14px 0 0;
-}
-
 .category-panels {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -3525,11 +3892,11 @@ body {
   margin: 0;
 }
 
+/* The category's name, then its label on the line below */
 .category-panel figcaption {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
+  flex-direction: column;
+  gap: 2px;
   margin-bottom: 4px;
   font-size: 0.8rem;
   color: #4b5563;
@@ -3538,12 +3905,6 @@ body {
 .category-panel figcaption strong {
   font-size: 0.9rem;
   color: #1f2937;
-}
-
-.category-panel-others {
-  flex-basis: 100%;
-  font-size: 0.75rem;
-  color: #6b7280;
 }
 
 /* One colour for every panel; a month only partly in the period lighter */
@@ -3699,6 +4060,11 @@ body {
   cursor: pointer;
 }
 
+.view-as-table-note {
+  margin: 8px 0 0;
+  color: #6b7280;
+}
+
 .view-as-table-scroll {
   overflow-x: auto;
   margin-top: 8px;
@@ -3828,7 +4194,9 @@ body {
   margin-bottom: 16px;
 }
 
-.category-allocations-header h3 {
+/* Budgeting's section titles: CATEGORY ALLOCATIONS and GOALS */
+.category-allocations-header h3,
+.goals-header h3 {
   font-size: 1rem;
   font-weight: 700;
   color: #374151;
@@ -3860,13 +4228,12 @@ body {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  padding: 18px 20px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
 }
 
 .dashboard-col .section-header {
-  margin-bottom: 12px;
   flex-shrink: 0;
 }
 

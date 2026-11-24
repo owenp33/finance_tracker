@@ -1,13 +1,21 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InsightsView from '../components/InsightsView';
+import { NetTip } from '../components/insights/charts/NetChart';
 import { CategoryColorProvider } from '../CategoryColorContext';
 
-// jsdom has no layout, so each chart gets a fixed size instead of measuring its container
+// jsdom has no layout, so each chart gets a fixed size instead of measuring its container, and is
+// told that size as Recharts tells it (onResize)
 jest.mock('recharts', () => {
   const actual = jest.requireActual('recharts');
-  const { cloneElement } = jest.requireActual('react');
-  return { ...actual, ResponsiveContainer: ({ children, height }) => cloneElement(children, { width: 300, height }) };
+  const { cloneElement, useEffect } = jest.requireActual('react');
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children, height, onResize }) => {
+      useEffect(() => { onResize?.(300, height); }, [onResize, height]);
+      return cloneElement(children, { width: 300, height });
+    },
+  };
 });
 
 const tx = (date, amount, category, vendor, flags) => ({
@@ -62,7 +70,7 @@ const panelText = () => [...spending().querySelectorAll('.category-panel')].map(
   [panel.querySelector('strong').textContent, panel.querySelector('.category-panel-label').textContent]);
 const cells = (table) => [...table.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('th, td')].map(c => c.textContent));
 
-test('a small chart per category: the top 8, then Other, each with its last full month against its average', () => {
+test('8 small charts at most: the top 7 categories, then Other, each with its last full month against its average', () => {
   renderOverview();
   expect(panelText()).toEqual([
     ['Rent', 'Oct: $900, about its $900 average'],
@@ -72,10 +80,10 @@ test('a small chart per category: the top 8, then Other, each with its last full
     ['Dining', 'Oct: $40, 20% below its $50 average'],
     ['Medical', 'Oct: $0, 100% below its $44 average'],
     ['Subscriptions', 'Oct: $20, about its $20 average'],
-    ['Shopping', 'Oct: $30, 100% above its $15 average'],
-    ['Other', 'Oct: $25, 25% above its $20 average'],
+    ['Other', 'Oct: $55, 57% above its $35 average'],
   ]);
-  expect(within(spending()).getByText('Gifts, Pets')).toBeInTheDocument();
+  // Other doesn't name the categories it adds up
+  expect(within(spending()).queryByText(/Shopping|Gifts|Pets/)).not.toBeInTheDocument();
 });
 
 test("the panels don't take reimbursements off (only budgets do), so no note explains a difference", () => {
@@ -89,6 +97,7 @@ test('each panel draws a bar per month, the partial month lighter, and a dashed 
   expect(groceries.querySelectorAll('.category-bar')).toHaveLength(3);
   expect(groceries.querySelectorAll('.category-bar.partial')).toHaveLength(1);
   expect(groceries.querySelector('.category-average')).not.toBeNull();
+  expect(within(spending()).getByText('Per month; dashed line is monthly average')).toBeInTheDocument();
 });
 
 test('"View as table" lists every panel', async () => {
@@ -103,7 +112,7 @@ test('"View as table" lists every panel', async () => {
 
 test('income is one line instead of a pie, and the pies are gone', () => {
   renderOverview();
-  expect(screen.getByText('Largest income category: Paycheck, $4,000.00 of $4,050.00 (99%)')).toBeInTheDocument();
+  expect(screen.getByText('Top income: Paycheck, $4,000.00 (99%)')).toBeInTheDocument();
   expect(screen.queryByText('Income by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending by Category')).not.toBeInTheDocument();
   expect(screen.queryByText('Spending Breakdown')).not.toBeInTheDocument();
@@ -122,17 +131,34 @@ describe('net per month', () => {
     expect(screen.queryByText('Monthly Trends')).not.toBeInTheDocument();
   });
 
-  test('"View as table" lists each month with its 3-month average', async () => {
+  test('the note says what the bars are, and the legend names the average line', () => {
+    renderOverview(NET_TRANSACTIONS);
+    expect(within(net()).getByText('Money in - money out, transfers left out')).toBeInTheDocument();
+    expect(net().querySelector('.timeline-legend li:last-child').textContent).toBe('3-month average');
+  });
+
+  test('"View as table" lists each month with its 3-month average, on the middle month', async () => {
     renderOverview(NET_TRANSACTIONS);
     await user.click(within(net()).getByText('View as table'));
     expect(cells(within(net()).getByRole('table'))).toEqual([
       ['Month', 'Money in', 'Money out', 'Net', '3-month average'],
       ['Jun 2026', '$2,000.00', '$1,500.00', '+$500.00', '—'],
-      ['Jul 2026', '$2,000.00', '$2,600.00', '-$600.00', '—'],
-      ['Aug 2026', '$2,000.00', '$1,700.00', '+$300.00', '+$66.67'],
-      ['Sep 2026', '$2,000.00', '$1,100.00', '+$900.00', '+$200.00'],
-      ['Oct 2026', '$0.00', '$0.00', '$0.00', '+$400.00'],
+      ['Jul 2026', '$2,000.00', '$2,600.00', '-$600.00', '+$66.67'],
+      ['Aug 2026', '$2,000.00', '$1,700.00', '+$300.00', '+$200.00'],
+      ['Sep 2026', '$2,000.00', '$1,100.00', '+$900.00', '+$400.00'],
+      ['Oct 2026', '$0.00', '$0.00', '$0.00', '—'],
       ['Nov 2026 (partial)', '$0.00', '$200.00', '-$200.00', '—'],
+    ]);
+  });
+
+  test("a month's tooltip names the three months its average covers", () => {
+    const row = { month: '2026-01', income: 200000, expenses: 150000, net: 50000, partial: false, average: 6667 };
+    render(<NetTip active payload={[{ payload: row }]} />);
+    const tip = screen.getByRole('tooltip');
+    expect(tip.querySelector('strong')).toHaveTextContent('Jan 2026');
+    expect([...tip.querySelectorAll('dt, dd')].map(el => el.textContent)).toEqual([
+      'Money in', '$2,000.00', 'Money out', '$1,500.00', 'Net', '+$500.00',
+      'Average of Dec 2025–Feb 2026', '+$66.67',
     ]);
   });
 });
@@ -161,6 +187,7 @@ describe('top vendors', () => {
     expect(vendors().querySelector('.vendor-fill').style.width).toBe('100%');
     expect(vendors().querySelectorAll('.vendor-fill')[1].style.width).toMatch(/^29\.6/);      // $800 of $2,700
     expect(screen.queryByText('Top 10 Vendors by Spending')).not.toBeInTheDocument();
+    expect(within(vendors()).getByText('Click a vendor for details.')).toBeInTheDocument();
   });
 
   test("clicking a vendor shows its charges, average, months and latest transactions; clicking again hides them", async () => {
@@ -200,5 +227,32 @@ describe('top vendors', () => {
 test('without spending, the section says so', () => {
   renderOverview([tx('2026-10-01', 2000, 'Paycheck', 'Employer')]);
   expect(within(spending()).getByText('No spending in this period.')).toBeInTheDocument();
-  expect(screen.getByText('All income is in one category: Paycheck ($2,000.00)')).toBeInTheDocument();
+  expect(screen.getByText('All income: Paycheck ($2,000.00)')).toBeInTheDocument();
+});
+
+describe('month labels', () => {
+  // Recharts draws an axis's labels in a layer of their own, apart from the axis
+  const xLabels = (el) => [...el.querySelectorAll('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')]
+    .map(t => t.textContent);
+  // A paycheck and rent every month from Jan 2017 through November 2026
+  const TEN_YEARS = [];
+  for (let y = 2017; y <= 2026; y += 1) {
+    for (let m = 1; m <= (y < 2026 ? 12 : 11); m += 1) {
+      const month = `${y}-${String(m).padStart(2, '0')}`;
+      TEN_YEARS.push(tx(`${month}-01`, 3000, 'Paycheck', 'Employer'), spend(`${month}-02`, 'Rent', 1200));
+    }
+  }
+
+  test('a short history names every month', () => {
+    renderOverview();
+    expect(xLabels(spending().querySelector('.category-panel'))).toEqual(['Sep 2026', 'Oct', 'Nov']);
+  });
+
+  test('ten years are labelled every other year, evenly, on the small charts and on net per month', () => {
+    renderOverview(TEN_YEARS);
+    // 300px charts: 256px and 240px for the axis, room for 5 years
+    expect(xLabels(spending().querySelector('.category-panel'))).toEqual(['2018', '2020', '2022', '2024', '2026']);
+    const net = screen.getByRole('heading', { name: 'Net per month' }).closest('section');
+    expect(xLabels(net)).toEqual(['2018', '2020', '2022', '2024', '2026']);
+  });
 });

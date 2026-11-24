@@ -1,6 +1,7 @@
 """
 Budget progress and the scheduled-pace setting: GET /api/budgets/progress (each budget's spending,
-which budget pace draws) and PUT /api/budgets/scheduled-pace (Phase V, V1).
+which budget pace draws) and PUT /api/budgets/scheduled-pace (Phase V, V1); and which categories
+can have a budget at all (POST /api/budgets, PATCH /api/budgets/<id>).
 """
 from datetime import date
 
@@ -25,6 +26,10 @@ def progress(client, headers, period='2026-10'):
     resp = client.get(f'/api/budgets/progress?period={period}', headers=headers)
     assert resp.status_code == 200, resp.json
     return {row['category']: row for row in resp.json['progress']}
+
+
+def create(client, headers, category, period='2026-11', amount=100):
+    return client.post('/api/budgets', headers=headers, json={'category': category, 'period': period, 'amount': amount})
 
 
 def set_pace(client, headers, category, scheduled):
@@ -82,6 +87,17 @@ class TestProgress:
         budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
         spend(account, date(2026, 10, 3), 'Groceries', -100.0, is_transfer=True)
         assert progress(client, auth_headers)['Groceries']['spent_cents'] == 0
+
+    def test_a_loan_accounts_transactions_never_count(self, client, auth_headers, user, account):
+        # A loan's entries only move what's owed; the bill they mirror is spent from the bank account
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        budget_svc.create_budget(user.id, 'Loan', '2026-10', 100.0)
+        spend(account, date(2026, 10, 31), 'Loan', -75.0)
+        spend(loan, date(2026, 10, 15), 'Loan', -12.5)                          # e.g. an interest charge
+        spend(loan, date(2026, 10, 20), 'Loan', 40.0, is_reimbursement=True)    # would lower the spending
+        assert progress(client, auth_headers)['Loan']['spent_cents'] == 7500
 
     def test_reimbursements_lower_the_spending_but_never_below_zero(self, client, auth_headers, user, account):
         budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
@@ -199,3 +215,86 @@ class TestScheduledPace:
         _db.session.delete(user)
         _db.session.commit()
         assert ScheduledPaceModel.query.count() == 0
+
+
+class TestWhichCategoriesCanHaveABudget:
+    """
+    A budget is for spending: a category whose money in outweighs its money out, in dollars over all
+    time, can't have one, nor can one none of whose transactions count as spending (transfers, or on
+    a loan account). A category never used is fine. Money in and out leave out transfers and loan
+    accounts, as every total does.
+    """
+
+    def test_a_category_mostly_money_coming_in_is_refused(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        spend(account, date(2026, 10, 2), 'Income', -83.95)
+        resp = create(client, auth_headers, 'Income')
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': "Income can't have a budget: it's mostly money coming in."}
+
+    def test_more_money_out_than_in_is_fine_whatever_the_number_of_deposits(self, client, auth_headers, account):
+        # Utility: roommates paying back more often than the bill is paid, but less in dollars
+        for day in (5, 12, 19):
+            spend(account, date(2026, 10, day), 'Utility', 40.0)
+        spend(account, date(2026, 10, 20), 'Utility', -150.0)
+        assert create(client, auth_headers, 'Utility').status_code == 201
+
+    def test_dollars_decide_however_many_payments_go_out(self, client, auth_headers, account):
+        # Loan: one disbursement in outweighs five payments out
+        spend(account, date(2026, 1, 15), 'Loan', 1000.0)
+        for month in range(6, 11):
+            spend(account, date(2026, month, 28), 'Loan', -75.0)
+        assert create(client, auth_headers, 'Loan').json['error'] == "Loan can't have a budget: it's mostly money coming in."
+
+    def test_money_in_and_out_alike_is_fine(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 3), 'Gifts', 50.0)
+        spend(account, date(2026, 10, 9), 'Gifts', -50.0)
+        assert create(client, auth_headers, 'Gifts').status_code == 201
+
+    def test_a_category_of_transfers_only_is_refused(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 1), 'Transfer', -500.0, is_transfer=True)
+        spend(account, date(2026, 10, 8), 'Transfer', 200.0, is_transfer=True)
+        assert create(client, auth_headers, 'Transfer').json == {
+            'success': False, 'error': "Transfer can't have a budget: none of its transactions count as spending."}
+
+    def test_a_loan_accounts_transactions_never_count(self, client, auth_headers, user, account):
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        # The loan's +$75 entries mirror the bill; only the bill, paid from the bank, counts
+        spend(account, date(2026, 10, 31), 'Bills', -75.0)
+        spend(loan, date(2026, 10, 31), 'Bills', 75.0)
+        spend(loan, date(2026, 11, 1), 'Bills', 75.0)
+        assert create(client, auth_headers, 'Bills').status_code == 201
+        # Interest booked on the loan alone never counts as spending
+        spend(loan, date(2026, 11, 1), 'Interest', -419.96)
+        assert create(client, auth_headers, 'Interest').status_code == 400
+
+    def test_a_body_that_isnt_json_is_a_400(self, client, auth_headers):
+        resp = client.post('/api/budgets', data='not json', content_type='text/plain', headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json['error'].startswith('Missing required fields')
+
+    def test_a_category_never_used_is_fine(self, client, auth_headers, account):
+        assert create(client, auth_headers, 'Vacation').status_code == 201
+
+    def test_only_your_own_transactions_count(self, client, auth_headers, account, other):
+        other_account, _ = other
+        spend(other_account, date(2026, 10, 1), 'Bonus', 1000.0)
+        assert create(client, auth_headers, 'Bonus').status_code == 201
+
+    def test_a_budget_cant_be_renamed_into_such_a_category(self, client, auth_headers, user, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        budget = budget_svc.create_budget(user.id, 'Groceries', '2026-11', 400.0)
+        resp = client.patch(f'/api/budgets/{budget.id}', headers=auth_headers, json={'category': 'Income'})
+        assert resp.status_code == 400
+        assert resp.json['error'] == "Income can't have a budget: it's mostly money coming in."
+        assert _db.session.get(type(budget), budget.id).category == 'Groceries'
+        # Saving it under its own name, or changing only its amount, is fine
+        ok = client.patch(f'/api/budgets/{budget.id}', headers=auth_headers, json={'category': 'Groceries', 'amount': 450})
+        assert ok.status_code == 200 and ok.json['budget']['amount'] == 450
+
+    def test_the_service_refuses_too(self, user, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        with pytest.raises(ValueError, match="Income can't have a budget"):
+            budget_svc.create_budget(user.id, 'Income', '2026-11', 100.0)

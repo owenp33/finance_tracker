@@ -39,18 +39,23 @@ def _period(filters, ledgers):
 
 
 def _by_date(ledgers):
-    """Every LedgerRow in the ledgers, by date, then account, then the order they were added."""
+    """Every LedgerRow in the ledgers, by date, then account, keeping each ledger's order within them."""
     rows = [row for ledger in ledgers for row in ledger.rows]
-    return sorted(rows, key=lambda r: (r.transaction.date, r.transaction.account_id, r.transaction.id))
+    return sorted(rows, key=lambda r: (r.transaction.date, r.account.id))
 
 
 class ReportService:
 
     def csv(self, user_id, filters):
-        """Every transaction the export covers, by date, with its account's running balance."""
+        """
+        Every transaction the export covers, by date, with its account's running balance: transactions
+        only (a loan's payments and interest hits aren't rows, so the file imports again cleanly), the
+        running balances counting them.
+        """
         ledgers = self._ledgers(user_id, filters)
         start, end = _period(filters, ledgers)
-        return ExportFile(ledger_csv(_by_date(ledgers)), 'text/csv', f'transactions_{start}_to_{end}.csv')
+        rows = [row for row in _by_date(ledgers) if row.own_transaction]
+        return ExportFile(ledger_csv(rows), 'text/csv', f'transactions_{start}_to_{end}.csv')
 
     def pdf(self, user_id, filters, generated_at=None):
         """
@@ -63,7 +68,9 @@ class ReportService:
         """
         ledgers = self._ledgers(user_id, filters)
         start, end = _period(filters, ledgers)
-        transactions = [row.transaction for row in _by_date(ledgers)]
+        # Each transaction once, and nothing that isn't one: a loan's payment rows repeat a payment
+        # already in its own account, and interest hits count in no total
+        transactions = [row.transaction for row in _by_date(ledgers) if row.own_transaction]
         analytics = AnalyticsService.generate_report(transactions)
         over_budget_ids = budget_flag_service.over_budget_ids(user_id, transactions)
         generated_at = generated_at or datetime.now()

@@ -8,6 +8,7 @@ function TransactionsView({
   transactions,
   accounts,
   recurringTransactions,
+  interest = [],
   onAdd,
   onAddRecurring,
   onEdit,
@@ -29,10 +30,15 @@ function TransactionsView({
   onCreateAccount,
   onEditAccount,
   onDeleteAccount,
+  onEditInterest,
+  onApproveInterest,
+  onDeleteInterest,
+  onError,
 }) {
   const [tab, setTab] = useState('all');
 
-  const needsAttentionCount = accounts.filter(a => a.needs_attention).length;
+  // Accounts made by an import, and interest charges waiting for approval
+  const needsAttentionCount = accounts.filter(a => a.needs_attention).length + interest.filter(hit => !hit.approved).length;
   const recurringAttentionCount = recurringTransactions.filter(r => r.needs_attention).length;
 
   return (
@@ -46,7 +52,7 @@ function TransactionsView({
         </button>
         <button className={`tab-btn${tab === 'accounts'  ? ' active' : ''}`} onClick={() => setTab('accounts')}>
           Accounts {needsAttentionCount > 0 && (
-            <span className="count-badge attention-badge" title="Accounts that need attention">{needsAttentionCount}</span>
+            <span className="count-badge attention-badge" title="Accounts and interest that need attention">{needsAttentionCount}</span>
           )}
         </button>
         <button className={`tab-btn${tab === 'import'    ? ' active' : ''}`} onClick={() => setTab('import')}>Import</button>
@@ -79,8 +85,6 @@ function TransactionsView({
           onEdit={onEdit}
           onDelete={onDelete}
           onDeleteMany={onDeleteMany}
-          onToggleTransfer={onToggleTransfer}
-          onToggleTransferMany={onToggleTransferMany}
           onEditRecurring={onEditRecurring}
           onDeleteRecurring={onDeleteRecurring}
           onLinkToRecurring={onLinkToRecurring}
@@ -103,6 +107,8 @@ function TransactionsView({
         <AccountsView
           transactions={transactions}
           accounts={accounts}
+          recurring={recurringTransactions}
+          interest={interest}
           onEdit={onEdit}
           onDelete={onDelete}
           onPairTransfer={onPairTransfer}
@@ -110,6 +116,10 @@ function TransactionsView({
           onCreateAccount={onCreateAccount}
           onEditAccount={onEditAccount}
           onDeleteAccount={onDeleteAccount}
+          onEditInterest={onEditInterest}
+          onApproveInterest={onApproveInterest}
+          onDeleteInterest={onDeleteInterest}
+          onError={onError}
         />
       )}
     </div>

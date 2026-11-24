@@ -5,11 +5,12 @@ Thin CRUD operations for interacting with the database.
 Business logic and orchestration belongs in account_service.py.
 """
 from datetime import timedelta
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from extensions import db
 from models.user import User
 from models.account import AccountModel
 from models.transaction import TransactionModel
+from models.interest_hit import InterestHitModel
 from models.recurring import RecurringModel
 from models.recurring_dismissal import RecurringDismissalModel
 from models.recurring_alias import RecurringAliasModel
@@ -42,7 +43,8 @@ class DbService:
 
     # ACCOUNT OPERATIONS ========================================================
 
-    def create_account(self, user_id, acct_id_str, account_name="", needs_attention=False):
+    def create_account(self, user_id, acct_id_str, account_name="", needs_attention=False, kind='bank', apr_bps=None,
+                       interest_frequency=None, interest_through=None):
         display_name = account_name if account_name else acct_id_str
         acc = AccountModel(
             user_id=user_id,
@@ -50,6 +52,10 @@ class DbService:
             acct_name=display_name,
             balance_cents=0,
             needs_attention=needs_attention,
+            kind=kind,
+            apr_bps=apr_bps,
+            interest_frequency=interest_frequency,
+            interest_through=interest_through,
         )
         db.session.add(acc)
         db.session.commit()
@@ -61,34 +67,61 @@ class DbService:
     def get_account(self, account_id):
         return db.session.get(AccountModel, account_id)
 
-    # Stored balances change only through these two, each a single SQL statement: reading the
+    # Stored balances change only through these three, each a single SQL statement: reading the
     # balance into Python, adding, and writing it back lets two simultaneous requests overwrite
     # each other's change.
 
     def adjust_balance(self, account_id, delta_cents):
         """Add delta_cents to an account's stored balance atomically."""
         if delta_cents:
-            self._update_balance(account_id, AccountModel.balance_cents + delta_cents)
+            self._update_balance(account_id, balance_cents=AccountModel.balance_cents + delta_cents)
 
     def recompute_balance(self, account_id):
-        """Set an account's stored balance to its starting balance plus its transactions, atomically."""
-        total = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
-                 .where(TransactionModel.account_id == account_id)
-                 .scalar_subquery())
-        self._update_balance(account_id, AccountModel.opening_balance_cents + total)
+        """
+        Set an account's stored balance to its starting balance plus what moves it (its
+        transactions, its approved interest and a loan's payments: see _transaction_total), atomically.
+        """
+        self._update_balance(account_id, balance_cents=AccountModel.opening_balance_cents + self._transaction_total(account_id))
 
-    def _update_balance(self, account_id, new_value):
+    def set_balance(self, account_id, balance_cents):
+        """
+        Set an account's stored balance to balance_cents and its starting balance to that less what
+        moves it (see _transaction_total), atomically, so starting balance + that = balance.
+        """
+        self._update_balance(account_id, balance_cents=balance_cents,
+                             opening_balance_cents=balance_cents - self._transaction_total(account_id))
+
+    def _transaction_total(self, account_id):
+        """
+        What moves an account's balance, as a subquery for the statements above: the sum of its
+        transactions and its approved interest hits, less the payments of the series that pay it down
+        (a loan's: a $75 bill paid from Checking is $75 less owed).
+        """
+        own = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+               .where(TransactionModel.account_id == account_id)
+               .scalar_subquery())
+        interest = (select(func.coalesce(func.sum(InterestHitModel.amount_cents), 0))
+                    .where(InterestHitModel.account_id == account_id, InterestHitModel.approved.is_(True))
+                    .scalar_subquery())
+        paid = (select(func.coalesce(func.sum(TransactionModel.amount_cents), 0))
+                .select_from(TransactionModel)
+                .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+                .where(RecurringModel.loan_account_id == account_id)
+                .scalar_subquery())
+        return own + interest - paid
+
+    def _update_balance(self, account_id, **values):
         db.session.flush()   # write pending changes first (a starting balance, a new transaction)
         db.session.execute(
             update(AccountModel)
             .where(AccountModel.id == account_id)
-            .values(balance_cents=new_value)
+            .values(**values)
             .execution_options(synchronize_session=False)
         )
-        # A loaded account still holds the old value; make it read the new one when next used
+        # A loaded account still holds the old values; make it read the new ones when next used
         account = db.session.get(AccountModel, account_id)
         if account:
-            db.session.expire(account, ['balance_cents'])
+            db.session.expire(account, list(values))
 
     # TRANSACTION OPERATIONS ====================================================
 
@@ -201,13 +234,14 @@ class DbService:
     def get_budget_activity(self, user_id, categories, start_date, end_date):
         """
         The user's transactions that count toward budgets in these categories between the dates
-        (inclusive): expenses that aren't transfers, and reimbursements.
+        (inclusive): expenses that aren't transfers, and reimbursements, neither on a loan account.
         """
         return (
             TransactionModel.query
             .join(AccountModel, TransactionModel.account_id == AccountModel.id)
             .filter(
                 AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',
                 TransactionModel.category.in_(categories),
                 TransactionModel.date.between(start_date, end_date),
                 or_(
@@ -218,15 +252,60 @@ class DbService:
             .all()
         )
 
-    def get_transaction_totals_before(self, account_ids, before_date):
-        """The sum of amount_cents per account for transactions dated before before_date: {account_id: cents}."""
+    def get_category_totals(self, user_id, category):
+        """
+        The user's transactions in one category, over all time: `money_in` and `money_out` (cents,
+        both positive) and how many (`counted`) of those that count in totals (not transfers, not on
+        a loan account), and how many it has in all (`total`).
+        """
+        counted = TransactionModel.is_transfer.is_(False) & (AccountModel.kind != 'loan')
+        money_in, money_out, counted_count, total = (
+            db.session.query(
+                func.coalesce(func.sum(case((counted & (TransactionModel.amount_cents > 0), TransactionModel.amount_cents),
+                                            else_=0)), 0),
+                func.coalesce(func.sum(case((counted & (TransactionModel.amount_cents < 0), -TransactionModel.amount_cents),
+                                            else_=0)), 0),
+                func.coalesce(func.sum(case((counted, 1), else_=0)), 0),
+                func.count(TransactionModel.id),
+            )
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(AccountModel.user_id == user_id, TransactionModel.category == category)
+            .one()
+        )
+        return {'money_in': int(money_in), 'money_out': int(money_out), 'counted': int(counted_count), 'total': total}
+
+    def get_transaction_totals_before(self, account_ids, before_date, pending_interest=False):
+        """
+        What moved each account's balance before before_date, {account_id: cents}: its transactions
+        and approved interest hits dated before it (with pending_interest, those waiting for approval
+        too), less the payments dated before it of the series that pay it down (a loan's).
+        """
         rows = (
             db.session.query(TransactionModel.account_id, func.sum(TransactionModel.amount_cents))
             .filter(TransactionModel.account_id.in_(account_ids), TransactionModel.date < before_date)
             .group_by(TransactionModel.account_id)
             .all()
         )
-        return {account_id: int(total) for account_id, total in rows}
+        totals = {account_id: int(total) for account_id, total in rows}
+        interest = (
+            db.session.query(InterestHitModel.account_id, func.sum(InterestHitModel.amount_cents))
+            .filter(InterestHitModel.account_id.in_(account_ids), InterestHitModel.date < before_date)
+        )
+        if not pending_interest:
+            interest = interest.filter(InterestHitModel.approved.is_(True))
+        interest = interest.group_by(InterestHitModel.account_id).all()
+        for account_id, total in interest:
+            totals[account_id] = totals.get(account_id, 0) + int(total)
+        paid = (
+            db.session.query(RecurringModel.loan_account_id, func.sum(TransactionModel.amount_cents))
+            .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+            .filter(RecurringModel.loan_account_id.in_(account_ids), TransactionModel.date < before_date)
+            .group_by(RecurringModel.loan_account_id)
+            .all()
+        )
+        for loan_id, total in paid:
+            totals[loan_id] = totals.get(loan_id, 0) - int(total)
+        return totals
 
     def find_transfer_peer(self, user_id, amount_cents, date_obj, exclude_account_id, exclude_id=None):
         """
@@ -289,7 +368,117 @@ class DbService:
         return RecurringModel.query.filter_by(account_id=account_id).all()
 
     def get_user_recurring(self, user_id):
-        return RecurringModel.query.join(AccountModel).filter(AccountModel.user_id == user_id).all()
+        return (RecurringModel.query
+                .join(AccountModel, RecurringModel.account_id == AccountModel.id)
+                .filter(AccountModel.user_id == user_id)
+                .all())
+
+    # GOAL OPERATIONS ===========================================================
+
+    def get_goal(self, goal_id):
+        from models.goal import GoalModel
+        return db.session.get(GoalModel, goal_id)
+
+    def get_user_goals(self, user_id):
+        """The user's goals in their order."""
+        from models.goal import GoalModel
+        return GoalModel.query.filter_by(user_id=int(user_id)).order_by(GoalModel.position, GoalModel.id).all()
+
+    # LOAN OPERATIONS ===========================================================
+
+    def get_series_paying_down(self, loan_account_id):
+        """The templates whose series pay down this loan account."""
+        return RecurringModel.query.filter_by(loan_account_id=loan_account_id).all()
+
+    def get_loan_payments(self, loan_account_ids, start_date=None, end_date=None):
+        """
+        The payments that pay down these loan accounts, as (loan account id, transaction): the
+        non-zero transactions of the series paying each one down, dated start_date through
+        end_date (both inclusive, both optional).
+        """
+        query = (db.session.query(RecurringModel.loan_account_id, TransactionModel)
+                 .join(RecurringModel, TransactionModel.recurring_id == RecurringModel.id)
+                 .filter(RecurringModel.loan_account_id.in_(loan_account_ids), TransactionModel.amount_cents != 0))
+        if start_date is not None:
+            query = query.filter(TransactionModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(TransactionModel.date <= end_date)
+        return query.all()
+
+    # INTEREST OPERATIONS =======================================================
+
+    def get_interest_hit(self, hit_id):
+        return db.session.get(InterestHitModel, hit_id)
+
+    def get_user_interest_hits(self, user_id):
+        """The user's interest hits, approved or waiting for approval, newest first."""
+        return (InterestHitModel.query.join(AccountModel)
+                .filter(AccountModel.user_id == int(user_id))
+                .order_by(InterestHitModel.date.desc(), InterestHitModel.id.desc())
+                .all())
+
+    def get_interest_hits(self, account_ids, start_date=None, end_date=None):
+        """
+        These accounts' approved interest hits (the ones that moved their balances) dated start_date
+        through end_date (both inclusive, both optional).
+        """
+        query = InterestHitModel.query.filter(InterestHitModel.account_id.in_(account_ids),
+                                              InterestHitModel.approved.is_(True))
+        if start_date is not None:
+            query = query.filter(InterestHitModel.date >= start_date)
+        if end_date is not None:
+            query = query.filter(InterestHitModel.date <= end_date)
+        return query.all()
+
+    # A hit waiting for approval changes, is approved or is deleted in one statement that checks it's
+    # still waiting, so an approval can't apply an amount changed at the same moment, or a hit deleted.
+
+    def set_pending_interest_amount(self, hit_id, amount_cents):
+        """Change a hit's amount if it's still waiting for approval; say whether it was."""
+        return self._change_pending_hit(hit_id, update(InterestHitModel).values(amount_cents=amount_cents))
+
+    def approve_interest_hit(self, hit_id):
+        """Mark a hit approved if it's still waiting; say whether it was (the caller applies it)."""
+        return self._change_pending_hit(hit_id, update(InterestHitModel).values(approved=True))
+
+    def delete_pending_interest_hit(self, hit_id):
+        """Delete a hit if it's still waiting for approval; say whether it was."""
+        hit = db.session.get(InterestHitModel, hit_id)
+        account = hit.account if hit is not None else None
+        deleted = self._change_pending_hit(hit_id, delete(InterestHitModel))
+        if deleted:
+            db.session.expunge(hit)
+            db.session.expire(account, ['interest_hits'])
+        return deleted
+
+    def _change_pending_hit(self, hit_id, statement):
+        """Run `statement` on the hit if it's still waiting for approval, say whether it was, and have
+        the session read the hit afresh."""
+        db.session.flush()
+        hit = db.session.get(InterestHitModel, hit_id)
+        changed = db.session.execute(
+            statement.where(InterestHitModel.id == hit_id, InterestHitModel.approved.is_(False))
+            .execution_options(synchronize_session=False)
+        ).rowcount == 1
+        if hit is not None:
+            db.session.expire(hit)
+        return changed
+
+    def claim_interest_period(self, account_id, booked_through, start):
+        """
+        Move an account's interest_through from `booked_through` to `start` in one statement, and
+        say whether it moved: it doesn't when another run already did, so a period is booked once.
+        """
+        db.session.flush()
+        current = (AccountModel.interest_through.is_(None) if booked_through is None
+                   else AccountModel.interest_through == booked_through)
+        moved = db.session.execute(
+            update(AccountModel).where(AccountModel.id == account_id, current).values(interest_through=start)
+        ).rowcount == 1
+        account = db.session.get(AccountModel, account_id)
+        if account is not None:
+            db.session.expire(account, ['interest_through'])
+        return moved
 
     # BUDGET OPERATIONS =========================================================
 

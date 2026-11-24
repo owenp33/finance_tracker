@@ -98,21 +98,25 @@ def _income_line(income):
 # As on the app's Insights Overview (Phase V, V5c)
 
 NET_TITLE = 'Net per month'
-NET_NOTE = 'Money in minus money out each month, transfers left out; a month only partly in the period is lighter.'
-AVERAGE_LABEL = '3-month average of full months'
+NET_NOTE = ('Money in minus money out each month, transfers left out; '
+            'a month only partly in the period is lighter and in no average.')
+AVERAGE_LABEL = '3-month average of each month and the months either side'
 NET_COLUMNS = [               # (header, share of the table width, alignment)
     ('Month', 0.28, 'left'), ('Money in', 0.18, 'right'), ('Money out', 0.18, 'right'),
     ('Net', 0.18, 'right'), ('3-month average', 0.18, 'right'),
 ]
 MIN_MONTH_SLOTS = 6           # a few months still get bars this narrow, centred
-ALL_TICKS_UP_TO = 8           # months; a longer run labels only its first month, Januaries and Julys
+# Months between labels, smallest first, as the app's utils/monthTicks.js: every 1, 2, 3 or 6 months
+# on the calendar (every 3: Jan, Apr, Jul, Oct), then every January, then every 2, 3, 5 or 10 years
+MONTH_STEPS = (1, 2, 3, 6, 12, 24, 36, 60, 120)
+NET_LABEL_SLOTS = (50, 32)    # points a label needs on the net chart (8pt), gap included: "Sep 2026", "2026"
 
 
 def render_net_per_month_pages(pdf, rows, period_label):
     """
     Net per month: bars around $0 (aqua above, orange below; a month only partly in the period
-    lighter) with the 3-month average of full months as a line, then the numbers as a table, on
-    as many pages as it needs. `rows` are summary_data.monthly_net's.
+    lighter) with the 3-month average as a line, each point on the middle month of the three, then
+    the numbers as a table, on as many pages as it needs. `rows` are summary_data.monthly_net's.
     """
     for number, chunk in enumerate(page_chunks(rows)):
         fig = plt.figure(figsize=(8.5, 11))
@@ -140,7 +144,7 @@ def _net_chart(fig, rows):
             color=INK, linewidth=2, marker='o', markersize=3, label=AVERAGE_LABEL, zorder=3)
 
     _month_xlim(ax, len(rows))
-    positions, labels = _month_ticks([row['month'] for row in rows])
+    positions, labels = _month_ticks([row['month'] for row in rows], _axis_points(ax), NET_LABEL_SLOTS)
     ax.set_xticks(positions, labels=labels)
     _style_axes(ax)
     ax.spines['bottom'].set_visible(False)   # the $0 line is the baseline
@@ -168,16 +172,35 @@ def _month_label(month, with_year=True):
     return date(year, number, 1).strftime('%b %Y' if with_year else '%b')
 
 
-def _month_ticks(months, year_below=False):
+def _on_step(month, step):
+    """Whether a month ('YYYY-MM') is labelled when labels are `step` months apart."""
+    year, number = map(int, month.split('-'))
+    return (number - 1) % step == 0 if step < 12 else number == 1 and year % (step // 12) == 0
+
+
+def _month_ticks(months, width, slots, year_below=False):
     """
-    Where and how to label a run of months ('YYYY-MM'): every month of a short run; of a long
-    one, the first, Januaries and Julys. The year shows on January and the first, on a line of
-    its own under the month for a narrow chart.
+    Where and how to label a run of months ('YYYY-MM') on an axis `width` points wide, by the app's
+    rule (utils/monthTicks.js monthAxis): the smallest of MONTH_STEPS whose labels fit, `slots` being
+    the points a month label and a year label need, so labels are evenly spaced and never crowd. The
+    year shows on the first label and on January (on a line of its own under the month for a narrow
+    chart), and alone once labels are a year or more apart.
     """
-    shown = [i for i, month in enumerate(months)
-             if len(months) <= ALL_TICKS_UP_TO or i == 0 or month.endswith(('-01', '-07'))]
-    labels = [_month_label(months[i], with_year=i == 0 or months[i].endswith('-01')) for i in shown]
+    def fits(step):
+        room = max(1, int(width // slots[0 if step < 12 else 1]))
+        return sum(_on_step(month, step) for month in months) <= room
+
+    step = next((step for step in MONTH_STEPS if fits(step)), MONTH_STEPS[-1])
+    shown = [i for i, month in enumerate(months) if _on_step(month, step)] or list(range(min(len(months), 1)))
+    if step >= 12:
+        return shown, [months[i][:4] for i in shown]
+    labels = [_month_label(months[i], with_year=n == 0 or months[i].endswith('-01')) for n, i in enumerate(shown)]
     return shown, [label.replace(' ', '\n') for label in labels] if year_below else labels
+
+
+def _axis_points(ax):
+    """How wide an axes is on its page, in points."""
+    return ax.get_position().width * ax.figure.get_figwidth() * 72
 
 
 def _month_xlim(ax, count):
@@ -194,23 +217,23 @@ SPENDING_NOTE = ('Per month, each on its own scale; the dashed line is its month
                  'and a month only partly in the period is lighter.')
 NO_SPENDING = 'No spending in this period.'
 AVERAGE_LINE_LABEL = 'Monthly average'
-PANELS_PER_ROW = 3            # summary_data.PANEL_LIMIT (8) plus Other fill three rows
+PANELS_PER_ROW = 3            # summary_data.PANEL_LIMIT (8, Other included) fill three rows
 PANEL_WIDTH = 0.26            # as fractions of the page
 PANEL_GAP = 0.05
 PANEL_AXIS_ROOM = 0.045       # for the dollar ticks, left of each chart
 PANEL_TOP = 0.87              # the first row's caption
 PANEL_ROW_HEIGHT = 0.165      # a caption, its chart and month ticks
 PANEL_CAPTION_LINE = 0.015
-PANEL_CHART_HEIGHT = 0.08     # under the caption's three lines
+PANEL_CHART_HEIGHT = 0.095    # under the caption's two lines
 SPENDING_TABLE_TOP = 0.36
+PANEL_LABEL_SLOTS = (28, 28)  # points a label needs on a panel (7pt, the year under the month), gap included
 PANEL_CATEGORY_CHARS = 30     # longer text is cut short with an ellipsis
-OTHERS_CHARS = 40
 
 
 def render_spending_by_category_page(pdf, panels, period_label):
     """
-    Spending by category: a small chart per panel (summary_data.category_panels: the top 8, then
-    Other), each a bar per month on its own scale (a month only partly in the period lighter)
+    Spending by category: a small chart per panel (summary_data.category_panels: 8 at most, the
+    top 7 then Other), each a bar per month on its own scale (a month only partly in the period lighter)
     with its monthly average dashed and its last full month against that average above it, then
     the numbers as a table.
     """
@@ -229,17 +252,15 @@ def render_spending_by_category_page(pdf, panels, period_label):
 
 
 def _category_panel(fig, panel, row, column):
-    """One panel: its category, its label and (for Other) the categories in it, over its chart."""
+    """One panel: its category and its label, over its chart."""
     left = 0.06 + column * (PANEL_WIDTH + PANEL_GAP)
     top = PANEL_TOP - row * PANEL_ROW_HEIGHT
-    chart_top = top - 3 * PANEL_CAPTION_LINE - 0.005
+    chart_top = top - 2 * PANEL_CAPTION_LINE - 0.005
     ax = fig.add_axes([left + PANEL_AXIS_ROOM, chart_top - PANEL_CHART_HEIGHT,
                        PANEL_WIDTH - PANEL_AXIS_ROOM, PANEL_CHART_HEIGHT])
 
     caption = [(_shorten(panel['category'], PANEL_CATEGORY_CHARS), 9, 'bold', INK),
                (_panel_label(panel), 7.5, 'normal', INK_SECONDARY)]
-    if 'others' in panel:
-        caption.append((_shorten(', '.join(panel['others']), OTHERS_CHARS), 7, 'normal', INK_MUTED))
     for line, (text, size, weight, color) in enumerate(caption):
         ax.text(left, top - line * PANEL_CAPTION_LINE, text, transform=fig.transFigure, va='top',
                 fontsize=size, fontweight=weight, color=color, parse_math=False)
@@ -251,7 +272,8 @@ def _category_panel(fig, panel, row, column):
         ax.axhline(panel['average'] / 100, color=INK, linewidth=1, dashes=(4, 3), zorder=3,
                    label=AVERAGE_LINE_LABEL)
     _month_xlim(ax, len(months))
-    positions, labels = _month_ticks([m['month'] for m in months], year_below=True)
+    positions, labels = _month_ticks([m['month'] for m in months], _axis_points(ax), PANEL_LABEL_SLOTS,
+                                     year_below=True)
     ax.set_xticks(positions, labels=labels)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=2))
     _style_axes(ax)
@@ -561,16 +583,20 @@ def _labelled_bars(fig, bars, top, bars_right):
 # ACCOUNT PAGES =================================================================
 
 def account_table_rows(rows, over_budget_ids):
-    """(cells, over budget?) for each ledger row, one cell per ACCOUNT_COLUMNS entry."""
+    """
+    (cells, over budget?) for each ledger row, one cell per ACCOUNT_COLUMNS entry. A loan's payment
+    (made from another account) shows the amount on the loan, and its budget flag only on its own
+    account's page; an interest hit reads "Interest" and is never over budget.
+    """
     table = []
     for row in rows:
         t = row.transaction
-        over = t.id in over_budget_ids
+        over = row.own_transaction and t.id in over_budget_ids
         table.append(([
             t.date.isoformat(),
             _shorten(t.vendor, VENDOR_CHARS),
             _shorten(t.category, CATEGORY_CHARS),
-            _money(t.amount_cents),
+            _money(row.amount_cents),
             _money(row.balance_cents),
             'Over' if over else '',
         ], over))

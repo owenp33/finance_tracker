@@ -2,8 +2,9 @@
 budget_flag_service.py - Which expenses are over budget, computed when transactions are read
 
 A category's monthly budget allows its amount plus any carried-over money. Walking the month's
-expenses in date order (transfers don't count, and the month's reimbursements are credited up
-front), every expense from the point the running total passes the allowance is over budget.
+expenses in date order (transfers and a loan account's transactions don't count, and the month's
+reimbursements are credited up front), every expense from the point the running total passes the
+allowance is over budget.
 Nothing is stored, so no change to transactions or budgets can leave a flag out of date.
 """
 import calendar
@@ -43,7 +44,8 @@ class BudgetFlagService:
         The ids of the given transactions that are over budget. The walk counts all of the user's
         spending in each category-month involved, not just the transactions given.
         """
-        months = {(t.category, _period(t.date)) for t in transactions if t.amount_cents < 0 and not t.is_transfer}
+        months = {(t.category, _period(t.date)) for t in transactions
+                  if t.amount_cents < 0 and not t.is_transfer and not t.on_loan_account}
         budgets = {(b.category, b.period): b for b in db_service.get_user_budgets(user_id)}
         months = {m for m in months if m in budgets}
         if not months:

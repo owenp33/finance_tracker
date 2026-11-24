@@ -2,16 +2,16 @@
 summary_data.py - The numbers behind the PDF report's summary pages, in cents
 
 Counted as the app's Insights counts them (frontend `utils/moneyRules.js` and
-`components/insights/`): transfers never count, money in is income (reimbursements included),
-money out is spending, and a zero amount is neither. Pure functions over transactions; months
-are 'YYYY-MM' strings.
+`components/insights/`): transfers and a loan account's transactions never count, money in is
+income (reimbursements included), money out is spending, and a zero amount is neither. Pure
+functions over transactions; months are 'YYYY-MM' strings.
 """
 import calendar
 import math
 from datetime import date
 from models.recurring import shift_date
 
-PANEL_LIMIT = 8    # categories with a chart of their own; the rest add up as Other
+PANEL_LIMIT = 8    # spending-by-category charts in all, Other included
 VENDOR_LIMIT = 10  # vendors on the top vendors page
 
 
@@ -20,12 +20,16 @@ def round_half_up(value):
     return math.floor(value + 0.5)
 
 
+def _counts(t):
+    return not t.is_transfer and not t.on_loan_account
+
+
 def _is_income(t):
-    return not t.is_transfer and t.amount_cents > 0
+    return _counts(t) and t.amount_cents > 0
 
 
 def _is_spending(t):
-    return not t.is_transfer and t.amount_cents < 0
+    return _counts(t) and t.amount_cents < 0
 
 
 def _month(day):
@@ -75,8 +79,9 @@ def monthly_net(transactions, months, partial):
     """
     Net per month as the app's Insights Overview draws it: for each of `months`, a dict with its
     `income` and `expenses` (money in and out, positive), `net`, whether it's `partial`, and the
-    3-month moving `average` of net: each full month with the two full months before it, so it
-    starts at the third full month and partial months are in no average (else None).
+    3-month `average` of net on the middle month: each month's with the months either side, when
+    all three are full (else None), so the first and last month have none and partial months are
+    in no average.
     """
     totals = {month: {'income': 0, 'expenses': 0} for month in months}
     for t in transactions:
@@ -97,17 +102,19 @@ def monthly_net(transactions, months, partial):
         'partial': month in part_only,
         'average': None,
     } for month in months]
-    full = [row for row in rows if not row['partial']]
-    for i in range(2, len(full)):
-        full[i]['average'] = round_half_up((full[i]['net'] + full[i - 1]['net'] + full[i - 2]['net']) / 3)
+    for i in range(1, len(rows) - 1):
+        three = rows[i - 1:i + 2]
+        if not any(row['partial'] for row in three):
+            rows[i]['average'] = round_half_up(sum(row['net'] for row in three) / 3)
     return rows
 
 
 def category_panels(transactions, months, partial, limit=PANEL_LIMIT):
     """
     Spending by category as the app's Insights Overview draws it (small multiples): a panel per
-    category with spending in `months`, the top `limit` by total, then the rest added up as Other
-    (which names them in `others`). Each: {category, total, count (spending transactions), months:
+    category with spending in `months`, `limit` panels at most: with more categories than that, the
+    top `limit` - 1 by total, then the rest added up as Other. Each: {category, total, count
+    (spending transactions), months:
     [{month, cents, partial}], average (over the full months; None without one), last (the last
     full month's {month, cents}, or None)}. Plain spending: reimbursements aren't taken off, since
     only budgets do that.
@@ -125,29 +132,28 @@ def category_panels(transactions, months, partial, limit=PANEL_LIMIT):
     ranked = sorted(
         ({'category': name, 'total': sum(c['by_month'].values()), **c} for name, c in categories.items()),
         key=lambda c: (-c['total'], c['category'].casefold()))
-    groups = [(c['category'], [c], None) for c in ranked[:limit]]
-    rest = ranked[limit:]
-    if rest:
-        groups.append(('Other', rest, sorted(c['category'] for c in rest)))
+    shown = limit - 1 if len(ranked) > limit else limit
+    groups = [(c['category'], [c]) for c in ranked[:shown]]
+    if len(ranked) > shown:
+        groups.append(('Other', ranked[shown:]))
 
     part_only = set(partial)
     panels = []
-    for name, members, others in groups:
+    for name, members in groups:
         panel_months = [{
             'month': month,
             'cents': sum(c['by_month'].get(month, 0) for c in members),
             'partial': month in part_only,
         } for month in months]
         full = [m for m in panel_months if not m['partial']]
-        panel = {'category': name, **({'others': others} if others else {})}
-        panel.update({
+        panels.append({
+            'category': name,
             'total': sum(c['total'] for c in members),
             'count': sum(c['count'] for c in members),
             'months': panel_months,
             'average': round_half_up(sum(m['cents'] for m in full) / len(full)) if full else None,
             'last': {'month': full[-1]['month'], 'cents': full[-1]['cents']} if full else None,
         })
-        panels.append(panel)
     return panels
 
 

@@ -1,19 +1,23 @@
 """
-The numbers behind the PDF's summary pages (services/reports/summary_data.py), counted as the
-app's Insights counts them: transfers never count, money in is income (reimbursements included),
-money out is spending, and a zero amount is neither.
+The numbers behind the PDF's summary pages (services/reports/summary_data.py, and the totals from
+AnalyticsService.generate_report), counted as the app's Insights counts them: transfers and a loan
+account's transactions never count, money in is income (reimbursements included), money out is
+spending, and a zero amount is neither.
 """
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
+from services.analytics_service import AnalyticsService
 from services.reports import summary_data
 
 TODAY = date(2026, 11, 12)
 
 
-def tx(day, cents, transfer=False, reimbursement=False, category='Misc', vendor='Shop'):
+def tx(day, cents, transfer=False, reimbursement=False, category='Misc', vendor='Shop', loan=False):
     return SimpleNamespace(date=day, amount_cents=cents, is_transfer=transfer, is_reimbursement=reimbursement,
-                           category=category, vendor=vendor)
+                           category=category, vendor=vendor, on_loan_account=loan)
 
 
 def spend(day, category, dollars):
@@ -87,36 +91,50 @@ class TestMonthlyNet:
             ('2026-03', 0, 1000, -1000),
         ]
 
-    def test_the_3_month_average_takes_each_full_month_with_the_two_full_months_before_it(self):
-        # May partial (the period starts mid-month), Jun–Oct full, Nov so far:
-        # net 100, then 500, -600, 300, 900, 0 (nothing in October), then -200
-        txs = [
-            tx(date(2026, 5, 20), 10000),
-            tx(date(2026, 6, 1), 50000), tx(date(2026, 7, 1), -60000), tx(date(2026, 8, 1), 30000),
-            tx(date(2026, 9, 1), 90000), tx(date(2026, 11, 3), -20000),
-        ]
-        months = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']
-        rows = summary_data.monthly_net(txs, months, ['2026-05', '2026-11'])
+    # May partial (the period starts mid-month), Jun–Oct full, Nov so far:
+    # net 100, then 500, -600, 300, 900, 0 (nothing in October), then -200
+    NET_TXS = [
+        tx(date(2026, 5, 20), 10000),
+        tx(date(2026, 6, 1), 50000), tx(date(2026, 7, 1), -60000), tx(date(2026, 8, 1), 30000),
+        tx(date(2026, 9, 1), 90000), tx(date(2026, 11, 3), -20000),
+    ]
+    NET_MONTHS = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']
+
+    def test_the_3_month_average_sits_on_the_middle_month_of_three_full_months_in_a_row(self):
+        # Jun–Aug's on July, Jul–Sep's on August, Aug–Oct's on September; June's would take in
+        # May and October's November, both partial
+        rows = summary_data.monthly_net(self.NET_TXS, self.NET_MONTHS, ['2026-05', '2026-11'])
         assert [(r['net'], r['partial'], r['average']) for r in rows] == [
             (10000, True, None),
-            (50000, False, None), (-60000, False, None), (30000, False, 6667),
-            (90000, False, 20000), (0, False, 40000),
+            (50000, False, None), (-60000, False, 6667), (30000, False, 20000),
+            (90000, False, 40000), (0, False, None),
             (-20000, True, None),
         ]
 
+    def test_no_average_reaches_across_a_partial_month_in_the_middle(self):
+        # July partial (as this month is in a period that ends later): only Aug–Oct is three full months
+        rows = summary_data.monthly_net(self.NET_TXS, self.NET_MONTHS, ['2026-05', '2026-07', '2026-11'])
+        assert [r['average'] for r in rows] == [None, None, None, None, 40000, None, None]
+
 
 class TestCategoryPanels:
-    """Spending by category as the app's small multiples: the top 8, then Other."""
+    """Spending by category as the app's small multiples: 8 panels at most, the top 7 then Other."""
 
     def panels(self):
         return summary_data.category_panels(SPENDING, ['2026-09', '2026-10', '2026-11'], ['2026-11'])
 
-    def test_the_top_8_categories_by_plain_spending_then_the_rest_as_other(self):
+    def test_8_panels_at_most_other_included_the_top_7_by_plain_spending_then_the_rest_as_other(self):
         assert [(p['category'], p['total'], p['count']) for p in self.panels()] == [
             ('Rent', 270000, 3), ('Groceries', 80000, 3), ('Gas', 24000, 2), ('Fun', 13000, 2),
-            ('Dining', 10000, 2), ('Medical', 8700, 1), ('Subscriptions', 4000, 2), ('Shopping', 3000, 1),
-            ('Other', 4000, 2),
+            ('Dining', 10000, 2), ('Medical', 8700, 1), ('Subscriptions', 4000, 2),
+            ('Other', 7000, 3),
         ]
+
+    def test_8_categories_get_a_panel_each_with_no_other(self):
+        eight = [t for t in SPENDING if t.category not in ('Gifts', 'Pets')]
+        panels = summary_data.category_panels(eight, ['2026-09', '2026-10', '2026-11'], ['2026-11'])
+        assert [p['category'] for p in panels] == [
+            'Rent', 'Groceries', 'Gas', 'Fun', 'Dining', 'Medical', 'Subscriptions', 'Shopping']
 
     def test_each_panel_has_every_month_its_average_over_the_full_months_and_its_last_full_month(self):
         panels = self.panels()
@@ -129,10 +147,10 @@ class TestCategoryPanels:
         assert (groceries['average'], groceries['last']) == (35000, {'month': '2026-10', 'cents': 40000})
         assert ([m['cents'] for m in medical['months']], medical['average']) == ([8700, 0, 0], 4350)
 
-    def test_other_adds_up_the_rest_month_by_month_and_names_them(self):
-        other = self.panels()[8]
-        assert (other['others'], [m['cents'] for m in other['months']]) == (['Gifts', 'Pets'], [1500, 2500, 0])
-        assert 'others' not in self.panels()[0]
+    def test_other_adds_up_the_rest_month_by_month_without_naming_them(self):
+        other = self.panels()[7]
+        assert ([m['cents'] for m in other['months']], other['average']) == ([1500, 5500, 0], 3500)
+        assert 'others' not in other
 
     def test_without_a_full_month_there_is_no_average_or_last_month(self):
         (rent,) = summary_data.category_panels([spend(date(2026, 11, 3), 'Rent', 900)], ['2026-11'], ['2026-11'])
@@ -196,6 +214,56 @@ class TestTopVendors:
 
     def test_no_spending_no_vendors(self):
         assert summary_data.top_vendors([tx(date(2026, 10, 1), 200000, vendor='Employer')]) == []
+
+
+class TestLoanAccounts:
+    """A loan account's transactions only move what's owed (the bill is spent from the bank), so no summary counts them."""
+
+    BANK = [tx(date(2026, 9, 1), 200000, category='Paycheck', vendor='Employer'), spend(date(2026, 9, 30), 'Loan', 75)]
+    LOAN = [
+        tx(date(2026, 9, 30), 7500, category='Loan', vendor='ASPIRE', loan=True),            # the payment's entry
+        tx(date(2026, 9, 15), -1250, category='Loan', vendor='Interest', loan=True),
+        tx(date(2026, 9, 20), 3000, reimbursement=True, category='Loan', loan=True),
+    ]
+
+    def test_net_per_month(self):
+        rows = summary_data.monthly_net(self.BANK + self.LOAN, ['2026-09'], [])
+        assert [(r['income'], r['expenses'], r['net']) for r in rows] == [(200000, 7500, 192500)]
+
+    def test_spending_by_category_the_income_line_and_top_vendors(self):
+        both = self.BANK + self.LOAN
+        panels = summary_data.category_panels(both, ['2026-09'], [])
+        assert [(p['category'], p['total'], p['count']) for p in panels] == [('Loan', 7500, 1)]
+        assert summary_data.largest_income(both) == {'category': 'Paycheck', 'cents': 200000, 'total': 200000,
+                                                     'categories': 1}
+        assert summary_data.top_vendors(both) == [{'vendor': 'Shop', 'total': 7500, 'count': 1, 'average': 7500}]
+
+
+def report_tx(id, dollars, category='Misc', transfer=False, loan=False):
+    """A transaction as AnalyticsService.generate_report reads it."""
+    return SimpleNamespace(id=id, date=date(2026, 9, id), vendor='Shop', category=category, amount=dollars,
+                           amount_cents=round(dollars * 100), notes='', is_transfer=transfer, on_loan_account=loan)
+
+
+class TestSummaryTotals:
+    """The summary page's totals (AnalyticsService.generate_report): transfers and loan accounts left out."""
+
+    def test_income_expenses_and_the_count_leave_them_out(self):
+        report = AnalyticsService.generate_report([
+            report_tx(1, 2000.0, 'Paycheck'), report_tx(2, -75.0, 'Loan'),
+            report_tx(3, -500.0, 'Transfer', transfer=True),
+            report_tx(4, 75.0, 'Loan', loan=True), report_tx(5, -12.5, 'Loan', loan=True),
+        ])
+        summary = report['summary']
+        assert (summary['total_income'], summary['total_expenses'], summary['net_amount'],
+                summary['transaction_count']) == (2000.0, 75.0, 1925.0, 2)
+
+    @pytest.mark.parametrize('only', [{'transfer': True}, {'loan': True}], ids=['transfers', 'loan-account'])
+    def test_nothing_left_to_count_is_an_empty_report(self, only):
+        report = AnalyticsService.generate_report([report_tx(1, -75.0, **only), report_tx(2, 75.0, **only)])
+        assert report['summary'] == {'total_income': 0.0, 'total_expenses': 0.0, 'net_amount': 0.0,
+                                     'transaction_count': 0, 'avg_transaction': 0.0}
+        assert report['spending_by_category'] == report['monthly_summary'] == []
 
 
 def template(id, vendor, cents, frequency=1, unit='months', number=-1, idx=1, next_date=date(2026, 11, 30)):

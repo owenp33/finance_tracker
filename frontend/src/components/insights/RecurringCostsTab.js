@@ -45,7 +45,7 @@ function RecurringCostsTab({ recurring = [], transactions = [], accounts = [], o
           <>
             <div className="recurring-costs-total">{formatCents(total)}/mo</div>
             <p className="recurring-costs-sub">
-              {`${activeCount} active series at their scheduled amounts${incomeCount > 0 ? "; income isn't counted" : ''}`}
+              {`${activeCount} active series${incomeCount > 0 ? '; income not counted' : ''}`}
             </p>
           </>
         ) : (
@@ -53,8 +53,8 @@ function RecurringCostsTab({ recurring = [], transactions = [], accounts = [], o
         )}
         {rows.filter(row => row.beyond).map(row => (
           <p key={row.template.id} className="recurring-costs-note">
-            {`Not included: ${formatWholeDollars(row.beyond.extra / 100)} paid to ${row.template.vendor} beyond its `
-              + `${formatCents(row.monthly)}/mo schedule in ${monthRangeLabel(row.beyond.from, row.beyond.to)}`}
+            {`Not included: ${formatWholeDollars(row.beyond.extra / 100)} extra paid to ${row.template.vendor} `
+              + `(${monthRangeLabel(row.beyond.from, row.beyond.to)})`}
           </p>
         ))}
       </section>

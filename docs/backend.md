@@ -69,7 +69,7 @@ HTTP request
 `import`, `budgets`, and `export` under `/api/<name>`.
 
 **Middleware**
-- `middleware/ownership.py`: `owns_account`, `owns_transaction`, `owns_recurring`, `owns_budget`.
+- `middleware/ownership.py`: `owns_account`, `owns_transaction`, `owns_recurring`, `owns_budget`, `owns_goal`.
   Each loads the resource named in the URL and rejects the request unless it belongs to the
   token's user: 403 for someone else's resource, 404 for a missing one (`owns_account` answers 403
   in both cases).
@@ -124,31 +124,53 @@ account, vendor and amount, within a window of days around a date, nearest first
 exact amount, within a date range), `get_series_transactions` (transactions in any recurring
 series on some accounts between two dates, for the import preview's recurring matches),
 `get_budget_activity` (a user's non-transfer expenses and
-reimbursements in some categories between two dates, for budget flags), and
-`get_transaction_totals_before` (one grouped query: each
+reimbursements in some categories between two dates, for budget flags), `get_category_totals`
+(a user's money in and money out in one category over all time, of the transactions that count
+in totals, with how many count and how many there are; for which categories can have a budget),
+and `get_transaction_totals_before` (one grouped query: each
 account's transaction total before a date, for ledger opening balances). It also owns the only
-two ways to change a stored balance, `adjust_balance` and `recompute_balance` (see Invariants).
+three ways to change a stored balance, `adjust_balance`, `recompute_balance` and `set_balance`
+(sets the balance and the starting balance together, the second from the account's transaction
+total in the same statement; see Invariants).
 
 **`AccountService`** (`account_service.py`): accounts, transactions, and transfers.
-- `create_account(user_id, data)` takes `account_id` (required) and `account_name` (defaults to
-  the id string), validated the same way as editing (trimmed, non-empty text, at most 100).
+- `create_account(user_id, data)` takes `account_id` (required), `account_name` (defaults to
+  the id string), validated the same way as editing (trimmed, non-empty text, at most 100),
+  `kind` (`bank`, the default, or `loan`), `apr` and `interest_frequency`.
 - `update_account(account_id, data)` accepts `account_name`, `account_id` (the account's id string),
-  `opening_balance` (the starting balance, in dollars), and `needs_attention`, which may only be
-  set to `false`. Names and id strings are trimmed and must be non-empty text within the column
-  length (100). The starting balance must be a finite number within ±`MAX_OPENING_BALANCE`
-  ($10,000,000, which keeps `balance_cents` far from the 32-bit integer limit); changing it moves
-  the balance by the same amount. Invalid input raises `ValueError` before anything changes; the
-  messages name the fields as the edit form shows them ("Display name", "Account ID", "Starting
-  balance"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
-- `delete_account` unlinks the account's transfers, then deletes it; its transactions and
-  recurring templates cascade.
+  `kind`, `apr`, `interest_frequency`, `opening_balance` (the starting balance, in dollars) or `balance` (the current
+  balance, in dollars; not both), and `needs_attention`, which may only be set to `false`. Names
+  and id strings are trimmed and must be non-empty text within the column length (100). `kind` is
+  one of `ACCOUNT_KINDS` (`bank` covers checking, savings and cards; else "Account type must be
+  bank or loan."). Any account can have a yearly interest rate, `apr`: a number of percent from 0
+  to `MAX_APR` (100), kept as hundredths of a percent (`apr_bps`, rounded), or `null` for none;
+  it keeps it through a change of type. `interest_frequency` (`INTEREST_FREQUENCIES`: monthly,
+  quarterly or yearly; "How often must be monthly, quarterly or yearly.") needs a rate ("How often
+  needs an APR."); a rate without one hits monthly, and clearing the rate clears it. Either balance
+  must be a finite number within ±`MAX_BALANCE` (`models/account.py`: $10,000,000, which keeps `balance_cents` far
+  from the 32-bit integer limit). Changing the starting balance moves the balance by the same
+  amount; setting the current balance sets the starting balance to it less what moves the account
+  (its transactions, transfers included, and a loan's payments: see `LoanService`;
+  `DbService.set_balance`), which must also land within the limit. Invalid input raises `ValueError` before anything changes; the messages name the fields
+  as the edit form shows them ("Display name", "Account ID", "Starting balance", "Current
+  balance", "APR"). Sending any of these keys clears `needs_attention`. Returns `(account, error)`.
+- `delete_account` unlinks the account's transfers and, for a loan, stops the series that pay it
+  down, then deletes it; its transactions and recurring templates cascade, and a loan its series
+  paid down no longer counts their payments (`LoanService.refresh`).
+- Setting a rate (creating the account with one, or on one without) starts its interest from the
+  period today falls in, counted as done (`interest_through`; see `InterestService`), so the first
+  interest is the next period's; a new rate or type keeps the periods done; a new frequency starts
+  again from its own current period; clearing the rate clears it.
+- `update_account` refuses to make a loan that a series pays down anything else ("ASPIRE pays
+  down this loan; choose another account for it first.").
 - `add_transaction`, `update_transaction`, `delete_transaction` keep the account balance in step
-  with every change (over-budget flags are computed on read; see `BudgetFlagService`).
+  with every change (over-budget flags are computed on read; see `BudgetFlagService`). Editing
+  or deleting a payment in a series that pays down a loan moves that loan's balance too.
 - Transfers: `link_transfer`, `unlink_transfer` (clears the flag and the link on both sides),
   `break_transfer_link` (removes the pairing but keeps both flagged), and `create_transfer_pair`
   (creates the mirrored counterpart in another account and links the two).
 - `recalculate_account_balance(account_id)` resets `balance_cents` to the starting balance plus
-  the sum of the account's transactions.
+  what moves the account (`DbService.recompute_balance`: its transactions, less a loan's payments).
 
 **`RecurringService`** (`recurring_service.py`): recurring templates (`add_recurring`,
 `update_recurring`, `delete_recurring`), generating their due occurrences
@@ -161,7 +183,53 @@ occurrences still to come (`projected_occurrences`); see
 [Recurring transactions](#recurring-transactions). Occurrences are
 created through `AccountService.add_transaction`, so balances have one code path.
 Deleting a single generated transaction (which shrinks its series) is still handled by
-`AccountService.delete_transaction`.
+`AccountService.delete_transaction`. `update_recurring` also takes `loan_account_id`, the loan
+account the series pays down (see `LoanService`): one of the user's loan accounts other than the
+series' own ("Pays down must be one of your loan accounts.", "A series can't pay down the account
+it's paid from."), or `None`.
+
+**`LoanService`** (`loan_service.py`): a loan's balance follows the payments that pay it down. A
+series that pays down a loan account (`recurring.loan_account_id`) counts each of its payments on
+the loan for the opposite amount, with nothing booked there (a $75 bill in Checking is $75 less
+owed on a loan whose balance is negative): the loan's balance is its starting balance plus its own
+transactions less those payments (`DbService._transaction_total`, which `recompute_balance`,
+`set_balance` and `get_transaction_totals_before` use, so the stored balance, the current-balance
+edit, ledgers and interest all agree). The payment stays a bill in its own account and counts as
+spending once. `loan_paid_down_by(transaction)` names the loan a transaction's series pays down;
+`refresh(*loan_ids)` sets each loan's stored balance again in one statement, and every path that
+adds a payment to such a series, changes its amount or takes it out calls it: generation and
+adoption (`process_due_recurring`), `link_transaction`, `unlink_transaction`, `replace_occurrence`,
+`update_recurring` (the loan changes), `delete_recurring`, and `AccountService.update_transaction`,
+`delete_transaction` and `delete_account`. It uses `DbService` only, so both services above can use
+it.
+
+**`InterestService`** (`interest_service.py`): interest on any account with a yearly rate
+(`apr_bps`) and a frequency (`interest_frequency`: monthly, quarterly or yearly,
+`INTEREST_FREQUENCIES`). `accrue(account_id, today=None)` books, on the first day of each period
+after `interest_through` up to the period today falls in (each 1st; Jan, Apr, Jul and Oct 1; Jan
+1: `period_start`, `next_period`), an interest hit (`InterestHitModel`, a record of its own, not
+a transaction) of the rate's share for the period (a 12th, a 4th, or all of it) of the balance at
+the end of the day before (counting a loan's payments and earlier hits, those still waiting for
+approval included, since the bank charges them either way), rounded half up, with the rate,
+frequency and that balance (`base_cents`). A loan is charged on what it owes, earlier interest
+included (a negative amount); a bank account is paid on a positive balance (a positive one). Each
+hit waits for the user's approval (`approved` false) and moves nothing until then. A period with
+nothing to charge or pay on is done without a hit. Missed periods are caught up in order, each on
+its balance then. An account without `interest_through` starts going forward from the period today
+falls in. Each period moves `interest_through` first, by compare-and-set
+(`DbService.claim_interest_period`), so two runs can't book it twice. While a hit waits:
+`update_hit(hit_id, amount)` changes it to the bank's figure (dollars, 0 or more, at most
+`MAX_BALANCE`: "Interest must be a number.", "Interest can't be negative.", "Interest must be at
+most $10,000,000.00."), charged on a loan and paid on any other account (by the account's type
+now); `delete_hit(hit_id)` deletes it. Either way its period stays done, so it isn't booked again.
+`approve_hit(hit_id)` applies it: the balance (`adjust_balance`) and its history move by its amount,
+once, and it stays as it is ("Approved interest can't be changed." / "... can't be deleted." /
+"That interest is already approved."; "Interest not found."). Each of the three changes the hit in
+one statement that checks it's still waiting (`DbService.set_pending_interest_amount`,
+`approve_interest_hit`, `delete_pending_interest_hit`), so an approval can't apply an amount changed
+at the same moment, or a hit just deleted. A hit counts in no income or spending total either way
+(it's in no transaction list). `accrue` runs on login, on `GET /api/auth/me` and in the scheduler,
+after recurring generation; the service uses `DbService` only.
 
 **`BalanceService`** (`balance_service.py`): read-only account ledgers for the exports and the
 Insights balance chart.
@@ -169,11 +237,19 @@ Insights balance chart.
 per account (id order; accounts without activity included): `opening_cents` (starting balance
 plus every transaction before the period), `rows` (each transaction in the period, date then id
 order, as a `LedgerRow` with the balance right after it), and `closing_cents`. Transfers and
-reimbursements count. Both dates are inclusive and optional; an account that isn't the user's,
-or a start after the end, raises `ValueError`. The arithmetic is the pure function
-`running_balances(opening_cents, transactions)`. Ledgers are computed from the transactions
-themselves, so with no dates `closing_cents` equals the stored `balance_cents` whenever that
-cache is correct. `daily_balances(user_id, account_ids=None, start_date=None, end_date=None)`
+reimbursements count. An account's approved interest hits are rows too
+(`DbService.get_interest_hits`; a hit reads as a transaction would: date, "Interest" as vendor and
+category, its amount), first on their day; `LedgerRow.interest` says so. Hits waiting for approval
+aren't, and no opening counts them. A loan's ledger also lists the payments paying it down
+(`DbService.get_loan_payments`, made from another account), each a `LedgerRow` whose `loan` is
+set: its `amount_cents` is the opposite of the payment's, `account` the loan, `loan_payment` true.
+`own_transaction` is neither: the CSV and the PDF's summary pages take only those rows (so the
+CSV imports again cleanly and nothing counts twice or as income), while the PDF's account pages
+show every row (a payment's budget flag only on its own account's page). Both dates are inclusive and optional; an account that isn't the user's, or
+a start after the end, raises `ValueError`. The arithmetic is the pure function
+`running_balances(opening_cents, entries)` over (transaction, loan) pairs. Ledgers are computed
+from the transactions themselves, so with no dates `closing_cents` equals the stored
+`balance_cents` whenever that cache is correct. `daily_balances(user_id, account_ids=None, start_date=None, end_date=None)`
 selects the same accounts (raising the same errors) and returns one `DailyBalances` per account:
 `opening_cents`, `days` (each date with transactions and its end-of-day balance, the balance
 after the date's last transaction; the pure function `end_of_day(rows)`), and `closing_cents`.
@@ -187,10 +263,34 @@ category-month involved: one query for budgets, one for the expenses and reimbur
 and every route that returns transactions uses it. The walk itself is the pure function
 `over_budget_in_month(expenses, reimbursed_cents, allocated_cents)`.
 
+**`GoalService`** (`goal_service.py`): goals, target balances on the user's accounts (savings up
+to an amount, a loan down to $0 owed), run in order. `list_goals(user_id)` gives each goal with its
+account's balance, `remaining_cents` (target less balance, never below 0), `reached` (the balance
+is at or past the target; held from then on) and `active` (the first goal in order that isn't
+reached, so a held goal that falls under its target pushes again, ahead of the rest); nothing
+about that is stored. `create_goal(user_id, data)` (`account_id`, one of the user's accounts,
+"Choose one of your accounts."; `target` in dollars, checked like a balance by
+`account_service.balance_dollars`, and a loan's at most 0, "A loan's target can't be above $0
+(paid off)."; optional `monthly`, the user's own amount, above 0, "Monthly amount must be a number
+above $0.") adds it at the end; `update_goal` changes the target and/or monthly (None goes back to
+the app's suggestion, which the frontend works out); `reorder(user_id, goal_ids)` takes every goal's
+id once ("Send every goal once, in the new order."); `delete_goal` moves the later ones up.
+
 **`BudgetService`** (`budget_service.py`): `get_budget_progress(user_id, period)` returns, per
-budgeted category, spending (expenses minus reimbursements, never below 0; transfers excluded)
+budgeted category, spending (expenses minus reimbursements, never below 0; transfers and loan
+accounts' transactions excluded)
 against the allocation (`amount + carried_over`), and whether the category has a scheduled pace.
-`delete_budget` also deletes the budget's future rollover copies. Budget changes don't touch
+`delete_budget` also deletes the budget's future rollover copies. `create_budget`, and
+`update_budget` when the category changes, refuse (ValueError, a 400) a category that can't have a
+budget (`check_budgetable`): a budget is for spending and comes off the income set on the
+Budgeting page, so a category whose money in outweighs its money out, in dollars over all time,
+can't have one ("Income can't have a budget: it's mostly money coming in."), nor can one none of
+whose transactions count as spending, transfers or on a loan account ("Transfer can't have a
+budget: none of its transactions count as spending."); a category never used is fine. The
+frontend's auto-rollover makes next month's copies through the same endpoint, so a budget made
+before the rule in such a category stops rolling over (the rollover fails quietly). The Add
+Category form leaves these categories out of its suggestions by the same rule (the browser's
+`utils/moneyRules.js` `unbudgetableCategories`); one typed in gets the server's message. Budget changes don't touch
 transactions: over-budget flags are computed when transactions are read (`BudgetFlagService`),
 so they follow every budget change on their own.
 
@@ -213,13 +313,14 @@ it). Setting the pace a category already has changes nothing; a category that is
 - Hashing lives on the `User` model (`set_password`, `verify_password`).
 
 **`AnalyticsService`** (`analytics_service.py`): reporting only. `generate_report(transactions)`
-builds the summary (totals, monthly trends, category and vendor breakdowns) behind
+builds the summary (totals, monthly trends, category and vendor breakdowns; transfers and loan
+accounts' transactions left out, and nothing left gives the empty report) behind
 `/api/analytics` and the PDF report. The PDF uses only its totals and weekly averages (the
 summary page; everything else comes from `summary_data`), so its monthly trends, category
 breakdowns and top vendors serve only `/api/analytics`. The frontend no longer calls `/api/analytics`: since Phase
 V's V2 the Dashboard computes its cards in the browser, so the PDF is the service's only user in
 the app. Its spending by category is plain money out: a reimbursement counts as income and isn't
-taken off its category, by design (only budgets do that; Owen, 2026-11-10).
+taken off its category, by design (on the server only budgets do that; Owen, 2026-11-10).
 
 **Reports** (`services/reports/`, the export files):
 - `filters.py`: `ExportFilters` (account ids, start and end dates; no account ids means all of
@@ -230,7 +331,9 @@ taken off its category, by design (only budgets do that; Owen, 2026-11-10).
 - `csv_export.py`: `ledger_csv(rows)`, the CSV text from `LedgerRow`s. Columns: Bank Account,
   Date (ISO), Vendor, Category, Notes, Income, Expense, Running balance. Income and expense are
   positive amounts in their own column, the other left blank (a zero amount is income); the
-  running balance is the row's own account's balance right after it. The file imports again:
+  running balance is the row's own account's balance right after it. Only transactions are rows
+  (`ReportService.csv` keeps `own_transaction` rows); the running balances count a loan's payments
+  and interest hits, which aren't. The file imports again:
   the importer reads "Bank Account" as the account and ignores "Running balance", so
   re-importing an export finds every row a duplicate (tested). Transfer and reimbursement marks
   aren't in the file; an import flags only `Transfer` / `Payment` categories as transfers.
@@ -244,17 +347,19 @@ with `=`, `+`, `-`, `@`, a tab, or a carriage return; spreadsheets show it as pl
 category, notes and account columns, so an export imports back exactly. Text without the
 pattern (e.g. `'Til Midnight`) is left alone both ways.
 - `summary_data.py` (pure functions, cents): the numbers behind the summary pages, counted as
-  the app's Insights counts them (transfers never count; money in is income, reimbursements
-  included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
+  the app's Insights counts them (transfers and loan accounts' transactions never count; money in
+  is income, reimbursements included; money out is spending; zero is neither). `period_months(transactions, chosen_start,
   chosen_end, today)` → `(months, partial)` ('YYYY-MM'): from the chosen start (else the first
   transaction) to the chosen end (else the last), stopping at today's month or a later
   transaction's, since a month still to come holds nothing yet ("this year" ends Dec 31);
   partial are a chosen start after its 1st, a chosen end before its month's last day, and today's
   month and any after it. `monthly_net(transactions, months, partial)` → per month `{month,
-  income, expenses, net, partial, average}`, `average` being the 3-month moving average of net
-  over full months only (each full month with the two before it; else None).
-  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → the top 8 categories by
-  plain spending, then the rest as Other (`others` names them), each `{category, total, count,
+  income, expenses, net, partial, average}`, `average` being the 3-month average of net on the
+  middle month: each month's net with the months either side, when all three are full (else
+  None), so the first and last month have none and no average reaches across a partial month.
+  `category_panels(transactions, months, partial, limit=PANEL_LIMIT)` → 8 panels at most, Other
+  included: a panel per category with spending (plain spending), or, with more than 8 categories,
+  the top 7 then the rest added up as Other, each `{category, total, count,
   months: [{month, cents, partial}], average (full months; None without one), last (the last
   full month's `{month, cents}`, or None)}`. `largest_income(transactions)` → `{category, cents,
   total, categories}` (the largest income category, all money in, how many categories), or
@@ -272,21 +377,29 @@ pattern (e.g. `'Til Midnight`) is left alone both ways.
   finished when `number != -1` and `idx > number`. `round_half_up` rounds halves up like
   JavaScript's `Math.round`, so averages and shares match the app's to the cent.
 - `pdf_pages.py`: the matplotlib pages, one function each. The summary pages leave transfers
-  out: the summary (with income by category as one line, "Largest income category: Paycheck,
+  and loan accounts' transactions out: the summary (with income by category as one line, "Largest income category: Paycheck,
   $4,000.00 of $4,050.00 (99%)", from `largest_income`), net per month, spending by category,
   top vendors, and recurring costs.
   `render_net_per_month_pages(pdf, rows, period_label)` draws `monthly_net` rows as on the app's
   Insights Overview: bars around $0 (aqua for more in than out, orange for more out; a partial
-  month at 35% opacity), the 3-month average as a line with gaps, a legend, then the table
+  month at 35% opacity), the 3-month average as a line with gaps (each point on the middle month
+  of its three), a legend, then the table
   (Month, Money in, Money out, Net, 3-month average), continued on more pages like an account's.
   `ReportService` adds it only when the period covers at least `MIN_NET_MONTHS` (2) months: one
   month would repeat the summary page's totals. `render_spending_by_category_page(pdf, panels,
   period_label)` draws `category_panels` as the app's small multiples, three to a row: each
   panel's category, its last full month against its average in whole dollars ("Oct: $350, 8%
-  above its $325 average", "about" within 5%, "No full month yet"), Other's categories, and a
+  above its $325 average", "about" within 5%, "No full month yet"; Other doesn't name the
+  categories it adds up), and a
   small chart (a bar per month, partial months at 35% opacity, the monthly average dashed, the
   year under the month), then the table (Category, Total, Monthly average, "Last full month (Oct
-  2026)", Transactions); no spending says "No spending in this period.".
+  2026)", Transactions); no spending says "No spending in this period.". Both monthly charts
+  label months by the app's rule (`_month_ticks`, as `frontend/src/utils/monthTicks.js`): from the
+  axis's width in points (`_axis_points`) and the room a label needs (`NET_LABEL_SLOTS`,
+  `PANEL_LABEL_SLOTS`), the smallest of `MONTH_STEPS` that fits (every 1, 2, 3 or 6 months on the
+  calendar, then every January, then every 2, 3, 5 or 10 years), so labels are evenly spaced and
+  never crowd; the year on the first label and on January, and years alone once labels are a year
+  or more apart. An account page's balance chart keeps matplotlib's `AutoDateLocator`.
   `render_top_vendors_page(pdf, vendors, period_label)` draws `top_vendors` as the app does: a
   bar per vendor, largest on top and filling the width, its name on the left and its total in an
   aligned column at the page margin, then the table (Vendor, Total, Charges, Average charge).
@@ -339,8 +452,8 @@ other as whole words: "ANTHROPIC.COM CA" and "Anthropic") or `None`; and
 `amount_close` accepts an amount moving money the same way within `AMOUNT_TOLERANCE_PERCENT`
 (50%) of the series'.
 
-**`scheduler`** (`scheduler.py`): background generation of recurring transactions; see
-[Recurring transactions](#recurring-transactions).
+**`scheduler`** (`scheduler.py`): background generation of recurring transactions (see
+[Recurring transactions](#recurring-transactions)) and the interest due (`InterestService.accrue`).
 
 ---
 
@@ -351,17 +464,20 @@ Models live in `backend/models/`, one per file. Amounts are integer cents with a
 | Table | Key columns |
 |---|---|
 | `users` | `username` (unique, ≤ 50), `email` (unique, ≤ 120), `password_hash` (≤ 255), `created_at` |
-| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention` |
+| `accounts` | `user_id`, `acct_id_str` (the bank's label, e.g. "Discover 1234"; ≤ 100), `acct_name` (≤ 100), `balance_cents`, `opening_balance_cents`, `needs_attention`, `kind` (`bank` or `loan`; money owed is a negative balance, as on a card), `apr_bps` (a yearly interest rate in hundredths of a percent, 6.8% = 680; null for none), `interest_frequency` (`monthly`, `quarterly` or `yearly`; null without a rate), `interest_through` (interest is booked through the period starting on this date; null without a rate) |
 | `transactions` | `account_id`, `date`, `vendor` (≤ 100), `category` (≤ 50), `amount_cents`, `notes`, `is_transfer`, `transfer_peer_id`, `is_reimbursement`, `recurring_id`, `recurring_index` |
-| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes` |
+| `recurring` | `account_id`, `start_date`, `next_date`, `frequency` with `frequency_unit` (`days` or `months`), `day_of_month` (monthly templates), `number` (-1 = no limit), `idx`, `vendor`, `category`, `amount_cents`, `notes`, `loan_account_id` (the loan account the series pays down: its payments count on that loan's balance, negated; `ON DELETE SET NULL`) |
 | `budgets` | `user_id`, `category`, `period` (`YYYY-MM`), `amount_cents`, `rollover`, `carried_over_cents`; unique per `(user_id, category, period)` |
 | `recurring_dismissals` | `(recurring_id, transaction_id)` primary key: a transaction the user said isn't part of that series; deleted with either side |
 | `recurring_aliases` | `(recurring_id, alias)` primary key: another vendor spelling (as `clean_vendor` leaves it, ≤ 100) the user confirmed for that series; deleted with the template |
 | `series_dismissals` | `(account_id, vendor_key, amount_cents)` primary key: a found series the user marked "Not recurring" (its vendor as `vendor_key` leaves it, ≤ 100, and its median payment); deleted with the account |
+| `goals` | `user_id`, `account_id`, `target_cents`, `monthly_cents` (the user's own monthly amount; null for the app's suggestion), `position` (1, 2, ...: the order goals run in); deleted with the user or the account |
+| `interest_hits` | `account_id`, `date` (the period's first day; unique per account), `amount_cents` (as it moves the balance once approved: charged negative, paid positive), `apr_bps` and `frequency` (the rate and how often, when booked), `base_cents` (the balance it was on), `approved` (applied to the balance; false while it waits for the user); deleted with the account |
 | `scheduled_paces` | `(user_id, category)` primary key: a budget category (≤ 50, as `budgets.category`) the user paces by its recurring charges; a category without a row has an even pace; deleted with the user |
 
 The API calls the account fields `account_id` (`acct_id_str`) and `account_name` (`acct_name`);
-the account's database id is `id`.
+the account's database id is `id`. Account responses give the APR as `apr`, in percent (6.8), and
+transaction responses say `on_loan_account` (true when the transaction's account is a loan).
 
 ---
 
@@ -371,24 +487,47 @@ Every change must keep these true.
 
 - **Sign.** `amount_cents < 0` is an expense; `> 0` is income or a reimbursement.
 - **Balance = starting balance + transactions.** `balance_cents` always equals
-  `opening_balance_cents` plus the sum of the account's `amount_cents`. The starting balance is
+  `opening_balance_cents` plus the sum of the account's `amount_cents` and its approved interest
+  hits' `amount_cents`, less, for a loan, the `amount_cents` of the payments in the series that pay
+  it down. The starting balance is
   what the account held before its earliest transaction in the app. It is a field on the account,
   not a transaction, so it never counts as income in reports, budgets, or analytics. Importing
-  older history later means lowering it by that history's total.
+  older history later means lowering it by that history's total. Entering the current balance
+  instead (as the bank shows it) sets the starting balance to that less the transactions, so the
+  invariant holds either way; it's right once every transaction up to that day is in the app.
+- **A loan account's transactions count in no total.** A loan's own transactions (anything
+  entered on it by hand) only move what's owed, so like transfers they're left out of
+  cash flow, budgets and their flags, the PDF's summary pages, `/api/analytics` and finding
+  series (`TransactionModel.on_loan_account`; in SQL, `AccountModel.kind != 'loan'`). Balances
+  include them: the account's own balance, its PDF pages, `GET /api/balances` and so Net position.
+- **Interest is booked once a period, and applied once.** `interest_through` only moves forward,
+  by compare-and-set, before the period's interest is booked; an account has at most one hit a date.
+  A hit moves its balance only when approved, which happens once; after that it doesn't change.
+- **Interest counts in no total.** A hit isn't a transaction, so cash flow, budgets, the PDF's
+  summary pages and `/api/analytics` never see it; balances, ledgers and `GET /api/balances` see
+  the approved ones.
+- **A loan's payments are counted, not copied.** Nothing is booked on a loan for the payments
+  that pay it down; its balance and ledger count them (see `LoanService`), and they count in
+  totals once, in their own account. A new path that adds, changes or removes a payment in a
+  series that pays down a loan, or changes which loan a series pays down, must call
+  `LoanService.refresh` for that loan.
 - **Balances are maintained incrementally.** Every path that changes transactions adjusts
   `account.balance_cents` in the same commit: add, update (including moving to another account),
   delete, transfer pairing, deleting a recurring template with its generated transactions, and
   an import replacing a series transaction's amount.
-  Changing the starting balance moves the balance by the difference. Import confirm resyncs each
+  Changing the starting balance moves the balance by the difference; entering the current balance
+  moves the starting balance instead. Import confirm resyncs each
   affected account with `recalculate_account_balance`. A new mutation path must keep the balance
   correct.
 - **Balance changes are atomic.** The stored balance changes only through
-  `DbService.adjust_balance(account_id, delta)` (`balance_cents = balance_cents + delta`) and
-  `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), each a
-  single SQL statement, so simultaneous requests can't overwrite each other's change. Never read
-  `balance_cents`, add in Python, and write it back.
+  `DbService.adjust_balance(account_id, delta)` (`balance_cents = balance_cents + delta`),
+  `DbService.recompute_balance(account_id)` (starting balance plus the database's own sum), and
+  `DbService.set_balance(account_id, cents)` (the balance, with the starting balance as it less
+  the database's own sum), each a single SQL statement, so simultaneous requests can't overwrite
+  each other's change. Never read `balance_cents`, add in Python, and write it back.
 - **`over_budget` is computed when transactions are read** (`BudgetFlagService`). For each
-  category-month with a budget, it walks the month's non-transfer expenses in date order,
+  category-month with a budget, it walks the month's expenses (not transfers, not on a loan
+  account) in date order,
   credits the month's reimbursements up front, and flags each expense from the point cumulative
   spending passes the allocation (amount + carried over). API responses always carry the
   computed value, so no change can leave a flag stale; nothing about flags is stored (the old
@@ -398,8 +537,8 @@ Every change must keep these true.
   notes, and negated amount to the other. Unlink a pair before deleting either side (the foreign
   key is circular).
 - **Accounts created by an import** start with `needs_attention = True`. Editing the account's
-  name, id string, or starting balance, or sending `needs_attention: false` ("Looks good"),
-  clears it.
+  name, id string, kind, APR, or starting or current balance, or sending `needs_attention: false`
+  ("Looks good"), clears it.
 - **Passwords** are stored only as Werkzeug hashes (scrypt by default, 162 characters, hence the
   255-character column). Plaintext is never stored or compared.
 - **`MIN_PASSWORD_LENGTH`** (8) is defined in both `services/auth_service.py` and the frontend's
@@ -514,9 +653,10 @@ reports `last_date` (the latest occurrence generated so far) so clients don't re
 when its next date moves to a different day; re-saving an unchanged next date keeps it. The
 frequency must be a whole number of at least 1.
 
-Generation runs when a template is created, on login, on every `GET /api/auth/me` (each page load),
-and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily at 00:05
-server local time.
+Generation runs when a template is created or edited (an edit that lifts a used-up limit or moves
+the next date back fills what's now due on saving), on login, on every `GET /api/auth/me` (each
+page load), and in the scheduler (`services/scheduler.py`): a catch-up pass at startup, then daily
+at 00:05 server local time.
 
 **Past start dates.** A template whose next date is in the past fills every missed occurrence
 when it is created (adopting exact matches already in the history, generating the rest). With `skip_past`, it instead starts at its first occurrence on or
@@ -539,7 +679,8 @@ always one more than their count.
   by one, so the occurrences still to come stay the same, and `start_date` moves back if needed.
 - **Unlinking** (`unlink_transaction`) keeps the transaction and shrinks the series the way
   deleting a generated transaction does: later occurrences renumber, a limited `number` drops by
-  one, and `next_date` stays.
+  one, and `next_date` stays. So a deleted or unlinked occurrence isn't generated again, even once
+  a limit is lifted; moving `next_date` back to it fills it again.
 - **Suggestions** (`suggest_matches`) list transactions that may belong to a series, for the user
   to confirm; nothing is linked. Because a person confirms them, they use a looser rule than
   automatic matching: same account and vendor, money moving the same way (a refund never matches
@@ -581,7 +722,7 @@ for the user to confirm; nothing is written.
 - **Who counts:** payments on one account to one vendor (`vendor_key`), moving money the same
   way. A vendor's payments split into groups by size (a payment more than 50% from its group's
   median starts a new one), so a rent and its small fee are two series. Transactions already in
-  a series and transfers are left out, and so is a series that matches a template (left to
+  a series, transfers and a loan account's transactions (interest, not spending) are left out, and so is a series that matches a template (left to
   that template's suggestions) or a "Not recurring" mark: the same account and vendor, and a
   typical (median) payment within 50% of the template's amount or the mark's. A rent's template
   therefore doesn't hide its fee.
@@ -641,7 +782,7 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | Prefix | Endpoints |
 |---|---|
 | (none) | `GET /health` (no auth), `GET /` (no auth; its endpoint list is out of date) |
-| `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions), `GET /me` (also generates due recurring transactions) |
+| `/auth` | `POST /register` (no auth; 400 invalid input, 409 taken), `POST /login` (no auth; also generates due recurring transactions and books the interest due), `GET /me` (likewise) |
 | `/accounts` | `GET`, `POST`, `GET /all-transactions`, `GET` / `PATCH` / `DELETE /<id>`, `GET` / `POST /<id>/transactions`, `GET /<id>/upcoming?days=`, `GET` / `POST /<id>/recurring` |
 | `/transactions` | `GET` / `PUT` / `PATCH` / `DELETE /<id>`, `PATCH /<id>/transfer`, `POST` / `DELETE /<id>/transfer/pair` |
 | `/recurring` | `GET` / `PUT` / `PATCH` / `DELETE /<id>` (`?delete_generated=true`), `GET /<id>/suggestions`, `POST` / `DELETE /<id>/transactions/<transaction_id>`, `POST` / `DELETE /<id>/dismissals/<transaction_id>`, `GET` / `POST /detected`, `POST /detected/dismissals`, `GET /projection?days=` |
@@ -650,21 +791,31 @@ All routes are under `/api` except the health routes. Unless noted, routes need 
 | `/import` | `POST /preview`, `POST /confirm` |
 | `/export` | `GET /transactions.csv`, `GET /report.pdf` |
 | `/balances` | `GET ?account_ids=&start_date=&end_date=` |
+| `/goals` | `GET`, `POST`, `PATCH` / `DELETE /<id>`, `PUT /order` |
+| `/interest` | `GET`, `PATCH` / `DELETE /<id>`, `POST /<id>/approve` |
 
 Details worth knowing:
-- `POST /accounts` takes `account_id` and optionally `account_name`; a blank, non-text, or
-  over-100-character value is a 400.
-- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `opening_balance` (dollars),
-  and `needs_attention: false` ("Looks good"). Any of them clears `needs_attention`. A blank,
-  non-text, or over-100-character name or id string is a 400, and so is a starting balance that
-  isn't a number or is beyond ±$10,000,000. Account responses include `balance` and
-  `opening_balance`.
+- `POST /accounts` takes `account_id` and optionally `account_name`, `kind` (`bank` or `loan`),
+  `apr` (a yearly rate in percent) and `interest_frequency` (`monthly`, the default with a rate,
+  `quarterly` or `yearly`); a blank, non-text, or over-100-character label, an unknown kind, an
+  APR that isn't a number from 0 to 100, or an unknown frequency or one without a rate is a 400.
+- `PATCH /accounts/<id>` takes any of `account_name`, `account_id`, `kind`, `apr` (percent;
+  `null` clears it and its frequency), `interest_frequency`, `opening_balance` or `balance` (dollars; the current balance, which sets the
+  starting balance to it less the transactions), and `needs_attention: false` ("Looks good").
+  Any of them clears `needs_attention`. A blank, non-text, or over-100-character name or id
+  string is a 400, and so are an unknown kind, an APR as above, a balance that isn't a number or
+  is beyond ±$10,000,000, a current balance that would put the starting balance beyond it, or
+  both balances at once. Account responses include `balance`, `opening_balance`, `kind`, `apr`
+  and `interest_frequency`.
 - `POST /accounts/<id>/recurring` takes `start_date`, `vendor`, `category`, `amount`, `frequency`,
   and optionally `frequency_unit` (`days`, the default, or `months`), `next_date` (defaults to
   `start_date`), `number`, `notes`, and `skip_past: true` (start at the first occurrence on or
   after today instead of generating past ones); it generates any occurrences already due.
-  `PATCH /recurring/<id>` takes any of those fields; a new `vendor` or `category` is also
-  applied to the series (see Renaming a series). An invalid schedule is a 400.
+  `PATCH /recurring/<id>` takes any of those fields, and `loan_account_id` (a loan account's id,
+  or `null`: the loan the series pays down; anything else is a 400); a new `vendor` or `category`
+  is also applied to the series (see Renaming a series). Like creating, it then generates any
+  occurrences now due (a limit lifted, the next date moved back). An invalid schedule is a 400. Template
+  responses carry `loan_account_id`.
 - `GET /recurring/<id>/suggestions` returns `{suggestions: [{date, kind, linked, candidates}]}`,
   oldest first (`kind` is `missing`, `duplicate`, or `history`; `linked` and `candidates` are
   transactions). `POST /recurring/<id>/transactions/<transaction_id>` links a transaction to the
@@ -682,13 +833,17 @@ Details worth knowing:
   it was listed, is a 400.
 - `GET /recurring/projection?days=60` returns `{occurrences: [{recurring_id, account_id, date,
   vendor, category, amount}]}` by date (see Projection). `days` defaults to 60; anything but a
-  whole number from 1 to 366 is a 400. The Dashboard's 30-day agenda reads it (Phase V, V6a), so
-  the older `GET /accounts/<id>/upcoming` (templates due within `days`) has no frontend caller.
+  whole number from 1 to 366 is a 400. The Dashboard's 30-day agenda reads it (Phase V, V6a), and
+  so does the Insights Accounts forecast, 90 days ahead (Phase F, F1a), so the older
+  `GET /accounts/<id>/upcoming` (templates due within `days`) has no frontend caller.
 - `GET /budgets/progress?period=YYYY-MM` (default: this month) returns `{period, progress: [...]}`
   sorted by category; each row has `id`, `category`, `period`, `allocated`, `carried_over`,
   `spent`, `remaining` (each also as `*_cents`), `rollover`, `over_budget`, and
   `scheduled_pace`. `PUT /budgets/scheduled-pace` with `{category, scheduled}` sets a category's
   pace (see Scheduled pace) and returns `{category, scheduled}`; invalid input is a 400.
+  `POST /budgets` (`{category, period, amount, rollover?, carried_over?}`) is a 409 when the
+  category already has a budget that month and a 400 when it can't have one (see `BudgetService`);
+  `PATCH /budgets/<id>` is a 400 when it renames the budget into such a category.
 - `GET /accounts/<id>/transactions` filters with `start_date`, `end_date` (inclusive, `YYYY-MM-DD`),
   `category`, `over_budget=true|false` (on the computed flags; `limit` / `offset` then apply to
   the matching rows), `limit`, and `offset`.
@@ -716,6 +871,17 @@ Details worth knowing:
 - There are no bulk endpoints; the frontend sends one request per item for bulk actions.
 
 ---
+- `GET /goals` returns `{goals: [...]}` in order (see `GoalService.list_goals`); `POST /goals`
+  takes `{account_id, target, monthly?}` and returns `{goal}` (201); `PATCH /goals/<id>` takes
+  `target` and/or `monthly` (`null` for the app's suggestion) and returns `{goal}`; `PUT
+  /goals/order` takes `{goal_ids}` and returns `{goals}`; invalid input is a 400, another user's
+  goal a 403.
+- `GET /interest` returns the user's interest hits, approved or waiting, newest first:
+  `{interest: [{id, account_id, date, amount, amount_cents, apr, frequency, base_cents, approved}]}`.
+  For a hit waiting for approval: `PATCH /interest/<id>` takes `{amount}` (dollars, 0 or more: the
+  bank's figure) and returns `{interest, account}`; `POST /interest/<id>/approve` applies it and
+  returns `{interest, account}` (the account's balance moved); `DELETE /interest/<id>` deletes it.
+  An approved hit, or a bad amount, is a 400; another user's hit a 403, a missing one a 404.
 
 ## Schema changes
 
@@ -742,7 +908,8 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
   scheduler (`tests/conftest.py`). No database server is needed.
 - Fixtures: `app`, `client`, `user`, `account`, `auth_headers` (a logged-in user's
   `Authorization` header), and `pin_today` (call it with a date to fix `date.today()` inside
-  `RecurringService`, so recurring tests don't depend on when they run).
+  `RecurringService`, `InterestService` and `AccountService`, so recurring and interest tests don't
+  depend on when they run).
 - Never import `wsgi` in a check script: it builds the real app, which runs the migrations and the
   scheduler's catch-up against whatever database `DATABASE_URL` points at. Use
   `create_app({'TESTING': True, ...})` instead. After each test, `clean_tables` empties every table and resets the
@@ -770,9 +937,12 @@ cd backend && python -m pytest tests/test_service.py::TestRegister -v   # one cl
 | `test_vendor_match.py` | Vendor and amount comparisons for recurring matches (pure functions) |
 | `test_series_detection.py` | Finding recurring series: the pure rules, and the `/recurring/detected` endpoints (list, add, "Not recurring") |
 | `test_recurring_projection.py` | The recurring occurrences still to come (`GET /recurring/projection`) |
+| `test_loan_payments.py` | A series paying down a loan: the loan's balance following its payments' edits, deletes and series membership, its ledger, balance history, interest, CSV and PDF, and the routes |
+| `test_interest.py` | Interest on any account, as records of their own waiting for approval: a loan charged, a bank account paid, each frequency, catching up missed periods, once a period, changing, deleting and approving a hit (once), the balance, history and exports counting approved ones, the routes, setting the rate and frequency, and login / page load |
 | `test_balance_service.py` | Account ledgers: opening, running and closing balances; end-of-day balances (`daily_balances`) |
 | `test_budget_flag_service.py` | Over-budget flags computed on read |
-| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers) and the scheduled-pace setting (`PUT /budgets/scheduled-pace`) |
+| `test_goals.py` | Goals: reached and active from the balances and the order, a loan's goal, the monthly amount, editing, reordering, deleting, validation, and the routes |
+| `test_budget_progress.py` | Budget progress (`GET /budgets/progress`: spending, reimbursements, transfers), the scheduled-pace setting (`PUT /budgets/scheduled-pace`), and which categories can have a budget (`POST` / `PATCH /budgets`) |
 | `test_exports.py` | The CSV and PDF downloads: selection, formats, round trip, the summary, net per month, spending by category, top vendors, recurring costs and account pages |
 | `test_summary_data.py` | The PDF summary pages' numbers: the period's months (partial ones too), net per month, category panels, the largest income category, top vendors, recurring costs |
 | `test_formula_guard.py` | The CSV formula guard (pure functions) |

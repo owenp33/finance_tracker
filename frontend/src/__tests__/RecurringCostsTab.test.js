@@ -103,12 +103,12 @@ const cells = (table) => [...table.querySelectorAll('tr')].map(tr => [...tr.quer
 test("the headline is the active series' cost per month, at their scheduled amounts", async () => {
   await openTab();
   expect(within(headline()).getByText('$284.32/mo')).toBeInTheDocument();
-  expect(within(headline()).getByText("3 active series at their scheduled amounts; income isn't counted")).toBeInTheDocument();
+  expect(within(headline()).getByText('3 active series; income not counted')).toBeInTheDocument();
 });
 
 test('what a series paid beyond its schedule shows apart, not in the total', async () => {
   await openTab();
-  expect(within(headline()).getByText('Not included: $105 paid to ASPIRE beyond its $75.00/mo schedule in Nov 2025–Oct 2026'))
+  expect(within(headline()).getByText('Not included: $105 extra paid to ASPIRE (Nov 2025–Oct 2026)'))
     .toBeInTheDocument();
   expect(within(headline()).queryByText(/Anthropic|Allina/)).not.toBeInTheDocument();
 });
@@ -190,6 +190,7 @@ describe('the timeline', () => {
     await openTab();
     const chart = section('Timeline');
     expect(chart.querySelectorAll('.timeline-tick')).toHaveLength(30);        // ASPIRE 15, Anthropic 8, Allina 7
+    expect(chart.querySelector('.timeline-legend li').textContent).toBe('Posted');
     expect(chart.querySelector('.recharts-tooltip-wrapper')).toBeNull();
   });
 

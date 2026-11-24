@@ -138,11 +138,13 @@ def pair_transfer(transaction_id):
 @jwt_required()
 @owns_transaction
 def delete_transaction(transaction_id):
-    """Delete a transaction"""
+    """Delete a transaction (a failure the service reports is a 400)"""
     transaction = db_service.get_transaction(transaction_id)
     account_id = transaction.account_id
 
-    account_service.delete_transaction(transaction_id)
+    success, error = account_service.delete_transaction(transaction_id)
+    if not success:
+        return jsonify({'success': False, 'error': error}), 400
     account = db_service.get_account(account_id)
 
     return jsonify({

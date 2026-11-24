@@ -35,13 +35,21 @@ def savings(user):
     return a
 
 
+class _Amount:
+    def __init__(self, cents):
+        self.amount_cents = cents
+
+
 class TestRunningBalances:
     def test_each_row_carries_the_balance_right_after_it(self):
-        class T:
-            def __init__(self, cents):
-                self.amount_cents = cents
-        a, b, c = T(-2_000), T(5_000), T(-500)
-        assert running_balances(10_000, [a, b, c]) == [LedgerRow(a, 8_000), LedgerRow(b, 13_000), LedgerRow(c, 12_500)]
+        a, b, c = _Amount(-2_000), _Amount(5_000), _Amount(-500)
+        assert running_balances(10_000, [(a, None), (b, None), (c, None)]) == [
+            LedgerRow(a, 8_000), LedgerRow(b, 13_000), LedgerRow(c, 12_500)]
+
+    def test_a_payment_paying_down_a_loan_counts_on_it_for_the_opposite_amount(self):
+        payment, loan = _Amount(-7_500), object()
+        [row] = running_balances(-100_000, [(payment, loan)])
+        assert (row, row.amount_cents, row.loan_payment, row.account) == (LedgerRow(payment, -92_500, loan), 7_500, True, loan)
 
     def test_no_transactions_no_rows(self):
         assert running_balances(10_000, []) == []

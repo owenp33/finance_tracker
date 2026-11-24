@@ -4,9 +4,11 @@ import BudgetingView from '../components/BudgetingView';
 import { CategoryColorProvider } from '../CategoryColorContext';
 import { getBudgetProgress, getBudgets, setScheduledPace } from '../api/budgets';
 import { getProjection } from '../api/recurring';
+import { getGoals } from '../api/goals';
 
 jest.mock('../api/budgets');
 jest.mock('../api/recurring');
+jest.mock('../api/goals');
 
 // A row of GET /api/budgets/progress, as the backend sends it
 const progressRow = (id, category, allocated, spent, carriedOver = 0, scheduledPace = false) => {
@@ -44,15 +46,17 @@ beforeEach(() => {
   getBudgets.mockResolvedValue([]);
   getBudgetProgress.mockImplementation(async (period) => (period === '2026-09' ? SEPTEMBER : OCTOBER));
   getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
   setScheduledPace.mockResolvedValue({ success: true });
 });
 
 afterEach(() => jest.useRealTimers());
 
-const renderView = async (transactions = []) => {
+const renderView = async (transactions = [], { accounts = [], recurring = [], interest = [] } = {}) => {
   render(
     <CategoryColorProvider>
-      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} />
+      <BudgetingView transactions={transactions} onBudgetChange={jest.fn()} accounts={accounts} recurring={recurring}
+                     interest={interest} />
     </CategoryColorProvider>
   );
   await screen.findAllByRole('img', { name: /:/ });
@@ -265,5 +269,104 @@ describe('bills still due', () => {
     await screen.findByText('$380.00 of $400.00');
     expect(due('Groceries')).toBeNull();
     expect(within(pace('Groceries')).queryByText(/due/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the active goal's saving", () => {
+  // A goal on Savings with its own $500 a month; $300 went into Savings on Oct 5
+  const ACCOUNTS = [{ id: 7, account_name: 'Savings', kind: 'bank', apr: null, balance: 3300 },
+                    { id: 16, account_name: 'Student Loan', kind: 'loan', apr: 6.7, interest_frequency: 'monthly', balance: -75142 }];
+  const goalRow = (id, accountId, name, kind, balanceCents, targetCents) => ({
+    id, position: 1, account_id: accountId, account_name: name, account_kind: kind, balance: balanceCents / 100,
+    balance_cents: balanceCents, target: targetCents / 100, target_cents: targetCents,
+    remaining_cents: Math.max(targetCents - balanceCents, 0), monthly: 500, monthly_cents: 50000, reached: false, active: true,
+  });
+  const SAVED = [
+    { id: 21, account_id: 7, date: '2026-10-05', vendor: 'To savings', category: 'Transfer', notes: '', amount: 300,
+      amount_cents: 30000, is_transfer: true, is_reimbursement: false },
+    { id: 22, account_id: 7, date: '2026-09-05', vendor: 'To savings', category: 'Transfer', notes: '', amount: 999,
+      amount_cents: 99900, is_transfer: true, is_reimbursement: false },
+  ];
+  const saving = () => document.querySelector('.budget-goal-saving');
+  const unallocated = () => [...screen.getByText('Unallocated').closest('.budget-summary-card').querySelectorAll('.budget-summary-value, .budget-summary-sub')]
+    .map(e => e.textContent);
+
+  beforeEach(() => localStorage.setItem('budget_monthly_income', '3000'));
+  afterEach(() => localStorage.clear());
+
+  test('the Goals section sits below Category Allocations', async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    const allocations = document.querySelector('.category-allocations-card');
+    const goals = document.querySelector('.goals-section');
+    expect(allocations.compareDocumentPosition(goals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(allocations.contains(goals)).toBe(false);
+  });
+
+  test("it shows beside the budgets with what's gone to it so far, and Unallocated leaves it out", async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    expect(saving().textContent).toBe('Goal: Savings · $500.00 this month (yours) · $300.00 so far');
+    // $3,000 income − $750 budgeted − $500 to the goal
+    expect(unallocated()).toEqual(['$1750.00', 'after $500.00 to Savings']);
+  });
+
+  // ASPIRE's payment from Checking: its series pays the loan down, so it's $75 less owed
+  const PAYMENT = { id: 30, account_id: 6, date: '2026-10-31', vendor: 'ASPIRE', category: 'Loan', notes: '', amount: -75,
+                    amount_cents: -7500, recurring_id: 5, is_transfer: false, is_reimbursement: false, on_loan_account: false };
+  const ASPIRE = { id: 5, account_id: 6, loan_account_id: 16, vendor: 'ASPIRE', category: 'Loan', amount: -75, frequency: 1,
+                   frequency_unit: 'months', number: -1, idx: 2, date: '2026-10-31', next_date: '2026-11-30' };
+
+  test("a loan goal's saving is an extra payment, and what's gone to it is how far it's paid down", async () => {
+    getGoals.mockResolvedValue([goalRow(2, 16, 'Student Loan', 'loan', -7514200, 0)]);
+    await renderView([PAYMENT], { accounts: ACCOUNTS, recurring: [ASPIRE] });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    expect(saving().textContent).toBe('Goal: Student Loan · $500.00 extra this month (yours) · $75.00 paid down so far');
+  });
+
+  test("a loan's interest this month counts against what's paid down", async () => {
+    getGoals.mockResolvedValue([goalRow(2, 16, 'Student Loan', 'loan', -7514200, 0)]);
+    // GET /api/interest: October's charge counts, September's doesn't
+    const hit = (id, date, cents) => ({
+      id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+      approved: true,
+    });
+    await renderView([PAYMENT], { accounts: ACCOUNTS, recurring: [ASPIRE], interest: [hit(4, '2026-10-01', -41996), hit(3, '2026-09-01', -41762)] });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    // $75 paid, $419.96 charged
+    expect(saving().textContent).toBe('Goal: Student Loan · $500.00 extra this month (yours) · $344.96 more owed so far');
+  });
+
+  test("other months show no saving, and Unallocated is income less that month's budgets", async () => {
+    getGoals.mockResolvedValue([goalRow(1, 7, 'Savings', 'bank', 330000, 750000)]);
+    await renderView(SAVED, { accounts: ACCOUNTS });
+    await waitFor(() => expect(saving()).not.toBeNull());
+    await user.click(screen.getByRole('button', { name: '←' }));
+    await screen.findByText('$380.00 of $400.00');
+    expect(saving()).toBeNull();
+    expect(unallocated()).toEqual(['$2600.00', 'remaining to allocate']);
+  });
+});
+
+describe('adding a category', () => {
+  const tx = (id, category, amount, flags) => ({
+    id, account_id: 1, date: '2026-10-05', vendor: `${category} shop`, category, notes: '', amount,
+    amount_cents: Math.round(amount * 100), recurring_id: null, is_transfer: false, is_reimbursement: false, ...flags,
+  });
+  const suggestions = () => [...document.querySelectorAll('#budget-category-suggestions option')].map(o => o.value);
+
+  test("suggests the categories you spend in, not those mostly money coming in, only transfers, or already budgeted", async () => {
+    await renderView([
+      tx(1, 'Income', 3000), tx(2, 'Income', -83.95),
+      tx(3, 'Utility', 40), tx(4, 'Utility', -150),
+      tx(5, 'Transfer', -500, { is_transfer: true }),
+      tx(6, 'Groceries', -50),                     // already budgeted in October
+      tx(7, 'Pets', -15),
+      tx(8, 'Reward', 25),
+    ]);
+    await user.click(screen.getByRole('button', { name: '+ Add Category' }));
+    expect(suggestions()).toEqual(['Utility', 'Pets']);
   });
 });

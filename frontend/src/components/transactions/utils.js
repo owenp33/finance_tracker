@@ -48,6 +48,7 @@ export const unrelatedSeriesByTransaction = (templates) => {
   return map;
 };
 
+
 export function getMonthRange(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number);
   const first = `${year}-${String(month).padStart(2, '0')}-01`;
