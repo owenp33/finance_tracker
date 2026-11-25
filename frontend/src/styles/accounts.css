@@ -356,15 +356,36 @@
   font-size: 0.85rem;
 }
 
-/* On a phone, what a charge was worked out on takes a line of its own under its date and amount */
+/* On a phone, what a charge was worked out on takes a line of its own under its date and amount. An open
+   editor's pieces join the row: the date, "Charged" / "Paid" and the amount box (taking the room left) on
+   the first line, the basis under them, then Save and Cancel at the right; the box's text is 16px, so a
+   phone doesn't zoom in when it takes focus */
 @media (max-width: 600px) {
   .account-interest-basis {
     order: 3;
     flex-basis: 100%;
   }
 
-  .account-interest-amount,
+  .account-interest-amount {
+    margin-left: auto;
+  }
+
   .account-interest-edit {
+    display: contents;
+  }
+
+  .account-interest-edit input {
+    flex: 1 1 60px;
+    min-width: 0;
+    width: auto;
+    font-size: 1rem;
+  }
+
+  .account-interest-edit .btn {
+    order: 4;
+  }
+
+  .account-interest-edit .btn-primary {
     margin-left: auto;
   }
 }
@@ -463,8 +484,10 @@
     order: 3;
   }
 
+  /* never wider than its row, whatever a charge's editor holds */
   .account-interest {
     align-items: stretch;
+    min-width: 0;
   }
 
   /* a charge's date, amount and three buttons on one line (its basis on the next) */
