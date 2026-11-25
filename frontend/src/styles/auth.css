@@ -2,7 +2,7 @@
 
 .submit-btn {
   grid-column: 1 / -1;
-  background: #667eea;
+  background: var(--accent);
   color: white;
   border: none;
   padding: 15px 30px;
@@ -14,9 +14,9 @@
 }
 
 .submit-btn:hover {
-  background: #5568d3;
+  background: var(--accent-hover);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 5px 15px rgba(var(--accent-rgb), 0.3);
 }
 
 /* Auth Screen */
@@ -38,7 +38,7 @@
 }
 
 .auth-container h1 {
-  color: #667eea;
+  color: var(--accent);
   font-size: 2.5rem;
   text-align: center;
   margin-bottom: 10px;
@@ -66,12 +66,12 @@
 .toggle-auth button {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--accent);
   cursor: pointer;
   font-weight: 600;
   text-decoration: underline;
 }
 
 .toggle-auth button:hover {
-  color: #5568d3;
+  color: var(--accent-hover);
 }

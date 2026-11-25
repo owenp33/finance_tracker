@@ -19,7 +19,7 @@
 }
 
 .budget-pace-bar:focus-visible {
-  outline: 2px solid #667eea;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 

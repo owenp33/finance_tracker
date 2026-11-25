@@ -256,7 +256,7 @@
 }
 
 .bri-amount-wrap:focus-within {
-  border-color: #667eea;
+  border-color: var(--accent);
   background: #fff;
 }
 
@@ -305,7 +305,7 @@
 .bri-toggle input[type="checkbox"] {
   width: 13px;
   height: 13px;
-  accent-color: #667eea;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 

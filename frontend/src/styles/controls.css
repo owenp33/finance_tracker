@@ -25,8 +25,8 @@
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
 
 /* Green, over .btn-ghost's grey (which comes later): link to a series, approve interest */
@@ -56,13 +56,13 @@
 }
 
 .btn-primary {
-  background: #667eea;
+  background: var(--accent);
   color: white;
 }
 
 .btn-primary:hover {
-  background: #5568d3;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.35);
 }
 
 .btn-secondary {
@@ -126,7 +126,7 @@
 
 .sort-select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--accent);
 }
 
 /* === View Header ================================================= */
@@ -204,8 +204,8 @@
 .tab-btn:hover { color: #333; }
 
 .tab-btn.active {
-  color: #667eea;
-  border-bottom-color: #667eea;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 /* Phone: smaller tabs that scroll sideways if they still don't fit. The bar's line is drawn inside it
@@ -309,13 +309,13 @@
 }
 
 .preset-pill:hover {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .preset-pill.active {
-  border-color: #667eea;
-  background: #667eea;
+  border-color: var(--accent);
+  background: var(--accent);
   color: white;
 }
 
@@ -336,7 +336,7 @@
 .link-btn {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--accent);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -345,14 +345,14 @@
 }
 
 .link-btn:hover {
-  color: #5568d3;
+  color: var(--accent-hover);
   text-decoration: underline;
 }
 
 /* ── Filter panel ──────────────────────────────────────────────────────────── */
 .filter-btn-active {
-  border-color: #667eea;
-  color: #667eea;
+  border-color: var(--accent);
+  color: var(--accent);
   background: #f0f3ff;
 }
 
@@ -391,7 +391,7 @@
 .filter-clear-btn {
   background: none;
   border: none;
-  color: #667eea;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -433,7 +433,7 @@
 .filter-option input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: #667eea;
+  accent-color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
 }

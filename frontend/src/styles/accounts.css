@@ -42,8 +42,8 @@
 }
 
 .account-item:hover {
-  border-color: #667eea;
-  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.1);
 }
 
 .account-item-row {

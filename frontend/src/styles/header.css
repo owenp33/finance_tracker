@@ -19,7 +19,7 @@
 
 .header-content h1 {
   font-size: 2.5rem;
-  color: #667eea;
+  color: var(--accent);
   margin: 0;
 }
 
@@ -85,10 +85,10 @@
 }
 
 .view-nav button.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-end) 100%);
   color: white;
-  border-color: #667eea;
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+  border-color: var(--accent);
+  box-shadow: 0 5px 15px rgba(var(--accent-rgb), 0.3);
 }
 
 /* Error Message */

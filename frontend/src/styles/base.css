@@ -18,6 +18,16 @@
   --chart-aqua: #1baf7a;
 }
 
+/* The accent: links, the active tab and nav button, primary buttons, focus rings and checkboxes. Its
+   hover shade, the second colour of the active nav button's gradient, and its RGB alone for rgba()
+   shadows and tints. Change these and the accent changes everywhere. */
+:root {
+  --accent: #667eea;
+  --accent-hover: #5568d3;
+  --accent-end: #764ba2;
+  --accent-rgb: 102, 126, 234;
+}
+
 /* Spacing every view shares: around the page, inside a view's white card, and the room the phone's
    bottom nav (header.css) takes under the page */
 :root {
