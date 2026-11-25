@@ -65,7 +65,7 @@ test('goals run in order: the active one gets the room, the next starts once it 
   await renderGoals();
   await waitFor(() => expect(screen.getByText('Room each month: $1,133.33 (income - bills - spending, next 90 days)'))
     .toBeInTheDocument());
-  expect(screen.getByText('Goals run in order; the next starts once one is reached.')).toBeInTheDocument();
+  expect(screen.getByText('Goals start based on ordering')).toBeInTheDocument();
   // $4,500.00 to go at $1,133.33: 4 months; then the loan, charged 6.70% monthly and paid $75 all along
   expect(rows()).toEqual([
     ['1. Savings', 'Active', '$3,000.00 of $7,500.00', '$1,133.33 a month (suggested) · reached by Mar 2027'],
