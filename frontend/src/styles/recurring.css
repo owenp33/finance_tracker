@@ -180,6 +180,11 @@
   flex-shrink: 0;
 }
 
+/* A series card's Edit / Delete: beside its amount here; on a phone, only once the card is tapped (below) */
+.series-card-actions {
+  display: contents;
+}
+
 /* === Recurring Tab Edit ==================================== */
 .recurring-edit-form {
   width: 100%;
@@ -294,5 +299,24 @@
   .recurring-info small {
     order: 1;
     flex-basis: 100%;
+  }
+
+  /* a series card's Edit / Delete only once the card is tapped (RecurringTab's series-open), on a line
+     of their own under its details, each with its word; Find recurring's buttons stay as they are */
+  .series-card-actions {
+    display: none;
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .recurring-item.series-open .series-card-actions {
+    display: flex;
+  }
+
+  .series-card-actions .icon-btn {
+    padding: 8px 12px;
   }
 }

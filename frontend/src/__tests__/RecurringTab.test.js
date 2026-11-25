@@ -67,6 +67,34 @@ test('a finished template shows its last occurrence', () => {
   expect(screen.getByText(/Last: Feb 28, 2026$/)).toBeInTheDocument();
 });
 
+// A phone shows a series card's Edit / Delete only once the card is tapped (its series-open class,
+// styles/recurring.css); laptops show them always
+describe('a series card on a phone', () => {
+  const card = (vendor) => screen.getByText(vendor).closest('.recurring-item');
+
+  test("a tap opens a card's actions, one card at a time; its buttons don't, and Edit closes it", async () => {
+    renderTab([template(), template({ id: 2, vendor: 'Gym', amount: -10 })]);
+    await userEvent.click(screen.getByText('Anthropic'));
+    expect(card('Anthropic')).toHaveClass('series-open');
+    await userEvent.click(screen.getByText('Gym'));
+    expect(card('Gym')).toHaveClass('series-open');
+    expect(card('Anthropic')).not.toHaveClass('series-open');
+    await userEvent.click(screen.getByText('Gym'));
+    expect(card('Gym')).not.toHaveClass('series-open');
+
+    await userEvent.click(screen.getByText('Anthropic'));
+    await userEvent.click(within(card('Anthropic')).getByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(card('Anthropic')).not.toHaveClass('series-open');
+  });
+
+  test("each card's action has a word to show on a phone, under the same name", () => {
+    renderTab([template()]);
+    expect(within(card('Anthropic')).getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(within(card('Anthropic')).getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+});
+
 const optionLabels = (select) => within(select).getAllByRole('option').map(o => o.textContent);
 
 test('editing offers the five schedules', async () => {
