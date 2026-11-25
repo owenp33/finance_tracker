@@ -53,6 +53,39 @@ test('a reviewed account shows no flag', () => {
   expect(within(item).queryByRole('button', { name: 'Looks good' })).not.toBeInTheDocument();
 });
 
+// A phone shows an account row's Edit / Delete only once the row is tapped (its account-open class,
+// styles/accounts.css), as a series card's; laptops show them always
+describe('an account row on a phone', () => {
+  const SAVINGS = account({ id: 2, account_id: 'savings-1', account_name: 'Savings', apr: 0.5, interest_frequency: 'yearly' });
+  const WAITING = { id: 9, account_id: 2, date: '2027-01-01', amount: 15, amount_cents: 1500, apr: 0.5, frequency: 'yearly',
+                    base_cents: 300000, approved: false };
+
+  test("a tap opens a row's actions, one row at a time; its buttons and interest don't, and Edit closes it", async () => {
+    renderAccounts([account(), SAVINGS], jest.fn(), { interest: [WAITING] });
+    await userEvent.click(screen.getByText('Checking'));
+    expect(accountItem('Checking')).toHaveClass('account-open');
+    await userEvent.click(screen.getByText('Savings'));
+    expect(accountItem('Savings')).toHaveClass('account-open');
+    expect(accountItem('Checking')).not.toHaveClass('account-open');
+    // The interest waiting for approval has its own buttons and editor: a tap there leaves the row as it is
+    await userEvent.click(within(accountItem('Savings')).getByText('0.50% on $3,000.00'));
+    expect(accountItem('Savings')).toHaveClass('account-open');
+    await userEvent.click(screen.getByText('Savings'));
+    expect(accountItem('Savings')).not.toHaveClass('account-open');
+
+    await userEvent.click(screen.getByText('Checking'));
+    await userEvent.click(within(accountItem('Checking')).getByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(accountItem('Checking')).not.toHaveClass('account-open');
+  });
+
+  test("each row's Edit and Delete have a word to show on a phone, under the same name", () => {
+    renderAccounts([account()]);
+    expect(within(accountItem('Checking')).getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(within(accountItem('Checking')).getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+});
+
 const startEditing = async (name) => {
   await userEvent.click(within(accountItem(name)).getByRole('button', { name: 'Edit' }));
   return screen.getByLabelText('Starting balance');

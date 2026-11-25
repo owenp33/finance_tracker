@@ -201,6 +201,11 @@
   gap: 8px;
 }
 
+/* An account's Edit / Delete: beside its balance here; on a phone, only once the row is tapped (below) */
+.account-card-actions {
+  display: contents;
+}
+
 .account-form {
   background: #f8f9fa;
   border: 1px solid #e5e7eb;
@@ -412,20 +417,50 @@
     min-width: 0;
   }
 
-  /* if the name and balance fill the line, Edit and Delete wrap to the right, not under the chevron */
+  /* Edit and Delete only once the row is tapped (AccountsView's account-open), on a line of their own
+     under the account's details line, each with its word; "Looks good" at the end, under the review hint
+     that names it (beside the balance it would squeeze the name) */
   .account-actions {
-    gap: 4px;
+    display: contents;
+  }
+
+  .account-looks-good {
+    order: 3;
     margin-left: auto;
   }
 
+  .account-card-actions {
+    display: none;
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .account-item.account-open .account-card-actions {
+    display: flex;
+  }
+
+  .account-card-actions .icon-btn {
+    padding: 8px 12px;
+  }
+
   /* everything under the name gets a line (or more) of its own, lined up under the name (the expand
-     button's 19px and the 6px gap) */
+     button's 19px and the 6px gap): its details line, then (after Edit / Delete when open) its goal
+     progress, interest and review hint */
   .account-info > small,
   .account-info > .account-goal,
   .account-info > .account-interest {
     order: 1;
     flex-basis: calc(100% - 25px);
     margin-left: 25px;
+  }
+
+  .account-info > .account-goal,
+  .account-info > .account-interest,
+  .account-info > .needs-attention-hint {
+    order: 3;
   }
 
   .account-interest {
