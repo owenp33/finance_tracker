@@ -51,7 +51,7 @@
 }
 
 .account-transfer-row.transfer-selected {
-  background: #f0f4ff;
+  background: var(--accent-tint);
 }
 
 .transfer-checkbox {

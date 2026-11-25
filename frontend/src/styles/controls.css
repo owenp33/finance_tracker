@@ -56,12 +56,12 @@
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--ink);
   color: white;
 }
 
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background: var(--accent);
   box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.35);
 }
 
@@ -309,13 +309,13 @@
 }
 
 .preset-pill:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .preset-pill.active {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--ink);
+  background: var(--ink);
   color: white;
 }
 
@@ -351,9 +351,9 @@
 
 /* ── Filter panel ──────────────────────────────────────────────────────────── */
 .filter-btn-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: #f0f3ff;
+  border-color: var(--ink-soft);
+  color: var(--ink);
+  background: #f3f4f6;
 }
 
 .filter-panel {
@@ -433,7 +433,7 @@
 .filter-option input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--accent);
+  accent-color: var(--ink);
   cursor: pointer;
   flex-shrink: 0;
 }

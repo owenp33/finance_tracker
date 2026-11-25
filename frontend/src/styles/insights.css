@@ -169,8 +169,8 @@
 }
 
 .report-period-nav-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--ink-soft);
+  color: var(--ink);
 }
 
 .report-period-label {
@@ -310,7 +310,7 @@
 }
 
 .timeline-toggle-btn.active {
-  background: var(--accent);
+  background: var(--ink);
   color: #fff;
   font-weight: 600;
 }

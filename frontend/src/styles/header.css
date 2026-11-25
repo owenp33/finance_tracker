@@ -19,7 +19,7 @@
 
 .header-content h1 {
   font-size: 2.5rem;
-  color: var(--accent);
+  color: var(--ink);
   margin: 0;
 }
 
@@ -85,10 +85,10 @@
 }
 
 .view-nav button.active {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-end) 100%);
-  color: white;
-  border-color: var(--accent);
-  box-shadow: 0 5px 15px rgba(var(--accent-rgb), 0.3);
+  background: linear-gradient(135deg, var(--lime-light) 0%, var(--lime) 100%);
+  color: var(--ink);
+  border-color: var(--lime);
+  box-shadow: 0 5px 18px rgba(var(--lime-rgb), 0.35);
 }
 
 /* Error Message */

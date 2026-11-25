@@ -46,7 +46,7 @@
 }
 
 .transaction-item.tx-selected {
-  background: #eef1ff;
+  background: var(--accent-tint);
   border-radius: 6px;
 }
 
@@ -124,9 +124,9 @@
 }
 
 .mark-as-btn.active {
-  background: #e7f0ff;
-  color: #3b5bdb;
-  border-color: #c7d7f9;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent-tint-border);
   font-weight: 600;
 }
 
@@ -277,8 +277,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
-  background: #f0f3ff;
-  border: 1.5px solid #c5cff5;
+  background: var(--accent-tint);
+  border: 1.5px solid var(--accent-tint-border);
   border-radius: 10px;
   padding: 18px;
 }

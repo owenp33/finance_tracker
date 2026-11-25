@@ -18,14 +18,22 @@
   --chart-aqua: #1baf7a;
 }
 
-/* The accent: links, the active tab and nav button, primary buttons, focus rings and checkboxes. Its
-   hover shade, the second colour of the active nav button's gradient, and its RGB alone for rgba()
-   shadows and tints. Change these and the accent changes everywhere. */
+/* The app's colours: dark green for links, the active tab, focus rings and checkboxes (its hover shade,
+   its RGB alone for rgba() shadows, a lighter line, and a tint with its border for selected rows and
+   the add forms); black for the title, primary buttons and the selected sort and filter options, dark
+   grey for their hover; lime for the active nav button. */
 :root {
-  --accent: #667eea;
-  --accent-hover: #5568d3;
-  --accent-end: #764ba2;
-  --accent-rgb: 102, 126, 234;
+  --accent: #166534;
+  --accent-hover: #14532d;
+  --accent-rgb: 22, 101, 52;
+  --accent-light: #4ade80;
+  --accent-tint: #f0fdf4;
+  --accent-tint-border: #bbf7d0;
+  --ink: #0b0f0c;
+  --ink-soft: #374151;
+  --lime: #a3e635;
+  --lime-light: #d9f99d;
+  --lime-rgb: 163, 230, 53;
 }
 
 /* Spacing every view shares: around the page, inside a view's white card, and the room the phone's
@@ -50,8 +58,25 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #0d0f12;
   min-height: 100vh;
+  /* every checkbox and radio green, unless its rule says otherwise */
+  accent-color: var(--accent);
+}
+
+/* The page's background: dark green into graphite, a green glow at the top left, and two diagonal flashes
+   of lime and white. A fixed layer behind everything, so it stays put as the page scrolls (iOS ignores a
+   fixed background on the body itself). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(118deg, transparent 0 36%, rgba(190, 242, 100, 0.16) 39%, transparent 43%,
+      transparent 57%, rgba(255, 255, 255, 0.07) 59.5%, transparent 62%),
+    radial-gradient(70% 60% at 18% 0%, rgba(34, 197, 94, 0.26), transparent 62%),
+    linear-gradient(160deg, #0c2a1b 0%, #13171c 62%, #0d0f12 100%);
 }
 
 .App {
