@@ -64,19 +64,48 @@ body {
   accent-color: var(--accent);
 }
 
-/* The page's background: dark green into graphite, a green glow at the top left, and two diagonal flashes
-   of lime and white. A fixed layer behind everything, so it stays put as the page scrolls (iOS ignores a
-   fixed background on the body itself). */
-body::before {
+/* The page's background, two fixed layers behind everything, so they stay put as the page scrolls (iOS
+   ignores a fixed background on the body itself): dark green into graphite, still; over it a green glow
+   at the top left and two diagonal flashes of lime and white, drifting. The drifting layer is 40% larger
+   than the screen (its stops scaled to match, so at rest it sits as on a screen-sized layer) and moves by
+   transform alone, so it never shows an edge and the GPU moves it without repainting. --drift-duration
+   is one way (it goes back the same); it stays still for anyone who asks for reduced motion. */
+:root {
+  --drift-duration: 40s;
+}
+
+body::before,
+body::after {
   content: '';
   position: fixed;
-  inset: 0;
   z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  inset: 0;
+  background: linear-gradient(160deg, #0c2a1b 0%, #13171c 62%, #0d0f12 100%);
+}
+
+body::after {
+  inset: -20%;
   background:
-    linear-gradient(118deg, transparent 0 36%, rgba(190, 242, 100, 0.16) 39%, transparent 43%,
-      transparent 57%, rgba(255, 255, 255, 0.07) 59.5%, transparent 62%),
-    radial-gradient(70% 60% at 18% 0%, rgba(34, 197, 94, 0.26), transparent 62%),
-    linear-gradient(160deg, #0c2a1b 0%, #13171c 62%, #0d0f12 100%);
+    linear-gradient(118deg, transparent 0 40%, rgba(190, 242, 100, 0.16) 42.14%, transparent 45%,
+      transparent 55%, rgba(255, 255, 255, 0.07) 56.79%, transparent 58.57%),
+    radial-gradient(50% 42.86% at 27.14% 14.29%, rgba(34, 197, 94, 0.26), transparent 62%);
+  animation: background-drift var(--drift-duration) ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes background-drift {
+  from { transform: translate(-3%, -2%) rotate(-2deg); }
+  to   { transform: translate(3%, 2%) rotate(2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
 }
 
 .App {
