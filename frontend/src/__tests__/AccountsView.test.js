@@ -53,6 +53,39 @@ test('a reviewed account shows no flag', () => {
   expect(within(item).queryByRole('button', { name: 'Looks good' })).not.toBeInTheDocument();
 });
 
+// A phone shows an account row's Edit / Delete only once the row is tapped (its account-open class,
+// styles/accounts.css), as a series card's; laptops show them always
+describe('an account row on a phone', () => {
+  const SAVINGS = account({ id: 2, account_id: 'savings-1', account_name: 'Savings', apr: 0.5, interest_frequency: 'yearly' });
+  const WAITING = { id: 9, account_id: 2, date: '2027-01-01', amount: 15, amount_cents: 1500, apr: 0.5, frequency: 'yearly',
+                    base_cents: 300000, approved: false };
+
+  test("a tap opens a row's actions, one row at a time; its buttons and interest don't, and Edit closes it", async () => {
+    renderAccounts([account(), SAVINGS], jest.fn(), { interest: [WAITING] });
+    await userEvent.click(screen.getByText('Checking'));
+    expect(accountItem('Checking')).toHaveClass('account-open');
+    await userEvent.click(screen.getByText('Savings'));
+    expect(accountItem('Savings')).toHaveClass('account-open');
+    expect(accountItem('Checking')).not.toHaveClass('account-open');
+    // The interest waiting for approval has its own buttons and editor: a tap there leaves the row as it is
+    await userEvent.click(within(accountItem('Savings')).getByText('0.50% on $3,000.00'));
+    expect(accountItem('Savings')).toHaveClass('account-open');
+    await userEvent.click(screen.getByText('Savings'));
+    expect(accountItem('Savings')).not.toHaveClass('account-open');
+
+    await userEvent.click(screen.getByText('Checking'));
+    await userEvent.click(within(accountItem('Checking')).getByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(accountItem('Checking')).not.toHaveClass('account-open');
+  });
+
+  test("each row's Edit and Delete have a word to show on a phone, under the same name", () => {
+    renderAccounts([account()]);
+    expect(within(accountItem('Checking')).getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(within(accountItem('Checking')).getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+});
+
 const startEditing = async (name) => {
   await userEvent.click(within(accountItem(name)).getByRole('button', { name: 'Edit' }));
   return screen.getByLabelText('Starting balance');
@@ -406,6 +439,30 @@ describe("a bank account's transfers", () => {
     expect(onPairTransfer.mock.calls).toEqual([[1, 7], [2, 7]]);
     await userEvent.click(within(list).getByRole('button', { name: 'Delete 2' }));
     expect(onDeleteTransferBulk).toHaveBeenCalledWith([1, 2]);
+  });
+
+  // On a phone a tap on a row opens its actions (GroupedTransactionList); the other account's name and
+  // "Unlinked" are buttons of their own, so a tap there opens their picker and leaves the row alone
+  test("a tap on the other account's name, or on Unlinked, opens its picker, not the row's actions", async () => {
+    const list = await open();
+    const [first, second] = list.querySelectorAll('.account-transfer-row');
+    await userEvent.click(within(first).getByRole('button', { name: 'Savings' }));
+    expect(within(first).getByRole('button', { name: 'Move' })).toBeInTheDocument();
+    expect(first).not.toHaveClass('transfer-open');
+    await userEvent.click(within(second).getByRole('button', { name: 'Unlinked' }));
+    expect(within(second).getByRole('button', { name: 'Link' })).toBeInTheDocument();
+    expect(second).not.toHaveClass('transfer-open');
+  });
+
+  // Across years each date shows its year, in a piece of its own that a phone leaves out of an
+  // account's list (styles/accounts.css), so a transfer fits one line there (Owen, 2026-11-24)
+  test('across years a date carries its year in a piece a phone can leave out', async () => {
+    renderAccounts(ACCOUNTS, jest.fn(), { transactions: [...TRANSACTIONS, tx(4, 6, '2025-12-30', 'Venmo', 20)] });
+    const checking = accountItem('Checking');
+    await userEvent.click(within(checking).getByTitle('Expand transfers'));
+    const dates = [...checking.querySelectorAll('.account-transfer-date')];
+    expect(dates.map(d => d.textContent)).toEqual(['Oct 5, 2026', 'Sep 20, 2026', 'Dec 30, 2025']);
+    expect(dates.map(d => d.querySelector('.transfer-date-year')?.textContent)).toEqual([', 2026', ', 2026', ', 2025']);
   });
 });
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import './App.css';
+import './styles/index.css';
 import * as authAPI from './api/auth';
 import * as accountsAPI from './api/accounts';
 import * as transactionsAPI from './api/transactions';

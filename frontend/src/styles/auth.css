@@ -1,0 +1,77 @@
+/* The login and register screen. */
+
+.submit-btn {
+  grid-column: 1 / -1;
+  background: var(--ink);
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.submit-btn:hover {
+  background: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(var(--accent-rgb), 0.3);
+}
+
+/* Auth Screen */
+.auth-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.auth-container {
+  background: white;
+  padding: 40px;
+  border-radius: 15px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-width: 450px;
+  width: 100%;
+}
+
+.auth-container h1 {
+  color: var(--ink);
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.auth-container h2 {
+  color: #333;
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 1.5rem;
+}
+
+.auth-container form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.toggle-auth {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+.toggle-auth button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.toggle-auth button:hover {
+  color: var(--accent-hover);
+}

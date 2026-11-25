@@ -35,6 +35,8 @@ const byVendor = (rows) => {
 // `extraActions(t)`, Edit (in place: date, vendor, amount, notes; saved through `onEdit(id, fields)`
 // with the row's own account and category) and Delete. `renderBulkActions(selected,
 // clearSelection)` fills the bulk bar; `label` names the rows in the header ("Transfers (4)").
+// A phone has no hover: there a tap on a row opens its actions on a line under it (the row's
+// `transfer-open` class, styles/grouped-list.css), one row at a time, each action with its word.
 function GroupedTransactionList({
   transactions, label, renderMiddle, renderBulkActions, onEdit, onDelete, extraActions = () => null,
 }) {
@@ -42,6 +44,7 @@ function GroupedTransactionList({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [editingId, setEditingId] = useState(null);
   const [fields, setFields] = useState({});
+  const [openId, setOpenId] = useState(null);
 
   const selected = transactions.filter(t => selectedIds.has(t.id));
   const allSelected = transactions.length > 0 && selected.length === transactions.length;
@@ -53,7 +56,14 @@ function GroupedTransactionList({
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(transactions.map(t => t.id)));
   const clearSelection = () => setSelectedIds(new Set());
 
+  // A tap on the row, not on its checkbox or an action, opens or closes its actions (phones)
+  const toggleOpen = (e, id) => {
+    if (e.target.closest('button, input, select, label, a, [role="button"]')) return;
+    setOpenId(open => (open === id ? null : id));
+  };
+
   const startEdit = (t) => {
+    setOpenId(null);
     setEditingId(t.id);
     setFields({ date: t.date, vendor: t.vendor, amount: t.amount, notes: t.notes || '' });
   };
@@ -78,7 +88,8 @@ function GroupedTransactionList({
             {someSelected ? `${selected.length} of ${transactions.length} selected` : `${label} (${transactions.length})`}
           </span>
         </label>
-        <div className="transfer-bulk-bar" style={!someSelected ? { visibility: 'hidden', pointerEvents: 'none' } : {}}>
+        {/* idle while nothing is selected: hidden, keeping its room on a laptop, gone on a phone */}
+        <div className={`transfer-bulk-bar${someSelected ? '' : ' idle'}`}>
           {renderBulkActions(selected, clearSelection)}
         </div>
         <div className="transfer-sort-controls">
@@ -106,7 +117,8 @@ function GroupedTransactionList({
             {group.map(t => (
               <div
                 key={t.id}
-                className={`account-transfer-row${selectedIds.has(t.id) ? ' transfer-selected' : ''}`}
+                className={`account-transfer-row${selectedIds.has(t.id) ? ' transfer-selected' : ''}${openId === t.id ? ' transfer-open' : ''}`}
+                onClick={editingId === t.id ? undefined : e => toggleOpen(e, t.id)}
               >
                 {editingId === t.id ? (
                   <div className="transfer-edit-row">
@@ -130,19 +142,22 @@ function GroupedTransactionList({
                     </span>
                     {renderMiddle(t)}
                     <div className="account-transfer-right">
-                      <span className="account-transfer-date">{formatDate(t.date, showYear)}</span>
+                      {/* the year a piece of its own, which a phone leaves out of an account's list */}
+                      <span className="account-transfer-date">
+                        {formatDate(t.date)}{showYear && <span className="transfer-date-year">, {t.date.slice(0, 4)}</span>}
+                      </span>
                       <div className="transfer-row-actions">
                         {extraActions(t)}
                         <button
                           className="btn btn-ghost btn-sm icon-btn transfer-action-btn"
                           title="Edit"
                           onClick={() => startEdit(t)}
-                        ><Pencil size={13} /></button>
+                        ><Pencil size={13} /><span className="tx-action-label">Edit</span></button>
                         <button
                           className="btn btn-danger btn-sm icon-btn transfer-action-btn"
                           title="Delete"
                           onClick={() => onDelete(t.id)}
-                        ><Trash2 size={13} /></button>
+                        ><Trash2 size={13} /><span className="tx-action-label">Delete</span></button>
                       </div>
                     </div>
                   </>

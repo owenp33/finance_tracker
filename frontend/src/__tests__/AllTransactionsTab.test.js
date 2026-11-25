@@ -34,3 +34,19 @@ test("select all takes every transaction shown, a loan account's own included", 
   await user.click(screen.getByRole('button', { name: 'Delete 2 selected' }));
   expect(onDeleteMany).toHaveBeenCalledWith(expect.arrayContaining([1, 2]));
 });
+
+// The bulk buttons wait, as one, while nothing is selected: a laptop keeps their room (hidden), a phone
+// gives it to "Select all" (styles/transactions.css), so the label doesn't wrap
+test('the bulk buttons are idle until something is selected', async () => {
+  render(
+    <CategoryColorProvider>
+      <TransactionsView transactions={[tx(1), tx(2)]} recurringTransactions={[]}
+                        accounts={[{ id: 1, account_name: 'Checking', kind: 'bank' }]} onDeleteMany={jest.fn()} />
+    </CategoryColorProvider>
+  );
+  const bulkButtons = screen.getByRole('button', { name: /^Delete .* selected$/ }).parentElement;
+  expect(bulkButtons).toHaveClass('bulk-actions', 'idle');
+  await user.click(screen.getByLabelText('Select all 2'));
+  expect(bulkButtons).not.toHaveClass('idle');
+  expect(screen.getByRole('button', { name: 'Delete 2 selected' })).not.toHaveStyle({ visibility: 'hidden' });
+});

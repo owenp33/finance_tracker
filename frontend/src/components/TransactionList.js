@@ -16,9 +16,12 @@ const formatAmount = (amount) =>
 // renderActions(t), when given, replaces the default hover actions (transfer, edit, delete).
 // unrelatedTo (transaction id → [{ id, vendor }]) marks transactions dismissed from a recurring
 // series with an "Unrelated" pill and a hover action that calls onAddToSeries(seriesId, txId).
+// A phone has no hover: there a tap opens a row's actions on a line under it (the row's `tx-open`
+// class, styles/transactions.css), one row at a time; each action carries a word to show there.
 function TransactionList({ transactions, accounts = [], onEdit, onDelete, onToggleTransfer, onPairTransfer, showAll = false, resetSignal, onStartEdit, compact = false, selectedIds, onToggle, renderActions, unrelatedTo, onAddToSeries }) {
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
+  const [openId, setOpenId] = useState(null);
   const { getColor } = useCategoryColors();
 
   // Fallback for transactions missing a backend-computed recurring_index — only
@@ -59,6 +62,7 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
 
   const startEdit = (t) => {
     onStartEdit?.();
+    setOpenId(null);
     setEditingId(t.id);
     setEditFields({
       date: t.date,
@@ -81,10 +85,22 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
 
   const set = (field, value) => setEditFields(prev => ({ ...prev, [field]: value }));
 
+  // A tap on the row, not on its checkbox or an action, opens or closes its actions (phones), when it
+  // has any to open
+  const hasActions = !compact && !!(renderActions || onToggleTransfer || showAll || (unrelatedTo && onAddToSeries));
+  const toggleOpen = (e, id) => {
+    if (e.target.closest('button, input, select, label, a, [role="button"]')) return;
+    setOpenId(open => (open === id ? null : id));
+  };
+
   return (
     <div className={`transaction-list${compact ? ' compact' : ''}`}>
       {transactions.map(t => (
-        <div key={t.id} className={`transaction-item${selectedIds?.has(t.id) ? ' tx-selected' : ''}`}>
+        <div
+          key={t.id}
+          className={`transaction-item${selectedIds?.has(t.id) ? ' tx-selected' : ''}${openId === t.id ? ' tx-open' : ''}`}
+          onClick={hasActions && editingId !== t.id ? e => toggleOpen(e, t.id) : undefined}
+        >
           {editingId === t.id ? (
             <div className="transaction-edit-form">
               {accounts.length > 0 && (
@@ -210,22 +226,30 @@ function TransactionList({ transactions, accounts = [], onEdit, onDelete, onTogg
                           aria-label={`Add to ${series.vendor} series`}
                           onClick={() => onAddToSeries(series.id, t.id)}
                         >
-                          <Check size={14} />
+                          <Check size={14} /><span className="tx-action-label">Add to series</span>
                         </button>
                       ))}
-                      {onToggleTransfer && (
-                        <button
-                          className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
-                          title={t.is_transfer ? (t.transfer_peer_id ? 'Unlink transfer' : 'Unmark transfer') : 'Mark as transfer'}
-                          onClick={() => onToggleTransfer(t.id)}
-                        >
-                          <ArrowLeftRight size={14} />
-                        </button>
-                      )}
+                      {onToggleTransfer && (() => {
+                        const title = t.is_transfer ? (t.transfer_peer_id ? 'Unlink transfer' : 'Unmark transfer') : 'Mark as transfer';
+                        return (
+                          <button
+                            className={`btn btn-ghost btn-sm icon-btn${t.is_transfer ? ' tx-transfer-active' : ''}`}
+                            title={title}
+                            aria-label={title}
+                            onClick={() => onToggleTransfer(t.id)}
+                          >
+                            <ArrowLeftRight size={14} /><span className="tx-action-label">Transfer</span>
+                          </button>
+                        );
+                      })()}
                       {showAll && (
                         <>
-                          <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}><Pencil size={14} /></button>
-                          <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}><Trash2 size={14} /></button>
+                          <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(t)}>
+                            <Pencil size={14} /><span className="tx-action-label">Edit</span>
+                          </button>
+                          <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => { setEditingId(null); onDelete(t.id); }}>
+                            <Trash2 size={14} /><span className="tx-action-label">Delete</span>
+                          </button>
                         </>
                       )}
                     </>

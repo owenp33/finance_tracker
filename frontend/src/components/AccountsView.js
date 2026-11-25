@@ -68,10 +68,26 @@ function AccountsView({
   const [expandedAccountIds, setExpandedAccountIds] = useState(new Set());
   const [movingPeerId, setMovingPeerId] = useState(null);
   const [movingToAccountId, setMovingToAccountId] = useState('');
+  // The account row tapped open (phones show its Edit / Delete only then), one at a time
+  const [openAccountId, setOpenAccountId] = useState(null);
+
+  // A tap on a row, not on one of its buttons or its interest (which has its own), opens or closes its actions
+  const toggleAccount = (e, id) => {
+    if (e.target.closest('button, input, select, label, a, [role="button"], .account-interest')) return;
+    setOpenAccountId(open => (open === id ? null : id));
+  };
 
   const toggleAccountExpand = (id) =>
     setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // A label that acts as a button: focusable, Enter or Space presses it, and a tap on it doesn't
+  // also open its row's actions (GroupedTransactionList skips role="button")
+  const pressable = (onPress) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick: onPress,
+    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress(); } },
+  });
 
   // A row's "To" / "From" and its other account: a transfer's peer (click to move it, or to link an
   // unlinked one); on a loan, a payment's account it was paid from, and none for the loan's own
@@ -110,7 +126,7 @@ function AccountsView({
             <span
               className="account-transfer-peer-name"
               title="Click to change linked account"
-              onClick={() => { setMovingPeerId(t.id); setMovingToAccountId(''); }}
+              {...pressable(() => { setMovingPeerId(t.id); setMovingToAccountId(''); })}
             >{t.transfer_peer_account}</span>
           )
         ) : (
@@ -137,7 +153,7 @@ function AccountsView({
             <span
               className="account-transfer-unlinked"
               title="Click to link to another account"
-              onClick={() => { setPairingTxId(t.id); setPairingToAccountId(''); }}
+              {...pressable(() => { setPairingTxId(t.id); setPairingToAccountId(''); })}
             >Unlinked</span>
           )
         )}
@@ -235,7 +251,7 @@ function AccountsView({
             const typedBalance = editingBalanceSource === 'current' ? editingCurrentBalance : editingOpeningBalance;
 
             return (
-              <div key={a.id} className="account-item">
+              <div key={a.id} className={`account-item${openAccountId === a.id ? ' account-open' : ''}`}>
                 {editingAccountId === a.id ? (
                   <div className="account-edit-form">
                     <div className="form-group">
@@ -317,7 +333,7 @@ function AccountsView({
                   </div>
                 ) : (
                   <>
-                    <div className="account-item-row">
+                    <div className="account-item-row" onClick={e => toggleAccount(e, a.id)}>
                       <button
                         className="account-expand-btn"
                         onClick={() => toggleAccountExpand(a.id)}
@@ -366,33 +382,36 @@ function AccountsView({
                       <div className="account-actions">
                         {a.needs_attention && (
                           <button
-                            className="btn btn-secondary btn-sm"
+                            className="btn btn-secondary btn-sm account-looks-good"
                             onClick={() => onEditAccount(a.id, { needs_attention: false })}
                           >Looks good</button>
                         )}
-                        <button
-                          className="btn btn-ghost btn-sm icon-btn"
-                          title="Edit"
-                          onClick={() => {
-                            setEditingAccountId(a.id);
-                            setEditingAccountName(a.account_name);
-                            setEditingAccountIdStr(a.account_id);
-                            setEditingKind(a.kind ?? 'bank');
-                            setEditingApr(a.apr == null ? '' : String(a.apr));
-                            setEditingFrequency(a.interest_frequency ?? 'monthly');
-                            setEditingOpeningBalance(String(a.opening_balance ?? 0));
-                            setEditingCurrentBalance(String(a.balance ?? 0));
-                            setEditingBalanceSource('opening');
-                          }}
-                        ><Pencil size={14} /></button>
-                        <button
-                          className="btn btn-danger btn-sm icon-btn"
-                          title="Delete"
-                          onClick={async () => {
-                            if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return;
-                            await onDeleteAccount(a.id);
-                          }}
-                        ><Trash2 size={14} /></button>
+                        <span className="account-card-actions">
+                          <button
+                            className="btn btn-ghost btn-sm icon-btn"
+                            title="Edit"
+                            onClick={() => {
+                              setOpenAccountId(null);
+                              setEditingAccountId(a.id);
+                              setEditingAccountName(a.account_name);
+                              setEditingAccountIdStr(a.account_id);
+                              setEditingKind(a.kind ?? 'bank');
+                              setEditingApr(a.apr == null ? '' : String(a.apr));
+                              setEditingFrequency(a.interest_frequency ?? 'monthly');
+                              setEditingOpeningBalance(String(a.opening_balance ?? 0));
+                              setEditingCurrentBalance(String(a.balance ?? 0));
+                              setEditingBalanceSource('opening');
+                            }}
+                          ><Pencil size={14} /><span className="tx-action-label">Edit</span></button>
+                          <button
+                            className="btn btn-danger btn-sm icon-btn"
+                            title="Delete"
+                            onClick={async () => {
+                              if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return;
+                              await onDeleteAccount(a.id);
+                            }}
+                          ><Trash2 size={14} /><span className="tx-action-label">Delete</span></button>
+                        </span>
                       </div>
                     </div>
 

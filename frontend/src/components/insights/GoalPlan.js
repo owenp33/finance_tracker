@@ -9,8 +9,8 @@ const whole = (cents) => formatWholeDollars(cents / 100);
 // A loan whose goal is $0 owed is paid off; any other goal is reached
 const reachedWord = (line) => (line.owed && line.target === 0 ? 'paid off' : 'reached');
 
-// A reached goal, as Budgeting words it
-const heldText = (goal) => `${goal.position}. ${goal.account_name} · Reached: ${goal.account_kind === 'loan' && goal.target_cents === 0
+// A reached goal, after its name, as Budgeting words it
+const heldText = (goal) => `Reached: ${goal.account_kind === 'loan' && goal.target_cents === 0
   ? 'paid off'
   : `keep it at ${formatCents(goal.target_cents)} or more`}`;
 
@@ -62,7 +62,10 @@ function GoalPlan({ goals, plans, timeline }) {
         <>
           <p className="chart-note">Goals run in order; each one's monthly amount moves to the next once it's reached.</p>
           {goals.filter(goal => planOf[goal.id]?.status === 'held').map(goal => (
-            <p key={goal.id} className="goal-plan-held">{heldText(goal)}</p>
+            <p key={goal.id} className="goal-plan-held">
+              <strong>{`${goal.position}. ${goal.account_name}`}</strong>
+              {` · ${heldText(goal)}`}
+            </p>
           ))}
           {timeline.handoffs.map(handoff => (
             <p key={handoff.month} className="goal-plan-handoff">

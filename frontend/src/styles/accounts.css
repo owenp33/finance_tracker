@@ -1,0 +1,494 @@
+/* Transactions → Accounts: account rows and their expand button, the add and edit forms, a
+   transfer's other account, loan and rate details, goal progress and interest waiting for approval. */
+
+/* === Accounts View ============================================ */
+.accounts-view {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.account-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.account-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.account-info .needs-attention-hint { color: #e67700; }
+
+/* ── Accounts tab ──────────────────────────────────────────────────────────── */
+.accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.account-item {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.account-item:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.1);
+}
+
+.account-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-expand-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.account-expand-btn:hover:not(:disabled) {
+  color: #374151;
+}
+
+.account-expand-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.account-transfer-count {
+  margin-left: 6px;
+  color: #3b5bdb;
+  font-weight: 500;
+}
+
+.transfer-bulk-hint {
+  font-size: 0.8rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.account-transfer-direction {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  width: 40px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.account-transfer-peer {
+  flex: 1;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-transfer-unlinked {
+  color: #aaa;
+  font-style: italic;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.account-transfer-pair-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-transfer-pair-picker select {
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #fff;
+}
+
+/* The account a loan's payment was paid from: a name, not a link to change */
+.account-loan-payer {
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.account-transfer-peer-name {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.82rem;
+  text-decoration: underline dotted;
+  transition: color 0.15s;
+}
+
+.account-transfer-peer-name:hover {
+  color: var(--accent-hover);
+}
+
+/* A column of the name, details, goal progress and interest, centred across the row */
+.account-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2px;
+}
+
+.account-info strong {
+  font-size: 1rem;
+  color: #1a1a2e;
+}
+
+.account-info small {
+  color: #888;
+  font-size: 0.82rem;
+}
+
+.account-balance {
+  font-size: 1.05rem;
+  font-weight: 600;
+  min-width: 90px;
+  text-align: right;
+}
+
+.account-balance.green { color: #16a34a; }
+
+.account-balance.red   { color: #dc2626; }
+
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* An account's Edit / Delete: beside its balance here; on a phone, only once the row is tapped (below) */
+.account-card-actions {
+  display: contents;
+}
+
+.account-form {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 440px;
+}
+
+/* The Add Account form's Add / Cancel: clear of the hint text above them */
+.account-form .form-actions {
+  margin-top: 16px;
+}
+
+.account-edit-form input {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.account-field-hint {
+  display: block;
+  max-width: 440px;
+  margin-top: 4px;
+  color: #888;
+  font-size: 0.8rem;
+}
+
+/* Between the starting and current balance fields: how the two add up */
+.account-balance-sum {
+  max-width: 440px;
+  margin: 0 0 12px;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.account-opening-balance {
+  margin-left: 6px;
+}
+
+/* A loan account (Phase F, F2a): its badge; any account's interest rate */
+.loan-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3b4fa8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.account-apr {
+  margin-left: 6px;
+}
+
+.account-edit-form select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+/* An account's interest waiting for approval under its row in Transactions → Accounts: a list of its
+   own, each charge with its amount and Approve / Edit (the bank's figure) / Delete. The row's info is
+   centred, so the list takes a fixed width there, and an open editor doesn't shift it */
+.account-interest {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.account-interest-heading,
+.account-interest-list {
+  width: 100%;
+  max-width: 600px;
+}
+
+.account-interest-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
+.account-interest-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.account-interest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 30px;
+}
+
+.account-interest-date {
+  flex: 0 0 96px;
+}
+
+.account-interest-basis {
+  flex: 1;
+  min-width: 0;
+  color: #6b7280;
+}
+
+.account-interest-amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.account-interest-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.account-interest-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-interest-edit input {
+  width: 100px;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* On a phone, what a charge was worked out on takes a line of its own under its date and amount. An open
+   editor's pieces join the row: the date, "Charged" / "Paid" and the amount box (taking the room left) on
+   the first line, the basis under them, then Save and Cancel at the right; the box's text is 16px, so a
+   phone doesn't zoom in when it takes focus */
+@media (max-width: 600px) {
+  .account-interest-basis {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .account-interest-amount {
+    margin-left: auto;
+  }
+
+  .account-interest-edit {
+    display: contents;
+  }
+
+  .account-interest-edit input {
+    flex: 1 1 60px;
+    min-width: 0;
+    width: auto;
+    font-size: 1rem;
+  }
+
+  .account-interest-edit .btn {
+    order: 4;
+  }
+
+  .account-interest-edit .btn-primary {
+    margin-left: auto;
+  }
+}
+
+/* An account's goal progress on its row in Transactions → Accounts (F2f) */
+.account-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.account-goal-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Phone: the list sits flush in the Transactions card (not a card inside a card), and each account row
+   is its name, balance and Edit / Delete on one line, with its details, goal progress and interest
+   across the row under them, lined up under the name */
+@media (max-width: 600px) {
+  .accounts-view {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .account-item {
+    padding: 12px;
+  }
+
+  .account-item-row {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+
+  .account-info {
+    display: contents;
+  }
+
+  .account-info strong {
+    flex: 1 1 100px;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+
+  .account-balance {
+    min-width: 0;
+  }
+
+  /* Edit and Delete only once the row is tapped (AccountsView's account-open), on a line of their own
+     under the account's details line, each with its word; "Looks good" at the end, under the review hint
+     that names it (beside the balance it would squeeze the name) */
+  .account-actions {
+    display: contents;
+  }
+
+  .account-looks-good {
+    order: 3;
+    margin-left: auto;
+  }
+
+  .account-card-actions {
+    display: none;
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .account-item.account-open .account-card-actions {
+    display: flex;
+  }
+
+  .account-card-actions .icon-btn {
+    padding: 8px 12px;
+  }
+
+  /* everything under the name gets a line (or more) of its own, lined up under the name (the expand
+     button's 19px and the 6px gap): its details line, then (after Edit / Delete when open) its goal
+     progress, interest and review hint */
+  .account-info > small,
+  .account-info > .account-goal,
+  .account-info > .account-interest {
+    order: 1;
+    flex-basis: calc(100% - 25px);
+    margin-left: 25px;
+  }
+
+  .account-info > .account-goal,
+  .account-info > .account-interest,
+  .account-info > .needs-attention-hint {
+    order: 3;
+  }
+
+  /* never wider than its row, whatever a charge's editor holds */
+  .account-interest {
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  /* a charge's date, amount and three buttons on one line (its basis on the next) */
+  .account-interest-row {
+    column-gap: 8px;
+  }
+
+  .account-interest-date {
+    flex: 0 0 auto;
+  }
+
+  .account-interest-actions .icon-btn {
+    padding: 4px 6px;
+  }
+
+  /* a transfer on one line (styles/grouped-list.css): To / From as wide as its word, the other account
+     taking the room that's left, and the date without its year (Owen, 2026-11-24) */
+  .account-transfer-direction {
+    width: auto;
+  }
+
+  .account-transfer-peer {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .accounts-list .transfer-date-year {
+    display: none;
+  }
+}

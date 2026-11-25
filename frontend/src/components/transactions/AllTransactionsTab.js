@@ -233,19 +233,12 @@ function AllTransactionsTab({
             />
             <span>{selectedTxIds.size > 0 ? `${selectedTxIds.size} of ${sortedFiltered.length} selected` : `Select all ${visible.length}`}</span>
           </label>
-          <div className="bulk-actions">
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={handleBulkMarkTransfer}
-              style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-            >
+          {/* idle while nothing is selected: hidden, keeping its room on a laptop, gone on a phone */}
+          <div className={`bulk-actions${selectedTxIds.size === 0 ? ' idle' : ''}`}>
+            <button className="btn btn-ghost btn-sm" onClick={handleBulkMarkTransfer}>
               {allSelectedAreTransfers ? 'Unmark as transfer' : 'Mark as transfer'}
             </button>
-            <button
-              className="btn btn-danger btn-sm"
-              onClick={handleBulkDelete}
-              style={selectedTxIds.size === 0 ? { visibility: 'hidden', pointerEvents: 'none' } : {}}
-            >
+            <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
               Delete {selectedTxIds.size || '—'} selected
             </button>
           </div>

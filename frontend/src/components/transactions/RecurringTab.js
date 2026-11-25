@@ -37,6 +37,14 @@ function RecurringTab({
   const [recurringEditFields, setRecurringEditFields] = useState({});
   const [expandedRecurringIds, setExpandedRecurringIds] = useState(new Set());
   const [recurringBulkAmount, setRecurringBulkAmount] = useState('');
+  // The series card tapped open (phones show its Edit / Delete only then), one at a time
+  const [openCardId, setOpenCardId] = useState(null);
+
+  // A tap on a card's line, not on one of its buttons, opens or closes its actions
+  const toggleCard = (e, id) => {
+    if (e.target.closest('button, input, select, label, a, [role="button"]')) return;
+    setOpenCardId(open => (open === id ? null : id));
+  };
 
   const toggleRecurringExpand = (id) =>
     setExpandedRecurringIds(prev => {
@@ -57,6 +65,7 @@ function RecurringTab({
   const accountName = (id) => accounts.find(a => a.id === id)?.account_name;
 
   const startEditRecurring = (r) => {
+    setOpenCardId(null);
     setEditingRecurringId(r.id);
     setRecurringEditFields({
       vendor: r.vendor, category: r.category, amount: r.amount,
@@ -94,7 +103,7 @@ function RecurringTab({
 
   // One template's card, in the active list or under Finished
   const renderTemplate = (r) => (
-    <div key={r.id} className="recurring-item">
+    <div key={r.id} className={`recurring-item${openCardId === r.id ? ' series-open' : ''}`}>
       {editingRecurringId === r.id ? (
         <div className="recurring-edit-form">
           <div className="form-group">
@@ -185,7 +194,7 @@ function RecurringTab({
         </div>
       ) : (
         <>
-          <div className="recurring-item-row">
+          <div className="recurring-item-row" onClick={e => toggleCard(e, r.id)}>
             <div className="recurring-info">
               <strong>
                 {r.vendor}
@@ -200,13 +209,13 @@ function RecurringTab({
                 const when = displayDate
                   ? `${finishedSeries ? 'Last' : 'Next'}: ${formatDate(displayDate, finishedSeries || dateStrToDate(r.date).getFullYear() !== dateStrToDate(displayDate).getFullYear())}`
                   : 'No occurrences';
+                // A series paying down a loan names the loan, not the account it's charged to
                 const account = accountName(r.account_id);
                 const loan = r.loan_account_id != null ? accountName(r.loan_account_id) : null;
                 return (
                   <span>
                     {r.category} · {frequencyLabel(r.frequency, r.frequency_unit)} · {when}
-                    {account && ` · ${account}`}
-                    {loan && ` · Pays down ${loan}`}
+                    {loan ? ` · Pays down ${loan}` : account && ` · ${account}`}
                   </span>
                 );
               })()}
@@ -216,8 +225,14 @@ function RecurringTab({
               <span className={`transaction-amount ${r.amount >= 0 ? 'green' : 'red'}`}>
                 {r.amount >= 0 ? '+' : '-'}${Math.abs(r.amount).toFixed(2)}
               </span>
-              <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}><Pencil size={14} /></button>
-              <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}><Trash2 size={14} /></button>
+              <span className="series-card-actions">
+                <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEditRecurring(r)}>
+                  <Pencil size={14} /><span className="tx-action-label">Edit</span>
+                </button>
+                <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDeleteRecurring(r.id)}>
+                  <Trash2 size={14} /><span className="tx-action-label">Delete</span>
+                </button>
+              </span>
             </div>
           </div>
           {r.suggestion_count > 0 && (
@@ -316,7 +331,7 @@ function RecurringTab({
                         title="Remove from series"
                         aria-label="Remove from series"
                         onClick={() => onUnlinkFromRecurring(r.id, [t.id])}
-                      ><Unlink size={13} /></button>
+                      ><Unlink size={13} /><span className="tx-action-label">Remove</span></button>
                     )}
                     onEdit={onEdit}
                     onDelete={onDelete}
