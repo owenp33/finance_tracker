@@ -412,6 +412,9 @@ describe('the goal plan', () => {
     ]));
     expect(within(card()).getByText("Goals run in order; each one's monthly amount moves to the next once it's reached.")).toBeInTheDocument();
     expect(card().querySelector('.goal-plan-held').textContent).toBe("1. Owen's Checking · Reached: keep it at $100.00 or more");
+    // Every goal's name in bold, a reached one's as a charted one's
+    expect([...card().querySelectorAll('.goal-plan-held strong, .goal-plan-panel figcaption strong')].map(s => s.textContent))
+      .toEqual(["1. Owen's Checking", "2. Owen's Savings", '3. Student Loan']);
     expect([...card().querySelectorAll('.goal-plan-handoff')].map(e => e.textContent)).toEqual([
       "Jan 2027: Owen's Savings reached → Student Loan",
     ]);
