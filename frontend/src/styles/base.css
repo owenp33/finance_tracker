@@ -64,18 +64,24 @@ body {
   accent-color: var(--accent);
 }
 
-/* The page's background, two fixed layers behind everything, so they stay put as the page scrolls (iOS
-   ignores a fixed background on the body itself): dark green into graphite, still; over it a green glow
-   at the top left and two diagonal flashes of lime and white, drifting. The drifting layer is 40% larger
-   than the screen (its stops scaled to match, so at rest it sits as on a screen-sized layer) and moves by
-   transform alone, so it never shows an edge and the GPU moves it without repainting. --drift-duration
-   is one way (it goes back the same); it stays still for anyone who asks for reduced motion. */
+/* The page's background ("Sweep"), three fixed layers behind everything, so they stay put as the page
+   scrolls (iOS ignores a fixed background on the body itself), drawn in this order:
+   - body::before, still: about half dark green and half near-black in gentle steps, under a fine grain
+     (a noise tile at 5%) so the dark fade shows no bands;
+   - #root::before (the React root, so it sits between the other two): a soft green glow circling the top
+     left, once every 1.7 × --drift-duration;
+   - body::after: soft lime and white streaks, a repeating gradient that flows one way without end, moving
+     one period (900px along its 115° line) every --drift-duration. The layer reaches one period past the
+     screen up and to the left, so it always covers the screen as it moves.
+   Both move by transform alone, so the GPU moves them without repainting; both stay still for anyone who
+   asks for reduced motion. */
 :root {
-  --drift-duration: 40s;
+  --drift-duration: 5.6s;
 }
 
 body::before,
-body::after {
+body::after,
+#root::before {
   content: '';
   position: fixed;
   z-index: -1;
@@ -84,26 +90,49 @@ body::after {
 
 body::before {
   inset: 0;
-  background: linear-gradient(160deg, #0c2a1b 0%, #13171c 62%, #0d0f12 100%);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.05'/></svg>"),
+    linear-gradient(150deg, #10402a 0%, #0d3222 26%, #0e2519 50%, #111b16 72%, #0d1011 100%);
 }
 
-body::after {
+#root::before {
   inset: -20%;
-  background:
-    linear-gradient(118deg, transparent 0 40%, rgba(190, 242, 100, 0.16) 42.14%, transparent 45%,
-      transparent 55%, rgba(255, 255, 255, 0.07) 56.79%, transparent 58.57%),
-    radial-gradient(50% 42.86% at 27.14% 14.29%, rgba(34, 197, 94, 0.26), transparent 62%);
-  animation: background-drift var(--drift-duration) ease-in-out infinite alternate;
+  background: radial-gradient(38% 42% at 34% 26%, rgba(34, 197, 94, 0.3), transparent 70%);
+  animation: glow-circle calc(var(--drift-duration) * 1.7143) linear infinite;
   will-change: transform;
 }
 
-@keyframes background-drift {
-  from { transform: translate(-3%, -2%) rotate(-2deg); }
-  to   { transform: translate(3%, 2%) rotate(2deg); }
+body::after {
+  left: -830px;
+  top: -400px;
+  width: calc(100% + 830px);
+  height: calc(100% + 400px);
+  background: repeating-linear-gradient(115deg,
+    transparent 0, transparent 260px,
+    rgba(190, 242, 100, 0.1) 330px, transparent 400px,
+    transparent 560px, rgba(255, 255, 255, 0.055) 610px, transparent 660px,
+    transparent 900px);
+  animation: streak-flow var(--drift-duration) linear infinite;
+  will-change: transform;
+}
+
+@keyframes glow-circle {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(9%, 4%); }
+  50%  { transform: translate(5%, 11%); }
+  75%  { transform: translate(-4%, 6%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* one period of the streaks along their 115° line: 900px × (sin 115°, −cos 115°) */
+@keyframes streak-flow {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(815.7px, 380.4px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::after {
+  body::after,
+  #root::before {
     animation: none;
   }
 }
