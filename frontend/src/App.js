@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import './App.css';
+import './styles/index.css';
 import * as authAPI from './api/auth';
 import * as accountsAPI from './api/accounts';
 import * as transactionsAPI from './api/transactions';
 import * as recurringAPI from './api/recurring';
+import { forEachInOrder } from './utils/sequence';
+import { SESSION_EXPIRED_EVENT } from './api/client';
 import { useAccounts } from './hooks/useAccounts';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
-import { useUpcoming } from './hooks/useUpcoming';
-import { useAnalytics } from './hooks/useAnalytics';
+import { useInterest } from './hooks/useInterest';
+import * as interestAPI from './api/interest';
 import AuthScreen from './components/AuthScreen';
 import AppHeader from './components/AppHeader';
 import DashboardView from './components/DashboardView';
@@ -34,26 +36,42 @@ function App() {
   const { accounts, loadAccounts } = useAccounts({ setError });
   const { transactions, loadTransactions } = useTransactions({ setError });
   const { budgetData, loadBudgetProgress } = useBudgets({ setError });
-  const { upcoming, loadUpcoming } = useUpcoming({ setError });
-  const { analytics, loadAnalytics } = useAnalytics({ setError });
-
+  const { interest, loadInterest } = useInterest({ setError });
   // AUTH HANDLERS =============================================================
 
-  const handleLogout = useCallback(() => {
+  // Forgets the login; the caller decides what the login screen says
+  const endSession = useCallback(() => {
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('token');
   }, []);
 
+  // Logging out on purpose leaves no message behind on the login screen
+  const handleLogout = useCallback(() => {
+    endSession();
+    setError(null);
+  }, [endSession]);
+
+  // Moving to another view leaves the last one's message behind; the view you're on keeps it
+  const changeView = (next) => {
+    if (next !== view) setError(null);
+    setView(next);
+  };
+
+  // A message from before logging in (an expired login, a failed attempt) no longer applies
+  const startSession = (data) => {
+    setToken(data.access_token);
+    setUser(data.user);
+    setIsAuthenticated(true);
+    setError(null);
+    localStorage.setItem('token', data.access_token);
+  };
+
   const handleLogin = async (username, password) => {
     try {
       const data = await authAPI.login(username, password);
-      const userData = typeof data.user === 'string' ? JSON.parse(data.user) : data.user;
-      setToken(data.access_token);
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('token', data.access_token);
+      startSession(data);
       if (data.updates?.transactions_generated > 0) {
         alert(`Generated ${data.updates.transactions_generated} recurring transactions`);
       }
@@ -65,11 +83,7 @@ function App() {
   const handleRegister = async (username, email, password) => {
     try {
       const data = await authAPI.register(username, email, password);
-      const userData = typeof data.user === 'object' ? data.user : JSON.parse(data.user);
-      setToken(data.access_token);
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('token', data.access_token);
+      startSession(data);
     } catch (err) {
       setError(err.message);
     }
@@ -92,15 +106,17 @@ function App() {
   // REFRESH ===================================================================
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadAnalytics()]);
-  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+    await Promise.all([loadAccounts(), loadTransactions(), loadBudgetProgress(), loadInterest()]);
+  }, [loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   // ACTION HANDLERS ===========================================================
 
+  // A transfer can name its other account: the matching transaction is created there and linked
   const handleAddTransaction = async (formData) => {
-    const { account_id, ...rest } = formData;
+    const { account_id, transfer_to_account_id, ...rest } = formData;
     try {
-      await transactionsAPI.addTransaction(account_id, rest);
+      const created = await transactionsAPI.addTransaction(account_id, rest);
+      if (transfer_to_account_id) await transactionsAPI.pairTransfer(created.id, transfer_to_account_id);
       await refreshAll();
     } catch (err) {
       setError(err.message);
@@ -126,21 +142,68 @@ function App() {
     }
   };
 
-  const handleDeleteManyTransactions = async (ids) => {
-    if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
+  const handleToggleTransfer = async (id) => {
     try {
-      await Promise.all(ids.map(id => transactionsAPI.deleteTransaction(id)));
+      await transactionsAPI.toggleTransfer(id);
       await refreshAll();
     } catch (err) {
       setError(err.message);
     }
   };
 
+  const handlePairTransfer = async (txId, toAccountId) => {
+    try {
+      await transactionsAPI.pairTransfer(txId, toAccountId);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleBreakTransferLink = async (txId) => {
+    try {
+      await transactionsAPI.breakTransferLink(txId);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Bulk actions send one request at a time (see forEachInOrder) and refresh even after a
+  // failure, since the steps before it were applied
+  const handleDeleteTransferBulk = async (ids) => {
+    try {
+      await forEachInOrder(ids, id => transactionsAPI.deleteTransaction(id));
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
+  const handleToggleTransferMany = async (ids) => {
+    try {
+      await forEachInOrder(ids, id => transactionsAPI.toggleTransfer(id));
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
+  const handleDeleteManyTransactions = async (ids) => {
+    if (!window.confirm(`Delete ${ids.length} transaction${ids.length !== 1 ? 's' : ''}?`)) return;
+    try {
+      await forEachInOrder(ids, id => transactionsAPI.deleteTransaction(id));
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
   const handleAddRecurring = async (formData) => {
     const { account_id, ...rest } = formData;
     try {
       await recurringAPI.addRecurring(account_id, rest);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts), refreshAll()]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -149,7 +212,7 @@ function App() {
   const handleEditRecurring = async (id, fields) => {
     try {
       await recurringAPI.updateRecurring(id, fields);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
     } catch (err) {
       setError(err.message);
     }
@@ -158,15 +221,64 @@ function App() {
   const handleDeleteRecurring = async (id) => {
     try {
       await recurringAPI.deleteRecurring(id);
-      await Promise.all([loadAllRecurring(accounts), loadUpcoming(accounts)]);
+      await loadAllRecurring(accounts);
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const handleCreateAccount = async (accountId, accountName) => {
+  // One request per transaction, in order: each link renumbers the series. refreshAll reloads the
+  // accounts, which reloads the templates and their suggestion counts.
+  const handleLinkToRecurring = async (recurringId, transactionIds) => {
     try {
-      const account = await accountsAPI.createAccount(accountId, accountName);
+      await forEachInOrder(transactionIds, id => recurringAPI.linkToRecurring(recurringId, id));
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
+  // Keeps the transactions; the series shrinks and renumbers after each, so one at a time
+  const handleUnlinkFromRecurring = async (recurringId, transactionIds) => {
+    try {
+      await forEachInOrder(transactionIds, id => recurringAPI.unlinkFromRecurring(recurringId, id));
+    } catch (err) {
+      setError(err.message);
+    }
+    await refreshAll();
+  };
+
+  const handleDismissSuggestion = async (recurringId, transactionId) => {
+    try {
+      await recurringAPI.dismissSuggestion(recurringId, transactionId);
+      await loadAllRecurring(accounts);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // A found series becomes a template linked to its payments, so templates and transactions reload
+  const handleAddDetectedSeries = async (transactionIds) => {
+    try {
+      await recurringAPI.addDetectedSeries(transactionIds);
+      await Promise.all([loadAllRecurring(accounts), refreshAll()]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Only the found-series list changes, and it reloads itself
+  const handleDismissDetectedSeries = async (transactionIds) => {
+    try {
+      await recurringAPI.dismissDetectedSeries(transactionIds);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCreateAccount = async (fields) => {
+    try {
+      const account = await accountsAPI.createAccount(fields);
       await loadAccounts();
       return account;
     } catch (err) {
@@ -175,19 +287,48 @@ function App() {
     }
   };
 
+  // Resolves to whether the save worked, so the edit form can stay open after an error
   const handleEditAccount = async (id, fields) => {
     try {
       await accountsAPI.updateAccount(id, fields);
       await loadAccounts();
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     }
   };
+
+  // Budgets decide which transactions the server marks over budget, so reload both. Stable
+  // (useCallback), since useBudgetData depends on it.
+  const handleBudgetChange = useCallback(async () => {
+    await Promise.all([loadBudgetProgress(), loadTransactions()]);
+  }, [loadBudgetProgress, loadTransactions]);
+
+  // Interest waiting for approval: changing a charge or deleting it moves no balance, so only the
+  // interest reloads; approving moves its account's balance, so both do. Each resolves to whether it
+  // worked, so a form can stay open after an error.
+  const changeInterest = async (change, reloads) => {
+    try {
+      await change();
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      await Promise.all(reloads.map(load => load()));
+    }
+  };
+  const handleEditInterest = (id, amount) => changeInterest(() => interestAPI.updateInterest(id, amount), [loadInterest]);
+  const handleDeleteInterest = (id) => changeInterest(() => interestAPI.deleteInterest(id), [loadInterest]);
+  // One at a time, oldest first (each moves the balance)
+  const handleApproveInterest = (ids) =>
+    changeInterest(() => forEachInOrder(ids, id => interestAPI.approveInterest(id)), [loadAccounts, loadInterest]);
 
   const handleDeleteAccount = async (id) => {
     try {
       await accountsAPI.deleteAccount(id);
-      await Promise.all([loadAccounts(), loadTransactions()]);
+      await Promise.all([loadAccounts(), loadTransactions(), loadInterest()]);
     } catch (err) {
       setError(err.message);
     }
@@ -203,27 +344,37 @@ function App() {
           setUser(data.user);
           setIsAuthenticated(true);
         } catch {
-          handleLogout();
+          endSession();   // an expired login has already said so (see below)
         }
       }
       setLoading(false);
     };
     checkAuth();
-  }, [token, handleLogout]);
+  }, [token, endSession]);
+
+  // A protected request found the login missing, expired, or invalid: back to the login screen,
+  // showing the server's message there
+  useEffect(() => {
+    const onSessionExpired = (e) => {
+      endSession();
+      setError(e.detail);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [endSession]);
 
   useEffect(() => {
     if (isAuthenticated) {
       loadAccounts();
       loadTransactions();
       loadBudgetProgress();
-      loadAnalytics();
+      loadInterest();
     }
-  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadAnalytics]);
+  }, [isAuthenticated, loadAccounts, loadTransactions, loadBudgetProgress, loadInterest]);
 
   useEffect(() => {
     loadAllRecurring(accounts);
-    loadUpcoming(accounts);
-  }, [accounts, loadAllRecurring, loadUpcoming]);
+  }, [accounts, loadAllRecurring]);
 
   // RENDER ====================================================================
 
@@ -248,7 +399,7 @@ function App() {
         user={user}
         onLogout={handleLogout}
         view={view}
-        onViewChange={setView}
+        onViewChange={changeView}
         error={error}
         onDismissError={() => setError(null)}
       />
@@ -256,11 +407,12 @@ function App() {
       <main className="App-main">
         {view === 'dashboard' && (
           <DashboardView
-            analytics={analytics}
             transactions={transactions}
             budgetData={budgetData}
-            upcoming={upcoming}
-            onNavigate={setView}
+            onNavigate={changeView}
+            onError={setError}
+            accounts={accounts}
+            recurring={recurringTransactions}
           />
         )}
         {view === 'transactions' && (
@@ -268,6 +420,7 @@ function App() {
             transactions={transactions}
             accounts={accounts}
             recurringTransactions={recurringTransactions}
+            interest={interest}
             onAdd={handleAddTransaction}
             onAddRecurring={handleAddRecurring}
             onEdit={handleEditTransaction}
@@ -275,20 +428,44 @@ function App() {
             onDeleteMany={handleDeleteManyTransactions}
             onEditRecurring={handleEditRecurring}
             onDeleteRecurring={handleDeleteRecurring}
+            onLinkToRecurring={handleLinkToRecurring}
+            onDismissSuggestion={handleDismissSuggestion}
+            onUnlinkFromRecurring={handleUnlinkFromRecurring}
+            onAddDetectedSeries={handleAddDetectedSeries}
+            onDismissDetectedSeries={handleDismissDetectedSeries}
+            onToggleTransfer={handleToggleTransfer}
+            onToggleTransferMany={handleToggleTransferMany}
+            onPairTransfer={handlePairTransfer}
+            onBreakTransferLink={handleBreakTransferLink}
+            onDeleteTransferBulk={handleDeleteTransferBulk}
             onImportDone={refreshAll}
             onCreateAccount={handleCreateAccount}
             onEditAccount={handleEditAccount}
             onDeleteAccount={handleDeleteAccount}
+            onEditInterest={handleEditInterest}
+            onApproveInterest={handleApproveInterest}
+            onDeleteInterest={handleDeleteInterest}
+            onError={setError}
           />
         )}
         {view === 'budgeting' && (
           <BudgetingView
             transactions={transactions}
-            onBudgetChange={loadBudgetProgress}
+            onBudgetChange={handleBudgetChange}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            interest={interest}
+            onError={setError}
           />
         )}
         {view === 'insights' && (
-          <InsightsView transactions={transactions} accounts={accounts} />
+          <InsightsView
+            transactions={transactions}
+            accounts={accounts}
+            recurring={recurringTransactions}
+            interest={interest}
+            onError={setError}
+          />
         )}
       </main>
     </div>

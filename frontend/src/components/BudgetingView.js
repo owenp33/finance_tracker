@@ -1,53 +1,60 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import BudgetRow from './BudgetRow';
+import AddBudgetForm from './AddBudgetForm';
+import ViewAsTable from './ViewAsTable';
+import GoalsSection from './goals/GoalsSection';
+import GoalSavingRow from './goals/GoalSavingRow';
+import { useGoalPlan } from '../hooks/useGoalPlan';
+import { activeSaving, movedThisMonth } from '../utils/goals';
+import { balanceMoves } from '../utils/balanceMoves';
+import { sortList } from './transactions/utils';
 import {
-  getBudgetProgress,
-  getBudgets,
-  createBudget,
-  updateBudget,
-  deleteBudget,
-} from '../api/budgets';
-
-// ── Period helpers ────────────────────────────────────────────────────────────
+  useBudgetData,
+  getPrevPeriod,
+  getNextPeriod,
+  formatPeriod,
+} from '../hooks/useBudgetData';
+import { useMonthProjection } from '../hooks/useProjection';
+import { todayISO, monthEndLabel } from '../utils/dates';
+import { formatCents } from '../utils/money';
+import { rowPace, percentUsed, paceLabel } from '../utils/budgetPace';
+import { unbudgetableCategories } from '../utils/moneyRules';
 
 const getCurrentPeriod = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-const getPrevPeriod = (period) => {
-  const [year, month] = period.split('-').map(Number);
-  return month === 1
-    ? `${year - 1}-12`
-    : `${year}-${String(month - 1).padStart(2, '0')}`;
+// The rows' paces as a table. `monthEnd` ("Oct 31", the current month only) adds the expected
+// spend, the bills still due, and where the month ends at this rate (paced by recurring: with the
+// bills still due).
+const paceTableColumns = (monthEnd) => [
+  'Category', 'Spent', 'Budget', 'Used',
+  ...(monthEnd ? ['Expected by today', 'Bills still due', `At this rate, by ${monthEnd}`] : []),
+  'Status',
+];
+
+const paceTableRow = (item, pace, monthEnd) => {
+  const used = percentUsed(pace);
+  const atMonthEnd = formatCents(pace.projected) + (pace.basis === 'scheduled' ? ' with bills due' : '');
+  return [
+    item.category, formatCents(pace.spent), formatCents(pace.effective), used === null ? '—' : `${used}%`,
+    ...(monthEnd ? [formatCents(pace.expected), formatCents(pace.due), atMonthEnd] : []),
+    paceLabel(pace),
+  ];
 };
 
-const getNextPeriod = (period) => {
-  const [year, month] = period.split('-').map(Number);
-  return month === 12
-    ? `${year + 1}-01`
-    : `${year}-${String(month + 1).padStart(2, '0')}`;
-};
+// A stable stand-in when no one listens for errors (GoalsSection's hooks refetch when it changes)
+const IGNORE_ERROR = () => {};
 
-const formatPeriod = (period) => {
-  const [year, month] = period.split('-').map(Number);
-  return new Date(year, month - 1).toLocaleString('default', {
-    month: 'long',
-    year: 'numeric',
-  });
-};
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-function BudgetingView({ transactions, onBudgetChange }) {
+// The Budgeting view: the month's category budgets, with the active goal's saving beside them this
+// month (Phase F, F2c), which Unallocated leaves out, then the Goals section (F2b). `accounts` and
+// `recurring` (every template) feed the goals, and `interest` (GET /api/interest) what's gone toward
+// the active one this month; `onError` takes their errors.
+function BudgetingView({ transactions, onBudgetChange, accounts = [], recurring = [], interest = [], onError = IGNORE_ERROR }) {
   const [period, setPeriod] = useState(getCurrentPeriod);
-  const [progress, setProgress] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  // Map of budget id → true for rows whose last auto-save failed
-  const [saveErrors, setSaveErrors] = useState(new Map());
+  const [showAddForm, setShowAddForm] = useState(false);
 
-  // Monthly income
   const [monthlyIncome, setMonthlyIncome] = useState(() => {
     const saved = localStorage.getItem('budget_monthly_income');
     return saved ? parseFloat(saved) : 0;
@@ -55,16 +62,63 @@ function BudgetingView({ transactions, onBudgetChange }) {
   const [isEditingIncome, setIsEditingIncome] = useState(false);
   const [incomeInput, setIncomeInput] = useState('');
 
-  // Add-category form
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
-  const [newAmount, setNewAmount] = useState('');
-  const [adding, setAdding] = useState(false);
+  const {
+    progress,
+    loading,
+    error,
+    saveErrors,
+    setError,
+    handleAmountBlur,
+    handleRolloverToggle,
+    handlePaceToggle,
+    handleDelete,
+    handleAdd,
+  } = useBudgetData(period, onBudgetChange);
 
-  // ── Derived: income summary ────────────────────────────────────────────────
+  // The recurring charges still to come this month, for paces by recurring and bills still due
+  const today = todayISO();
+  const occurrences = useMonthProjection(today, setError);
+
+  // The goals, and this month the active goal's saving
+  const goalPlan = useGoalPlan({ accounts, transactions, recurring, onError });
+  const isThisMonth = period === today.slice(0, 7);
+  const saving = isThisMonth ? activeSaving(goalPlan.goals, goalPlan.plans) : null;
+  const savingCents = saving ? saving.plan.monthlyCents : 0;
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+
   const totalAllocated = progress.reduce((sum, item) => sum + item.allocated, 0);
-  const unallocated = monthlyIncome - totalAllocated;
+  const totalSpent = progress.reduce((sum, item) => sum + item.spent, 0);
+  const unallocated = monthlyIncome - totalAllocated - savingCents / 100;
   const incomeSet = monthlyIncome > 0;
+
+  // Each row's pace, worked out as the Dashboard does (rowPace); this month's also says where the
+  // month ends
+  const monthEnd = period === today.slice(0, 7) ? monthEndLabel(period) : null;
+  const paces = progress.map(item => rowPace(item, { period, today, transactions, occurrences }));
+
+  // The Add Category form suggests the categories used, but not those already budgeted or those
+  // the server refuses (mostly money coming in, or no transactions that count as spending)
+  const budgetedCategories = new Set(progress.map(p => p.category));
+  const refused = unbudgetableCategories(transactions);
+  const suggestedCategories = [
+    ...new Set(transactions.map(t => t.category).filter(Boolean)),
+  ].filter(c => !budgetedCategories.has(c) && !refused.has(c));
+
+  // Pre-filter transactions by period and group by category (ISP: BudgetRow only gets what it needs)
+  const txsByCategory = useMemo(() => {
+    const map = {};
+    transactions.forEach(t => {
+      if (!t.date.startsWith(period)) return;
+      if (!map[t.category]) map[t.category] = [];
+      map[t.category].push(t);
+    });
+    // Newest first, reimbursements included, as in the transaction lists
+    Object.keys(map).forEach(category => { map[category] = sortList(map[category], 'date-desc'); });
+    return map;
+  }, [transactions, period]);
+
+  // ── Income helpers ─────────────────────────────────────────────────────────
 
   const openIncomeEdit = () => {
     setIncomeInput(incomeSet ? monthlyIncome.toFixed(2) : '');
@@ -85,181 +139,19 @@ function BudgetingView({ transactions, onBudgetChange }) {
     if (e.key === 'Escape') setIsEditingIncome(false);
   };
 
-  // ── Derived: category suggestions ──────────────────────────────────────────
-  // Unique categories from all transactions, minus any already budgeted this period
-  const budgetedCategories = new Set(progress.map(p => p.category));
-  const suggestedCategories = [
-    ...new Set(transactions.map(t => t.category).filter(Boolean)),
-  ].filter(c => !budgetedCategories.has(c));
-
-  // ── Data loading ───────────────────────────────────────────────────────────
-
-  const loadProgress = useCallback(async (p) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getBudgetProgress(p);
-
-      // Auto-rollover: walk back up to 12 months to find the nearest non-empty
-      // period, then create any rollover=true categories missing from this period.
-      try {
-        let searchPeriod = getPrevPeriod(p);
-        let toRollover = [];
-        for (let i = 0; i < 12; i++) {
-          const prevBudgets = await getBudgets(searchPeriod);
-          if (prevBudgets.length > 0) {
-            toRollover = prevBudgets.filter(b => b.rollover);
-            break;
-          }
-          searchPeriod = getPrevPeriod(searchPeriod);
-        }
-        const existing = new Set(data.map(b => b.category));
-        const missing = toRollover.filter(b => !existing.has(b.category));
-        if (missing.length > 0) {
-          await Promise.all(
-            missing.map(b =>
-              createBudget({ category: b.category, period: p, amount: b.amount, rollover: true })
-            )
-          );
-          const fresh = await getBudgetProgress(p);
-          setProgress(fresh);
-          onBudgetChange?.();
-          return;
-        }
-      } catch {
-        // Rollover failed — user can add categories manually
-      }
-
-      setProgress(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [onBudgetChange]);
-
-  useEffect(() => {
-    loadProgress(period);
-  }, [period, loadProgress]);
-
-  // ── Propagate an amount change to all existing future budget rows ───────────
-
-  const propagateToFuture = async (category, amount, fromPeriod) => {
-    const futurePeriods = [];
-    let p = fromPeriod;
-    for (let i = 0; i < 12; i++) {
-      p = getNextPeriod(p);
-      futurePeriods.push(p);
-    }
-    const results = await Promise.all(
-      futurePeriods.map(fp => getBudgets(fp).catch(() => []))
-    );
-    const toUpdate = results.flat().filter(b => b.category === category);
-    if (toUpdate.length > 0) {
-      await Promise.all(toUpdate.map(b => updateBudget(b.id, { amount })));
-    }
-  };
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-
-  const handleAmountBlur = async (item, newAmount) => {
-    // Clear any previous save error for this row
-    setSaveErrors(prev => {
-      const next = new Map(prev);
-      next.delete(item.id);
-      return next;
-    });
-
-    let applyToFuture = false;
-    if (item.rollover) {
-      applyToFuture = window.confirm(
-        `Apply $${newAmount.toFixed(2)} to all existing future months for "${item.category}" as well?\n\nOK = all future months  ·  Cancel = this month only`
-      );
-    }
-
-    try {
-      await updateBudget(item.id, { amount: newAmount });
-      if (applyToFuture) {
-        await propagateToFuture(item.category, newAmount, period);
-      }
-      await loadProgress(period);
-      onBudgetChange?.();
-    } catch {
-      setSaveErrors(prev => new Map(prev).set(item.id, true));
-    }
-  };
-
-  const handleRolloverToggle = async (item) => {
-    try {
-      await updateBudget(item.id, { rollover: !item.rollover });
-      await loadProgress(period);
-      onBudgetChange?.();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleDelete = async (item) => {
-    if (
-      !window.confirm(
-        `Remove "${item.category}" budget? This will also delete all future rollover copies of this category and clear over-budget flags on affected transactions.`
-      )
-    ) return;
-    try {
-      await deleteBudget(item.id);
-      await loadProgress(period);
-      onBudgetChange?.();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleAdd = async () => {
-    if (!newCategory.trim() || !newAmount) return;
-    setAdding(true);
-    try {
-      await createBudget({
-        category: newCategory.trim(),
-        period,
-        amount: parseFloat(newAmount),
-      });
-      setShowAddForm(false);
-      setNewCategory('');
-      setNewAmount('');
-      await loadProgress(period);
-      onBudgetChange?.();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const cancelAdd = () => {
-    setShowAddForm(false);
-    setNewCategory('');
-    setNewAmount('');
-  };
-
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="budgeting-view">
 
-      {/* Period navigation */}
       <div className="period-nav">
-        <button className="btn btn-ghost" onClick={() => setPeriod(p => getPrevPeriod(p))}>
-          ←
-        </button>
+        <button className="btn btn-ghost" onClick={() => setPeriod(p => getPrevPeriod(p))}>←</button>
         <span className="period-label">{formatPeriod(period)}</span>
-        <button className="btn btn-ghost" onClick={() => setPeriod(p => getNextPeriod(p))}>
-          →
-        </button>
+        <button className="btn btn-ghost" onClick={() => setPeriod(p => getNextPeriod(p))}>→</button>
       </div>
 
-      {/* Summary cards */}
       <div className="budget-summary-cards">
-        <div className={`budget-summary-card income-card`} onClick={!isEditingIncome ? openIncomeEdit : undefined}>
+        <div className="budget-summary-card income-card" onClick={!isEditingIncome ? openIncomeEdit : undefined}>
           <div className="budget-summary-label">Monthly Income</div>
           {isEditingIncome ? (
             <input
@@ -276,9 +168,7 @@ function BudgetingView({ transactions, onBudgetChange }) {
               onClick={e => e.stopPropagation()}
             />
           ) : (
-            <div className="budget-summary-value">
-              ${monthlyIncome.toFixed(2)}
-            </div>
+            <div className="budget-summary-value">${monthlyIncome.toFixed(2)}</div>
           )}
           {!incomeSet && !isEditingIncome && (
             <div className="income-hint">Click to set your income</div>
@@ -295,14 +185,29 @@ function BudgetingView({ transactions, onBudgetChange }) {
           )}
         </div>
 
+        <div className={`budget-summary-card${progress.length === 0 ? ' muted' : ''}`}>
+          <div className="budget-summary-label">Total Spent</div>
+          <div className={`budget-summary-value${totalSpent > totalAllocated ? ' red' : ''}`}>
+            ${totalSpent.toFixed(2)}
+          </div>
+          {totalAllocated > 0 && (
+            <div className="budget-summary-sub">
+              {((totalSpent / totalAllocated) * 100).toFixed(0)}% of allocated
+            </div>
+          )}
+        </div>
+
         <div className={`budget-summary-card${!incomeSet ? ' muted' : ''}`}>
           <div className="budget-summary-label">Unallocated</div>
           <div className={`budget-summary-value${incomeSet ? (unallocated >= 0 ? ' green' : ' red') : ''}`}>
-            ${Math.abs(unallocated).toFixed(2)}
-            {incomeSet && unallocated < 0 && ' over'}
+            ${Math.abs(unallocated).toFixed(2)}{incomeSet && unallocated < 0 && ' over'}
           </div>
           {incomeSet && (
-            <div className="budget-summary-sub">remaining to allocate</div>
+            <div className="budget-summary-sub">
+              {saving && savingCents > 0
+                ? `after ${formatCents(savingCents)} to ${saving.goal.account_name}`
+                : 'remaining to allocate'}
+            </div>
           )}
         </div>
       </div>
@@ -314,7 +219,6 @@ function BudgetingView({ transactions, onBudgetChange }) {
         </div>
       )}
 
-      {/* Category Allocations card */}
       <div className="category-allocations-card">
         <div className="category-allocations-header">
           <h3>Category Allocations</h3>
@@ -326,46 +230,19 @@ function BudgetingView({ transactions, onBudgetChange }) {
         </div>
 
         {showAddForm && (
-          <div className="add-budget-form">
-            <div className="form-group">
-              <label>Category</label>
-              <input
-                list="budget-category-suggestions"
-                type="text"
-                value={newCategory}
-                onChange={e => setNewCategory(e.target.value)}
-                placeholder="e.g. Groceries"
-                autoFocus
-              />
-              <datalist id="budget-category-suggestions">
-                {suggestedCategories.map(c => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </div>
-            <div className="form-group">
-              <label>Monthly Allocation ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={newAmount}
-                onChange={e => setNewAmount(e.target.value)}
-                placeholder="0.00"
-                onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              />
-            </div>
-            <div className="form-actions">
-              <button
-                className="btn btn-primary"
-                onClick={handleAdd}
-                disabled={adding || !newCategory.trim() || !newAmount}
-              >
-                {adding ? 'Adding…' : 'Add'}
-              </button>
-              <button className="btn btn-ghost" onClick={cancelAdd}>Cancel</button>
-            </div>
-          </div>
+          <AddBudgetForm
+            suggestedCategories={suggestedCategories}
+            onAdd={async (fields) => {
+              await handleAdd(fields);
+              setShowAddForm(false);
+            }}
+            onCancel={() => setShowAddForm(false)}
+          />
+        )}
+
+        {saving && (
+          <GoalSavingRow goal={saving.goal} plan={saving.plan}
+                         movedCents={movedThisMonth(balanceMoves(transactions, recurring, interest), saving.goal.account_id, period)} />
         )}
 
         {loading ? (
@@ -373,21 +250,35 @@ function BudgetingView({ transactions, onBudgetChange }) {
         ) : progress.length === 0 ? (
           <p className="no-data">No budgets set for this period. Add a category above.</p>
         ) : (
-          <div className="budget-rows">
-            {progress.map(item => (
-              <BudgetRow
-                key={item.id}
-                item={item}
-                onAmountBlur={handleAmountBlur}
-                onRolloverToggle={handleRolloverToggle}
-                onDelete={handleDelete}
-                hasSaveError={saveErrors.has(item.id)}
-                monthlyIncome={monthlyIncome}
-              />
-            ))}
-          </div>
+          <>
+            <div className="budget-rows">
+              {progress.map((item, i) => (
+                <BudgetRow
+                  key={item.id}
+                  item={item}
+                  pace={paces[i]}
+                  monthEnd={monthEnd}
+                  onAmountBlur={handleAmountBlur}
+                  onRolloverToggle={handleRolloverToggle}
+                  onPaceToggle={handlePaceToggle}
+                  onDelete={handleDelete}
+                  hasSaveError={saveErrors.has(item.id)}
+                  monthlyIncome={monthlyIncome}
+                  categoryTransactions={txsByCategory[item.category] || []}
+                />
+              ))}
+            </div>
+            <ViewAsTable
+              caption={`Budget pace, ${formatPeriod(period)}`}
+              columns={paceTableColumns(monthEnd)}
+              rows={progress.map((item, i) => paceTableRow(item, paces[i], monthEnd))}
+            />
+          </>
         )}
       </div>
+
+      {/* Goals aren't per month; they sit below the month's budgets (Owen, 2026-11-16) */}
+      <GoalsSection accounts={accounts} goalPlan={goalPlan} />
 
     </div>
   );

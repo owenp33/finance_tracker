@@ -1,0 +1,297 @@
+/* Dashboard: this month's cards, the budget pace and recent transactions columns, the goal card
+   beside the 90-day projection, and the next 30 days. */
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+/* The Dashboard's cards (stat cards, the goal card, the two columns, the agenda) share one look,
+   the Budgeting cards': a light border, rounded corners, no shadow */
+.stat-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+/* Every Dashboard card's title, in the style of Budgeting's CATEGORY ALLOCATIONS; each sits in a
+   .section-header line with its card's link, if any */
+.dashboard-view h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card .value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.stat-card .value.green {
+  color: #51cf66;
+}
+
+.stat-card .value.red {
+  color: #ff6b6b;
+}
+
+/* Over budget, in the darker step of the chart orange that reads on white */
+.stat-card .value.over {
+  color: #b5441c;
+}
+
+.stat-card .stat-sub {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* Tablet and phone: this month's cards two across */
+@media (max-width: 900px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* === Next 30 days (Dashboard; Phase V, V6a) ================= */
+.agenda-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
+/* Date, item, amount, running total (a week's total sits under the amounts it adds up) */
+.agenda-columns,
+.agenda-week-header,
+.agenda-item {
+  display: grid;
+  grid-template-columns: 110px 1fr 110px 120px;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.agenda-columns {
+  padding: 0 8px 6px;
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.agenda-columns span:nth-child(n + 3),
+.agenda-week-total,
+.agenda-amount,
+.agenda-running {
+  text-align: right;
+}
+
+.agenda-week + .agenda-week {
+  margin-top: 14px;
+}
+
+.agenda-week-header {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.agenda-week-header h4 {
+  grid-column: 1 / 3;
+  margin: 0;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.agenda-week-total {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-item {
+  padding: 7px 8px;
+  border-bottom: 1px dashed #eef0f3;
+  font-size: 0.9rem;
+}
+
+.agenda-date {
+  color: #6b7280;
+}
+
+.agenda-vendor {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Projections are labelled, never drawn like what has posted (Phase V ground rule) */
+.agenda-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px dashed #9ca3af;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.agenda-amount {
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-amount.in {
+  color: #15803d;
+}
+
+.agenda-running {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phone: each item two lines, the item and its amount, then its date and the running total (named
+   there, since the column headings go) */
+@media (max-width: 600px) {
+  .agenda-columns {
+    display: none;
+  }
+
+  .agenda-week-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .agenda-week-header h4 {
+    grid-column: 1;
+  }
+
+  .agenda-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "what amount" "date running";
+    gap: 2px 12px;
+  }
+
+  .agenda-what { grid-area: what; min-width: 0; }
+  .agenda-amount { grid-area: amount; }
+  .agenda-date { grid-area: date; font-size: 0.8rem; }
+  .agenda-running { grid-area: running; font-size: 0.8rem; }
+
+  .agenda-running::before {
+    content: "Running total ";
+  }
+}
+
+/* The Dashboard's goal card (F2d): its own row above this month's cards */
+/* The goal card and the 90-day projection, side by side above the agenda (2026-11-17) */
+.dashboard-goal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 600px) {
+  .dashboard-goal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.projection-chart {
+  margin-top: 10px;
+}
+
+/* A reached goal the forecast dips under, on the goal card: a warning, in the darker orange */
+.goal-card-warning {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
+.goal-card .link-btn {
+  padding: 0;
+}
+
+/* ── Dashboard two-column lower section ───────────────────────────────────── */
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+.dashboard-col {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-col .section-header {
+  flex-shrink: 0;
+}
+
+/* The budgets furthest ahead of pace (Phase V, V2b): each category's name over its BudgetPace */
+.dashboard-pace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-pace-category {
+  padding: 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Phone: the cards' padding tighter and their titles smaller (two across), and Budget Pace and Recent
+   Transactions one under the other */
+@media (max-width: 600px) {
+  .stats-grid {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card,
+  .dashboard-col,
+  .agenda-section {
+    padding: 14px;
+  }
+
+  .dashboard-view h3 {
+    font-size: 0.85rem;
+  }
+
+  .stat-card .value {
+    font-size: 1.5rem;
+  }
+
+  .dashboard-columns,
+  .dashboard-goal-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+}

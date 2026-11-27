@@ -1,0 +1,215 @@
+import { render, screen, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import App from '../App';
+import { CategoryColorProvider } from '../CategoryColorContext';
+import { SESSION_EXPIRED_EVENT } from '../api/client';
+import { login, me } from '../api/auth';
+import { getAccounts } from '../api/accounts';
+import { getAllTransactions, addTransaction, pairTransfer } from '../api/transactions';
+import { getBudgetProgress } from '../api/budgets';
+import { getProjection, getAccountRecurring } from '../api/recurring';
+import { getGoals } from '../api/goals';
+import { getInterest, approveInterest } from '../api/interest';
+
+jest.mock('../api/auth');
+jest.mock('../api/accounts');
+jest.mock('../api/transactions');
+jest.mock('../api/budgets');
+jest.mock('../api/recurring');
+jest.mock('../api/goals');
+jest.mock('../api/interest');
+
+const EXPIRED = 'Your session has expired. Please log in again.';
+const USER = { id: 1, username: 'owen' };
+
+// What the real client does when a request finds the login expired: after the response arrives,
+// announce it, then fail
+const expireSession = async () => {
+  await Promise.resolve();
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: EXPIRED }));
+  throw new Error(EXPIRED);
+};
+
+beforeEach(() => {
+  localStorage.clear();
+  me.mockResolvedValue({ user: USER });
+  login.mockResolvedValue({ access_token: 'new-token', user: USER, updates: {} });
+  getAccounts.mockResolvedValue([]);
+  getAllTransactions.mockResolvedValue([]);
+  getBudgetProgress.mockResolvedValue([]);
+  getProjection.mockResolvedValue([]);
+  getGoals.mockResolvedValue([]);
+  getInterest.mockResolvedValue([]);
+});
+
+const renderApp = () => render(<CategoryColorProvider><App /></CategoryColorProvider>);
+
+const logIn = async (password = 'right-password') => {
+  const [username] = screen.getAllByRole('textbox');
+  const passwordInput = document.querySelector('input[type="password"]');
+  await userEvent.clear(username);
+  await userEvent.type(username, 'owen');
+  await userEvent.clear(passwordInput);
+  await userEvent.type(passwordInput, password);
+  await userEvent.click(screen.getByRole('button', { name: 'Login' }));
+};
+
+const loggedIn = () => screen.findByRole('button', { name: 'Logout' });
+
+test('an expired login explains itself on the login screen, and the message goes once you log in again', async () => {
+  localStorage.setItem('token', 'expired-token');
+  me.mockImplementation(async () => (localStorage.getItem('token') === 'expired-token' ? expireSession() : { user: USER }));
+  renderApp();
+  expect(await screen.findByText(EXPIRED)).toBeInTheDocument();
+
+  await logIn();
+  await loggedIn();
+  expect(screen.queryByText(EXPIRED)).not.toBeInTheDocument();
+});
+
+test("a failed login attempt's message goes once the next attempt works", async () => {
+  login.mockRejectedValueOnce(new Error('Invalid username or password'));
+  renderApp();
+  await logIn('wrong-password');
+  expect(await screen.findByText('Invalid username or password')).toBeInTheDocument();
+
+  await logIn();
+  await loggedIn();
+  expect(screen.queryByText('Invalid username or password')).not.toBeInTheDocument();
+});
+
+test("logging out leaves the session's messages behind", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  expect(await screen.findByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Logout' }));
+  expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument();
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's errors show in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
+test('the nav bar runs Dashboard, Budgeting, Transactions, Insights', async () => {
+  localStorage.setItem('token', 'good-token');
+  renderApp();
+  await loggedIn();
+  expect([...document.querySelectorAll('.view-nav button')].map(button => button.textContent))
+    .toEqual(['Dashboard', 'Budgeting', 'Transactions', 'Insights']);
+});
+
+test('switching views clears the banner; clicking the view you are on keeps it', async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  expect(await screen.findByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+  expect(screen.getByText('Could not load accounts')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Budgeting' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("the Dashboard's links to other views clear it too", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockRejectedValue(new Error('Could not load accounts'));
+  renderApp();
+  await screen.findByText('Could not load accounts');
+
+  await userEvent.click(screen.getByRole('button', { name: 'View all →' }));
+  expect(screen.queryByText('Could not load accounts')).not.toBeInTheDocument();
+});
+
+test("Insights' Recurring tab totals every account's recurring costs", async () => {
+  localStorage.setItem('token', 'good-token');
+  getAccounts.mockResolvedValue([{ id: 1, account_name: 'Checking' }, { id: 2, account_name: 'Discover' }]);
+  getAccountRecurring.mockImplementation(async (accountId) => [{
+    id: accountId, account_id: accountId, date: '2026-04-02', vendor: `Bill ${accountId}`, category: 'Bills',
+    amount: accountId === 1 ? -75 : -20, notes: '', next_date: '2026-12-02', last_date: null,
+    frequency: 1, frequency_unit: 'months', number: -1, idx: 1,
+  }]);
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('$95.00/mo')).toBeInTheDocument();
+});
+
+test("Insights' Recurring tab reports a failed projection in the banner", async () => {
+  localStorage.setItem('token', 'good-token');
+  getProjection.mockRejectedValue(new Error('Could not load the projection'));
+  renderApp();
+  await screen.findByText('Could not load the projection');           // the Dashboard's
+  await userEvent.click(screen.getByRole('button', { name: '×' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Insights' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+  expect(await screen.findByText('Could not load the projection')).toBeInTheDocument();
+});
+
+test('a login that expires while you use the app sends you to the login screen, saying why', async () => {
+  localStorage.setItem('token', 'good-token');
+  renderApp();
+  await loggedIn();
+
+  act(() => { window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: EXPIRED })); });
+  expect(await screen.findByText(EXPIRED)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
+});
+
+test('adding a transfer with a To account also creates and links the matching transaction there', async () => {
+  localStorage.setItem('token', 'token');
+  getAccounts.mockResolvedValue([
+    { id: 6, account_id: 'checking', account_name: 'Checking', balance: 100, opening_balance: 0, kind: 'bank', apr: null },
+    { id: 7, account_id: 'savings', account_name: 'Savings', balance: 50, opening_balance: 0, kind: 'bank', apr: null },
+  ]);
+  getAccountRecurring.mockResolvedValue([]);
+  addTransaction.mockResolvedValue({ id: 99 });
+  pairTransfer.mockResolvedValue({});
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
+  await userEvent.click(await screen.findByRole('button', { name: '+ Add Transaction' }));
+  await userEvent.type(screen.getByPlaceholderText('e.g., Netflix'), 'To savings');
+  await userEvent.type(screen.getByPlaceholderText('e.g., Subscriptions'), 'Transfer');
+  await userEvent.type(document.querySelector('.transaction-form input[step="0.01"]'), '-250');
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer' }));
+  await userEvent.selectOptions(screen.getByLabelText('To account'), 'Savings');
+  await userEvent.click(screen.getByRole('button', { name: 'Add Transaction' }));
+  await act(async () => {});
+  expect(addTransaction).toHaveBeenCalledWith(6, expect.objectContaining({ vendor: 'To savings', is_transfer: true }));
+  expect(addTransaction.mock.calls[0][1]).not.toHaveProperty('transfer_to_account_id');
+  expect(pairTransfer).toHaveBeenCalledWith(99, 7);
+});
+
+test('approving interest applies each charge in turn, then reloads the accounts and the interest', async () => {
+  localStorage.setItem('token', 'token');
+  getAccounts.mockResolvedValue([{
+    id: 16, account_id: 'loan', account_name: 'Student Loan', balance: -75217, opening_balance: -77107, kind: 'loan',
+    apr: 6.7, interest_frequency: 'monthly',
+  }]);
+  getAccountRecurring.mockResolvedValue([]);
+  const hit = (id, date, cents) => ({
+    id, account_id: 16, date, amount: cents / 100, amount_cents: cents, apr: 6.7, frequency: 'monthly', base_cents: 7521700,
+    approved: false,
+  });
+  getInterest.mockResolvedValue([hit(8, '2027-01-01', -42231), hit(7, '2026-12-01', -41996)]);
+  const order = [];
+  approveInterest.mockImplementation(async (id) => { order.push(id); });
+  renderApp();
+  await loggedIn();
+  await userEvent.click(screen.getByRole('button', { name: 'Transactions' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Accounts/ }));
+  const [accountLoads, interestLoads] = [getAccounts.mock.calls.length, getInterest.mock.calls.length];
+  await userEvent.click(await screen.findByRole('button', { name: 'Approve all' }));
+  await act(async () => {});
+  expect(order).toEqual([7, 8]);
+  expect(getAccounts).toHaveBeenCalledTimes(accountLoads + 1);
+  expect(getInterest).toHaveBeenCalledTimes(interestLoads + 1);
+});

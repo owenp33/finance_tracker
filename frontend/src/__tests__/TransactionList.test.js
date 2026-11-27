@@ -1,0 +1,219 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import TransactionList from '../components/TransactionList';
+
+// Provide the context hook so TransactionList doesn't crash
+jest.mock('../CategoryColorContext', () => ({
+  useCategoryColors: () => ({ getColor: () => '#999999' }),
+}));
+
+const ACCOUNTS = [{ id: 1, account_name: 'Test Checking' }];
+
+const TX = {
+  id: 1,
+  date: '2026-01-15',
+  vendor: 'Netflix',
+  category: 'Subscriptions',
+  amount: -20.00,
+  amount_cents: -2000,
+  notes: '',
+  account_id: 1,
+  is_transfer: false,
+  over_budget: false,
+};
+
+function renderList(props = {}) {
+  return render(
+    <TransactionList
+      transactions={[TX]}
+      accounts={ACCOUNTS}
+      onEdit={jest.fn()}
+      onDelete={jest.fn()}
+      onToggleTransfer={jest.fn()}
+      showAll={true}
+      {...props}
+    />
+  );
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+test('renders vendor name', () => {
+  renderList();
+  expect(screen.getByText('Netflix')).toBeInTheDocument();
+});
+
+test('renders formatted amount', () => {
+  renderList();
+  expect(screen.getByText('-$20.00')).toBeInTheDocument();
+});
+
+test('shows no-data message when transactions empty', () => {
+  render(<TransactionList transactions={[]} />);
+  expect(screen.getByText('No transactions found')).toBeInTheDocument();
+});
+
+test('renders checkbox when onToggle provided', () => {
+  renderList({ onToggle: jest.fn(), selectedIds: new Set() });
+  expect(screen.getByRole('checkbox')).toBeInTheDocument();
+});
+
+// ── Edit form ─────────────────────────────────────────────────────────────────
+
+async function openEditForm() {
+  const user = userEvent.setup();
+  renderList();
+  // Hover to reveal buttons, then click Edit
+  const item = screen.getByText('Netflix').closest('.transaction-item');
+  await user.hover(item);
+  const editBtn = within(item).getByTitle('Edit');
+  await user.click(editBtn);
+}
+
+test('edit form appears after clicking Edit', async () => {
+  await openEditForm();
+  expect(screen.getByDisplayValue('Netflix')).toBeInTheDocument();
+  expect(screen.getByDisplayValue('-20')).toBeInTheDocument();
+});
+
+test('Save button is disabled when no fields changed', async () => {
+  await openEditForm();
+  const saveBtn = screen.getByRole('button', { name: 'Save' });
+  expect(saveBtn).toBeDisabled();
+});
+
+test('Save button enables after changing vendor', async () => {
+  const user = userEvent.setup();
+  await openEditForm();
+  const vendorInput = screen.getByDisplayValue('Netflix');
+  await user.clear(vendorInput);
+  await user.type(vendorInput, 'Hulu');
+  expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+});
+
+test('Save button enables after changing amount', async () => {
+  const user = userEvent.setup();
+  await openEditForm();
+  const amountInput = screen.getByDisplayValue('-20');
+  await user.clear(amountInput);
+  await user.type(amountInput, '-25');
+  expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+});
+
+test('Save calls onEdit with updated fields', async () => {
+  const onEdit = jest.fn().mockResolvedValue();
+  const user = userEvent.setup();
+  render(
+    <TransactionList
+      transactions={[TX]}
+      accounts={ACCOUNTS}
+      onEdit={onEdit}
+      onDelete={jest.fn()}
+      showAll={true}
+    />
+  );
+  const item = screen.getByText('Netflix').closest('.transaction-item');
+  await user.hover(item);
+  await user.click(within(item).getByTitle('Edit'));
+
+  const vendorInput = screen.getByDisplayValue('Netflix');
+  await user.clear(vendorInput);
+  await user.type(vendorInput, 'Hulu');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(onEdit).toHaveBeenCalledWith(1, expect.objectContaining({ vendor: 'Hulu' }));
+});
+
+test('Cancel closes edit form', async () => {
+  const user = userEvent.setup();
+  await openEditForm();
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByLabelText('Vendor')).not.toBeInTheDocument();
+});
+
+// ── Custom row actions ────────────────────────────────────────────────────────
+
+test('renderActions replaces the default hover actions', async () => {
+  const onPick = jest.fn();
+  renderList({ renderActions: (t) => <button title="Pick" onClick={() => onPick(t.id)}>pick</button> });
+  expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark as transfer' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'pick' }));
+  expect(onPick).toHaveBeenCalledWith(1);
+});
+
+// ── Transactions marked unrelated to a recurring series ──────────────────────
+
+test('a transaction marked unrelated shows a pill and can be added to its series', async () => {
+  const onAddToSeries = jest.fn();
+  renderList({ unrelatedTo: { 1: [{ id: 5, vendor: 'ASPIRE' }] }, onAddToSeries });
+  expect(screen.getByText('Unrelated')).toHaveAttribute('title', 'Marked unrelated to ASPIRE');
+  await userEvent.click(screen.getByRole('button', { name: 'Add to ASPIRE series' }));
+  expect(onAddToSeries).toHaveBeenCalledWith(5, 1);
+  expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();   // the usual actions stay
+});
+
+test('other transactions show no pill', () => {
+  renderList({ unrelatedTo: { 99: [{ id: 5, vendor: 'ASPIRE' }] }, onAddToSeries: jest.fn() });
+  expect(screen.queryByText('Unrelated')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Add to/ })).not.toBeInTheDocument();
+});
+
+// ── On a phone: a tap opens a row's actions (a phone has no hover) ──────────
+// The class does the showing (styles/transactions.css); laptops keep hover.
+
+describe("on a phone, a tap opens a row's actions", () => {
+  const row = (vendor) => screen.getByText(vendor).closest('.transaction-item');
+  const TARGET = { ...TX, id: 2, vendor: 'Target', category: 'Grocery', amount: -31.4, amount_cents: -3140 };
+
+  test('a tap opens a row, a second tap closes it, and only one row is open at a time', async () => {
+    renderList({ transactions: [TX, TARGET] });
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Target'));
+    expect(row('Target')).toHaveClass('tx-open');
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Target'));
+    expect(row('Target')).not.toHaveClass('tx-open');
+  });
+
+  test('its checkbox and buttons do their own job without opening or closing it', async () => {
+    const onToggle = jest.fn(), onToggleTransfer = jest.fn();
+    renderList({ onToggle, selectedIds: new Set(), onToggleTransfer });
+    await userEvent.click(screen.getByRole('checkbox'));
+    expect(onToggle).toHaveBeenCalledWith(1);
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+    await userEvent.click(screen.getByText('Netflix'));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as transfer' }));
+    expect(onToggleTransfer).toHaveBeenCalledWith(1);
+    expect(row('Netflix')).toHaveClass('tx-open');
+  });
+
+  test('Edit opens the editor, and the row comes back closed', async () => {
+    renderList();
+    await userEvent.click(screen.getByText('Netflix'));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByDisplayValue('Netflix')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+
+  test('each action has a word to show on a phone, under the same name', () => {
+    renderList();
+    expect(screen.getByRole('button', { name: 'Mark as transfer' })).toHaveTextContent('Transfer');
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveTextContent('Edit');
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveTextContent('Delete');
+  });
+
+  test('a compact list (the Dashboard) has no actions to open', async () => {
+    renderList({ compact: true });
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+
+  test('neither does a list without actions (Find recurring\'s payments)', async () => {
+    render(<TransactionList transactions={[TX]} />);
+    await userEvent.click(screen.getByText('Netflix'));
+    expect(row('Netflix')).not.toHaveClass('tx-open');
+  });
+});

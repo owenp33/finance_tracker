@@ -1,0 +1,4 @@
+# Local development and CI: everything production needs, plus test tooling.
+# The Docker image installs requirements.prod.txt only.
+-r requirements.prod.txt
+pytest==9.1.1

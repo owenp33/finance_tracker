@@ -6,7 +6,7 @@ from routes.accounts import accounts_bp
 from routes.transactions import transactions_bp
 from routes.recurring import recurring_bp
 from routes.analytics import analytics_bp
-from routes.csv_import import csv_bp
+from routes.imports import import_bp
 from routes.health import health_bp
 
 blueprints = [
@@ -16,7 +16,7 @@ blueprints = [
     transactions_bp,
     recurring_bp,
     analytics_bp,
-    csv_bp
+    import_bp
 ]
 
 __all__ = ['blueprints']

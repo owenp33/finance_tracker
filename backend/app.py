@@ -11,7 +11,64 @@ from flask_cors import CORS
 from datetime import timedelta
 
 
-def create_app():
+def _run_migrations(db):
+    """Apply schema changes made after initial creation (create_all never alters existing tables)."""
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        migrations = [
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_transfer BOOLEAN NOT NULL DEFAULT FALSE',
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_peer_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL',
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reimbursement BOOLEAN NOT NULL DEFAULT FALSE',
+            'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recurring_index INTEGER',
+            'ALTER TABLE users ALTER COLUMN password_hash TYPE VARCHAR(255)',
+            'ALTER TABLE accounts ALTER COLUMN acct_id_str TYPE VARCHAR(100)',
+            'ALTER TABLE accounts ALTER COLUMN acct_name TYPE VARCHAR(100)',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT FALSE',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS opening_balance_cents INTEGER NOT NULL DEFAULT 0',
+            "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'bank'",
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS apr_bps INTEGER',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_through DATE',
+            'ALTER TABLE accounts ADD COLUMN IF NOT EXISTS interest_frequency VARCHAR(10)',
+            # Rates set before interest had a frequency were loans charged monthly
+            "UPDATE accounts SET interest_frequency = 'monthly' WHERE apr_bps IS NOT NULL AND interest_frequency IS NULL",
+            "ALTER TABLE recurring ADD COLUMN IF NOT EXISTS frequency_unit VARCHAR(10) NOT NULL DEFAULT 'days'",
+            'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS day_of_month INTEGER',
+            'ALTER TABLE recurring ADD COLUMN IF NOT EXISTS loan_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL',
+            # Interest waits for approval; hits booked before that were applied to their balances already
+            'ALTER TABLE interest_hits ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT TRUE',
+            'ALTER TABLE interest_hits ALTER COLUMN approved SET DEFAULT FALSE',
+            # Over-budget flags are computed when read (BudgetFlagService); the stored copy is gone
+            'ALTER TABLE transactions DROP COLUMN IF EXISTS over_budget',
+        ]
+        for sql in migrations:
+            conn.execute(text(sql))
+
+        # Loan entries are gone: a loan's balance counts the payments of the series paying it down
+        # itself (services/loan_service.py), so the rows that mirrored them, and their column, go.
+        # Stored balances stay as they are: they counted each payment once, through its entry.
+        has_entries = conn.execute(text(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'loan_payment_id'"
+        )).first()
+        if has_entries:
+            conn.execute(text('DELETE FROM transactions WHERE loan_payment_id IS NOT NULL'))
+            conn.execute(text('ALTER TABLE transactions DROP COLUMN loan_payment_id'))
+
+        # Backfill recurring_index for rows generated before this column existed,
+        # so existing recurring chips show the correct occurrence number.
+        conn.execute(text('''
+            UPDATE transactions t
+            SET recurring_index = sub.rn
+            FROM (
+                SELECT id, ROW_NUMBER() OVER (PARTITION BY recurring_id ORDER BY date ASC, id ASC) AS rn
+                FROM transactions
+                WHERE recurring_id IS NOT NULL
+            ) sub
+            WHERE t.id = sub.id AND t.recurring_index IS NULL
+        '''))
+        conn.commit()
+
+
+def create_app(test_config=None):
     """Application factory pattern"""
     app = Flask(__name__)
 
@@ -23,7 +80,10 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-key-change-in-production')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+
+    if test_config:
+        app.config.update(test_config)
 
     # Initialize extensions from single source
     from extensions import db, jwt
@@ -52,9 +112,13 @@ def create_app():
     from routes.transactions import transactions_bp
     from routes.recurring import recurring_bp
     from routes.analytics import analytics_bp
-    from routes.csv_import import csv_bp
+    from routes.imports import import_bp
     from routes.health import health_bp
     from routes.budgets import budgets_bp
+    from routes.export import export_bp
+    from routes.balances import balances_bp
+    from routes.goals import goals_bp
+    from routes.interest import interest_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -62,14 +126,22 @@ def create_app():
     app.register_blueprint(transactions_bp, url_prefix='/api/transactions')
     app.register_blueprint(recurring_bp, url_prefix='/api/recurring')
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
-    app.register_blueprint(csv_bp, url_prefix='/api/csv')
+    app.register_blueprint(import_bp, url_prefix='/api/import')
     app.register_blueprint(budgets_bp, url_prefix='/api/budgets')
+    app.register_blueprint(export_bp, url_prefix='/api/export')
+    app.register_blueprint(balances_bp, url_prefix='/api/balances')
+    app.register_blueprint(goals_bp, url_prefix='/api/goals')
+    app.register_blueprint(interest_bp, url_prefix='/api/interest')
 
     from middleware.error_handlers import register_error_handlers
+    from middleware.auth_errors import register_auth_error_handlers
     register_error_handlers(app)
+    register_auth_error_handlers(jwt)
 
     with app.app_context():
         db.create_all()
+        if not app.config.get('TESTING'):
+            _run_migrations(db)
 
     if not app.config.get('TESTING'):
         from services.scheduler import init_scheduler
@@ -82,4 +154,6 @@ if __name__ == '__main__':
     app = create_app()
     print("Database tables created")
     print("Server running on http://localhost:5000")
-    app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
+    # Localhost only: the React dev server proxies /api here, so visitors on the
+    # network (dev.ps1 -Lan) or through ngrok never need to reach Flask directly
+    app.run(debug=True, port=5000, host='127.0.0.1', use_reloader=False)

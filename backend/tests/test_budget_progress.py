@@ -1,0 +1,300 @@
+"""
+Budget progress and the scheduled-pace setting: GET /api/budgets/progress (each budget's spending,
+which budget pace draws) and PUT /api/budgets/scheduled-pace (Phase V, V1); and which categories
+can have a budget at all (POST /api/budgets, PATCH /api/budgets/<id>).
+"""
+from datetime import date
+
+import pytest
+
+from extensions import db as _db
+from models.account import AccountModel
+from models.scheduled_pace import ScheduledPaceModel
+from models.user import User
+from services.account_service import AccountService
+from services.budget_service import BudgetService
+
+account_svc = AccountService()
+budget_svc = BudgetService()
+
+
+def spend(account, day, category, amount, **fields):
+    account_svc.add_transaction(account.id, day, 'Shop', category, amount, **fields)
+
+
+def progress(client, headers, period='2026-10'):
+    resp = client.get(f'/api/budgets/progress?period={period}', headers=headers)
+    assert resp.status_code == 200, resp.json
+    return {row['category']: row for row in resp.json['progress']}
+
+
+def create(client, headers, category, period='2026-11', amount=100):
+    return client.post('/api/budgets', headers=headers, json={'category': category, 'period': period, 'amount': amount})
+
+
+def set_pace(client, headers, category, scheduled):
+    return client.put('/api/budgets/scheduled-pace', headers=headers,
+                      json={'category': category, 'scheduled': scheduled})
+
+
+@pytest.fixture
+def other(client):
+    """A second user with an account, logged in: (account, headers)."""
+    u = User(username='otheruser', email='other@example.com')
+    u.set_password('otherpass')
+    _db.session.add(u)
+    _db.session.commit()
+    acct = AccountModel(user_id=u.id, acct_id_str='other-1', acct_name='Other Checking')
+    _db.session.add(acct)
+    _db.session.commit()
+    token = client.post('/api/auth/login', json={'username': 'otheruser', 'password': 'otherpass'}).json['access_token']
+    return acct, {'Authorization': f'Bearer {token}'}
+
+
+class TestProgress:
+    def test_requires_login(self, client):
+        assert client.get('/api/budgets/progress?period=2026-10').status_code == 401
+
+    def test_no_budgets_no_rows(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 3), 'Groceries', -50.0)
+        assert progress(client, auth_headers) == {}
+
+    def test_a_row_reports_the_spending_against_the_budget(self, client, auth_headers, user, account):
+        budget = budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0, rollover=True, carried_over=20.0)
+        spend(account, date(2026, 10, 3), 'Groceries', -150.25)
+        spend(account, date(2026, 10, 31), 'Groceries', -49.75)
+        assert progress(client, auth_headers)['Groceries'] == {
+            'id': budget.id, 'category': 'Groceries', 'period': '2026-10',
+            'allocated': 400.0, 'allocated_cents': 40000, 'carried_over': 20.0, 'carried_over_cents': 2000,
+            'spent': 200.0, 'spent_cents': 20000, 'remaining': 220.0, 'remaining_cents': 22000,
+            'rollover': True, 'over_budget': False, 'scheduled_pace': False,
+        }
+
+    def test_spending_is_the_months_expenses_in_the_category_on_every_account(self, client, auth_headers, user, account):
+        savings = AccountModel(user_id=user.id, acct_id_str='savings-1', acct_name='Savings')
+        _db.session.add(savings)
+        _db.session.commit()
+        budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
+        spend(account, date(2026, 10, 1), 'Groceries', -10.0)
+        spend(savings, date(2026, 10, 2), 'Groceries', -20.0)
+        spend(account, date(2026, 9, 30), 'Groceries', -1000.0)    # other months
+        spend(account, date(2026, 11, 1), 'Groceries', -1000.0)
+        spend(account, date(2026, 10, 3), 'Fun', -1000.0)          # another category
+        spend(account, date(2026, 10, 4), 'Groceries', 500.0)      # income, not a reimbursement
+        assert progress(client, auth_headers)['Groceries']['spent_cents'] == 3000
+
+    def test_transfers_never_count(self, client, auth_headers, user, account):
+        budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
+        spend(account, date(2026, 10, 3), 'Groceries', -100.0, is_transfer=True)
+        assert progress(client, auth_headers)['Groceries']['spent_cents'] == 0
+
+    def test_a_loan_accounts_transactions_never_count(self, client, auth_headers, user, account):
+        # A loan's entries only move what's owed; the bill they mirror is spent from the bank account
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        budget_svc.create_budget(user.id, 'Loan', '2026-10', 100.0)
+        spend(account, date(2026, 10, 31), 'Loan', -75.0)
+        spend(loan, date(2026, 10, 15), 'Loan', -12.5)                          # e.g. an interest charge
+        spend(loan, date(2026, 10, 20), 'Loan', 40.0, is_reimbursement=True)    # would lower the spending
+        assert progress(client, auth_headers)['Loan']['spent_cents'] == 7500
+
+    def test_reimbursements_lower_the_spending_but_never_below_zero(self, client, auth_headers, user, account):
+        budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
+        budget_svc.create_budget(user.id, 'Medical', '2026-10', 100.0)
+        spend(account, date(2026, 10, 3), 'Groceries', -100.0)
+        spend(account, date(2026, 10, 9), 'Groceries', 30.0, is_reimbursement=True)
+        spend(account, date(2026, 10, 3), 'Medical', -10.0)
+        spend(account, date(2026, 10, 9), 'Medical', 25.0, is_reimbursement=True)
+        rows = progress(client, auth_headers)
+        assert rows['Groceries']['spent_cents'] == 7000
+        assert rows['Medical']['spent_cents'] == 0
+
+    def test_spending_past_the_budget_is_over_budget(self, client, auth_headers, user, account):
+        budget_svc.create_budget(user.id, 'Fun', '2026-10', 50.0)
+        spend(account, date(2026, 10, 3), 'Fun', -69.40)
+        row = progress(client, auth_headers)['Fun']
+        assert (row['remaining_cents'], row['over_budget']) == (-1940, True)
+
+    def test_other_users_spending_and_budgets_are_left_out(self, client, auth_headers, user, account, other):
+        other_account, _ = other
+        budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
+        budget_svc.create_budget(other_account.user_id, 'Fun', '2026-10', 50.0)
+        spend(other_account, date(2026, 10, 3), 'Groceries', -100.0)
+        rows = progress(client, auth_headers)
+        assert list(rows) == ['Groceries']
+        assert rows['Groceries']['spent_cents'] == 0
+
+    def test_rows_are_sorted_by_category(self, client, auth_headers, user, account):
+        for category in ('Restaurants', 'Fun', 'Groceries'):
+            budget_svc.create_budget(user.id, category, '2026-10', 100.0)
+        assert list(progress(client, auth_headers)) == ['Fun', 'Groceries', 'Restaurants']
+
+
+BAD_TEXT = "'category' must be text."
+EMPTY = "'category' can't be empty."
+TOO_LONG = "'category' must be at most 50 characters."
+BAD_SCHEDULED = "'scheduled' must be true or false."
+
+
+class TestScheduledPace:
+    def test_requires_login(self, client):
+        assert client.put('/api/budgets/scheduled-pace', json={'category': 'Fun', 'scheduled': True}).status_code == 401
+
+    def test_setting_it_marks_the_category_in_every_month(self, client, auth_headers, user, account):
+        for period in ('2026-10', '2026-11'):
+            budget_svc.create_budget(user.id, 'Subscriptions', period, 60.0, rollover=True)
+        budget_svc.create_budget(user.id, 'Groceries', '2026-10', 400.0)
+
+        resp = set_pace(client, auth_headers, 'Subscriptions', True)
+        assert (resp.status_code, resp.json) == (200, {'success': True, 'category': 'Subscriptions', 'scheduled': True})
+        october = progress(client, auth_headers)
+        assert (october['Subscriptions']['scheduled_pace'], october['Groceries']['scheduled_pace']) == (True, False)
+        assert progress(client, auth_headers, '2026-11')['Subscriptions']['scheduled_pace'] is True
+
+    def test_setting_it_again_changes_nothing(self, client, auth_headers, account):
+        assert set_pace(client, auth_headers, 'Subscriptions', True).status_code == 200
+        assert set_pace(client, auth_headers, 'Subscriptions', True).status_code == 200
+        assert ScheduledPaceModel.query.count() == 1
+
+    def test_turning_it_off_goes_back_to_an_even_pace(self, client, auth_headers, user, account):
+        budget_svc.create_budget(user.id, 'Subscriptions', '2026-10', 60.0)
+        set_pace(client, auth_headers, 'Subscriptions', True)
+        resp = set_pace(client, auth_headers, 'Subscriptions', False)
+        assert (resp.status_code, resp.json) == (200, {'success': True, 'category': 'Subscriptions', 'scheduled': False})
+        assert progress(client, auth_headers)['Subscriptions']['scheduled_pace'] is False
+        assert ScheduledPaceModel.query.count() == 0
+        assert set_pace(client, auth_headers, 'Subscriptions', False).status_code == 200   # already off
+
+    def test_the_setting_belongs_to_the_category_not_to_a_budget(self, client, auth_headers, user, account):
+        set_pace(client, auth_headers, 'Subscriptions', True)      # before the category has a budget
+        budget = budget_svc.create_budget(user.id, 'Subscriptions', '2026-10', 60.0)
+        assert progress(client, auth_headers)['Subscriptions']['scheduled_pace'] is True
+        client.delete(f'/api/budgets/{budget.id}', headers=auth_headers)
+        budget_svc.create_budget(user.id, 'Subscriptions', '2026-10', 60.0)
+        assert progress(client, auth_headers)['Subscriptions']['scheduled_pace'] is True
+
+    def test_the_category_must_match_exactly(self, client, auth_headers, user, account):
+        budget_svc.create_budget(user.id, 'Subscriptions', '2026-10', 60.0)
+        set_pace(client, auth_headers, 'subscriptions', True)
+        assert progress(client, auth_headers)['Subscriptions']['scheduled_pace'] is False
+
+    def test_each_user_has_their_own(self, client, auth_headers, user, account, other):
+        other_account, other_headers = other
+        budget_svc.create_budget(user.id, 'Subscriptions', '2026-10', 60.0)
+        budget_svc.create_budget(other_account.user_id, 'Subscriptions', '2026-10', 60.0)
+        set_pace(client, other_headers, 'Subscriptions', True)
+        assert progress(client, auth_headers)['Subscriptions']['scheduled_pace'] is False
+        assert progress(client, other_headers)['Subscriptions']['scheduled_pace'] is True
+
+    def test_fifty_characters_is_the_longest_category(self, client, auth_headers, account):
+        assert set_pace(client, auth_headers, 'x' * 50, True).status_code == 200
+
+    @pytest.mark.parametrize('body, error', [
+        ({'scheduled': True}, BAD_TEXT),
+        ({'category': 7, 'scheduled': True}, BAD_TEXT),
+        ({'category': '', 'scheduled': True}, EMPTY),
+        ({'category': '   ', 'scheduled': True}, EMPTY),
+        ({'category': 'x' * 51, 'scheduled': True}, TOO_LONG),
+        ({'category': 'Fun'}, BAD_SCHEDULED),
+        ({'category': 'Fun', 'scheduled': 'true'}, BAD_SCHEDULED),
+        ({'category': 'Fun', 'scheduled': 1}, BAD_SCHEDULED),
+        ({'category': 'Fun', 'scheduled': None}, BAD_SCHEDULED),
+    ])
+    def test_invalid_input_returns_400(self, client, auth_headers, account, body, error):
+        resp = client.put('/api/budgets/scheduled-pace', headers=auth_headers, json=body)
+        assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+        assert ScheduledPaceModel.query.count() == 0
+
+    def test_a_body_that_isnt_json_returns_400(self, client, auth_headers, account):
+        resp = client.put('/api/budgets/scheduled-pace', headers=auth_headers, data='Fun', content_type='text/plain')
+        assert (resp.status_code, resp.json['error']) == (400, BAD_TEXT)
+
+    def test_deleting_the_user_deletes_their_settings(self, user, account):
+        budget_svc.set_scheduled_pace(user.id, 'Subscriptions', True)
+        _db.session.delete(user)
+        _db.session.commit()
+        assert ScheduledPaceModel.query.count() == 0
+
+
+class TestWhichCategoriesCanHaveABudget:
+    """
+    A budget is for spending: a category whose money in outweighs its money out, in dollars over all
+    time, can't have one, nor can one none of whose transactions count as spending (transfers, or on
+    a loan account). A category never used is fine. Money in and out leave out transfers and loan
+    accounts, as every total does.
+    """
+
+    def test_a_category_mostly_money_coming_in_is_refused(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        spend(account, date(2026, 10, 2), 'Income', -83.95)
+        resp = create(client, auth_headers, 'Income')
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': "Income can't have a budget: it's mostly money coming in."}
+
+    def test_more_money_out_than_in_is_fine_whatever_the_number_of_deposits(self, client, auth_headers, account):
+        # Utility: roommates paying back more often than the bill is paid, but less in dollars
+        for day in (5, 12, 19):
+            spend(account, date(2026, 10, day), 'Utility', 40.0)
+        spend(account, date(2026, 10, 20), 'Utility', -150.0)
+        assert create(client, auth_headers, 'Utility').status_code == 201
+
+    def test_dollars_decide_however_many_payments_go_out(self, client, auth_headers, account):
+        # Loan: one disbursement in outweighs five payments out
+        spend(account, date(2026, 1, 15), 'Loan', 1000.0)
+        for month in range(6, 11):
+            spend(account, date(2026, month, 28), 'Loan', -75.0)
+        assert create(client, auth_headers, 'Loan').json['error'] == "Loan can't have a budget: it's mostly money coming in."
+
+    def test_money_in_and_out_alike_is_fine(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 3), 'Gifts', 50.0)
+        spend(account, date(2026, 10, 9), 'Gifts', -50.0)
+        assert create(client, auth_headers, 'Gifts').status_code == 201
+
+    def test_a_category_of_transfers_only_is_refused(self, client, auth_headers, account):
+        spend(account, date(2026, 10, 1), 'Transfer', -500.0, is_transfer=True)
+        spend(account, date(2026, 10, 8), 'Transfer', 200.0, is_transfer=True)
+        assert create(client, auth_headers, 'Transfer').json == {
+            'success': False, 'error': "Transfer can't have a budget: none of its transactions count as spending."}
+
+    def test_a_loan_accounts_transactions_never_count(self, client, auth_headers, user, account):
+        loan = AccountModel(user_id=user.id, acct_id_str='aspire-1', acct_name='ASPIRE loan', kind='loan')
+        _db.session.add(loan)
+        _db.session.commit()
+        # The loan's +$75 entries mirror the bill; only the bill, paid from the bank, counts
+        spend(account, date(2026, 10, 31), 'Bills', -75.0)
+        spend(loan, date(2026, 10, 31), 'Bills', 75.0)
+        spend(loan, date(2026, 11, 1), 'Bills', 75.0)
+        assert create(client, auth_headers, 'Bills').status_code == 201
+        # Interest booked on the loan alone never counts as spending
+        spend(loan, date(2026, 11, 1), 'Interest', -419.96)
+        assert create(client, auth_headers, 'Interest').status_code == 400
+
+    def test_a_body_that_isnt_json_is_a_400(self, client, auth_headers):
+        resp = client.post('/api/budgets', data='not json', content_type='text/plain', headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json['error'].startswith('Missing required fields')
+
+    def test_a_category_never_used_is_fine(self, client, auth_headers, account):
+        assert create(client, auth_headers, 'Vacation').status_code == 201
+
+    def test_only_your_own_transactions_count(self, client, auth_headers, account, other):
+        other_account, _ = other
+        spend(other_account, date(2026, 10, 1), 'Bonus', 1000.0)
+        assert create(client, auth_headers, 'Bonus').status_code == 201
+
+    def test_a_budget_cant_be_renamed_into_such_a_category(self, client, auth_headers, user, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        budget = budget_svc.create_budget(user.id, 'Groceries', '2026-11', 400.0)
+        resp = client.patch(f'/api/budgets/{budget.id}', headers=auth_headers, json={'category': 'Income'})
+        assert resp.status_code == 400
+        assert resp.json['error'] == "Income can't have a budget: it's mostly money coming in."
+        assert _db.session.get(type(budget), budget.id).category == 'Groceries'
+        # Saving it under its own name, or changing only its amount, is fine
+        ok = client.patch(f'/api/budgets/{budget.id}', headers=auth_headers, json={'category': 'Groceries', 'amount': 450})
+        assert ok.status_code == 200 and ok.json['budget']['amount'] == 450
+
+    def test_the_service_refuses_too(self, user, account):
+        spend(account, date(2026, 10, 1), 'Income', 3000.0)
+        with pytest.raises(ValueError, match="Income can't have a budget"):
+            budget_svc.create_budget(user.id, 'Income', '2026-11', 100.0)

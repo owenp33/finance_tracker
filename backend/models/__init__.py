@@ -5,12 +5,24 @@ from models.user import User
 from models.account import AccountModel
 from models.transaction import TransactionModel
 from models.recurring import RecurringModel
+from models.recurring_dismissal import RecurringDismissalModel
+from models.recurring_alias import RecurringAliasModel
+from models.series_dismissal import SeriesDismissalModel
 from models.budget import BudgetModel
+from models.scheduled_pace import ScheduledPaceModel
+from models.goal import GoalModel
+from models.interest_hit import InterestHitModel
 
 __all__ = [
     'User',
     'AccountModel',
     'TransactionModel',
     'RecurringModel',
+    'RecurringDismissalModel',
+    'RecurringAliasModel',
+    'SeriesDismissalModel',
     'BudgetModel',
+    'ScheduledPaceModel',
+    'GoalModel',
+    'InterestHitModel',
 ]

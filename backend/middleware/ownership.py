@@ -60,6 +60,38 @@ def owns_transaction(f):
     return decorated
 
 
+def owns_goal(f):
+    """Verify the current user owns the goal_id in the URL"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        goal = db_service.get_goal(kwargs.get('goal_id'))
+
+        if not goal:
+            return jsonify({'success': False, 'error': 'Goal not found'}), 404
+
+        if int(goal.user_id) != int(get_jwt_identity()):
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        return f(*args, **kwargs)
+    return decorated
+
+
+def owns_interest_hit(f):
+    """Verify the current user owns the account of the interest hit_id in the URL"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        hit = db_service.get_interest_hit(kwargs.get('hit_id'))
+
+        if not hit:
+            return jsonify({'success': False, 'error': 'Interest not found'}), 404
+
+        if int(hit.account.user_id) != int(get_jwt_identity()):
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        return f(*args, **kwargs)
+    return decorated
+
+
 def owns_budget(f):
     """Verify the current user owns the budget_id in the URL"""
     @wraps(f)

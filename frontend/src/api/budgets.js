@@ -24,3 +24,10 @@ export const updateBudget = (id, body) =>
 
 export const deleteBudget = (id) =>
   fetchAPI(`/api/budgets/${id}`, { method: 'DELETE' });
+
+// A category's pace in every month: by its recurring charges (scheduled) or even
+export const setScheduledPace = (category, scheduled) =>
+  fetchAPI('/api/budgets/scheduled-pace', {
+    method: 'PUT',
+    body: JSON.stringify({ category, scheduled }),
+  });

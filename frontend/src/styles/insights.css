@@ -1,0 +1,775 @@
+/* Insights: the view's card and header, summary cards and chart cards, Reports' period, and each
+   tab's charts (recurring costs and the timeline, balance over time and its goal lines, the goal plan,
+   spending by category, net per month, top vendors). */
+
+/* === InsightsView / AnalyticsDashboard =================================== */
+.analytics-dashboard {
+  padding: 0;
+}
+
+.analytics-loading {
+  text-align: center;
+  padding: 40px;
+  font-size: 1.2em;
+  color: #666;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.summary-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.summary-card h3 {
+  margin: 0 0 10px 0;
+  color: #666;
+  font-size: 0.9em;
+  text-transform: uppercase;
+}
+
+.summary-card .amount {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.summary-card.income .amount  { color: #00C49F; }
+
+.summary-card.expenses .amount { color: #FF8042; }
+
+.summary-card.net .amount      { color: #0088FE; }
+
+.summary-card .subtitle {
+  color: #999;
+  font-size: 0.9em;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
+}
+
+.chart-container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.chart-container.full-width { grid-column: 1 / -1; }
+
+/* Nested inside .insights-view's own white card — use the same light-gray
+   inset look as .budget-row instead of white-on-white. */
+.insights-view .summary-card,
+.insights-view .chart-container {
+  background: #f8f9fa;
+  box-shadow: none;
+}
+
+.chart-container h3 {
+  margin: 0 0 20px 0;
+  color: #333;
+  font-size: 1.1em;
+}
+
+.trends-summary { padding: 20px; }
+
+.trend-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 15px;
+  margin: 10px 0;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.trend-label { font-weight: 600; color: #666; }
+
+.trend-value {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.trend-value.income   { color: #00C49F; }
+
+.trend-value.expenses { color: #FF8042; }
+
+/* === Insights view =========================================== */
+/* Whole section is one card, like .transactions-view / .budgeting-view */
+.insights-view {
+  background: white;
+  padding: var(--card-pad);
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.insights-header-card {
+  margin-bottom: 24px;
+}
+
+/* Nested inside .insights-view's own card — drop the redundant white-on-white chrome */
+.insights-view .insights-header-card {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.insights-header-card .view-header {
+  margin-bottom: 0;
+}
+
+/* Filter panel sits flush inside the card — override its own background/border */
+.insights-header-card .filter-panel {
+  margin-top: 20px;
+  margin-bottom: 0;
+  border-top: 1.5px solid #e9ecef;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0;
+  padding: 18px 0 0;
+}
+
+/* Room under the Reports heading (the header card's own header has no bottom margin) */
+.report-period-selector {
+  margin: 16px 0 10px;
+}
+
+.report-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.report-period-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid #dee2e6;
+  border-radius: 50%;
+  background: white;
+  color: #555;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.report-period-nav-btn:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+
+.report-period-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  min-width: 110px;
+  text-align: center;
+}
+
+/* Where the forecast takes a goal on the account shown (F2e); a held goal it dips under is a warning */
+.balance-goal-note {
+  margin: 2px 0;
+  color: #12795a;
+  font-size: 0.85rem;
+}
+
+.balance-goal-note.warning { color: #b5441c; }
+
+/* ── Insights → Recurring (Phase V, V3) ───────────────────────────────────── */
+.recurring-costs,
+.accounts-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Insights → Accounts' goal plan (Phase F): a reached goal in a line, then a small chart per goal on
+   one month axis, each titled with where it's headed */
+.goal-plan-held,
+.goal-plan-handoff {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.goal-plan-panel {
+  margin: 16px 0 0;
+}
+
+.goal-plan-panel figcaption {
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+/* Every goal's name in bold, a reached one's too */
+.goal-plan-held strong,
+.goal-plan-panel figcaption strong {
+  color: #1f2937;
+}
+
+.goal-plan .view-as-table {
+  margin-top: 12px;
+}
+
+.recurring-costs-headline h3 {
+  margin-bottom: 6px;
+}
+
+.recurring-costs-total {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  font-variant-numeric: tabular-nums;
+}
+
+.recurring-costs-sub {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.recurring-costs-note {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+/* Bars in the chart blue; an ended series a lighter step of it, and its label says so */
+.recurring-cost-bar {
+  fill: var(--chart-blue);
+}
+
+.recurring-cost-bar.ended {
+  fill-opacity: 0.35;
+}
+
+/* A long label may run into the card's padding rather than be cut off */
+.recurring-costs .recharts-surface {
+  overflow: visible;
+}
+
+.recurring-cost-name {
+  fill: #1f2937;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recurring-cost-label {
+  fill: #4b5563;
+  font-size: 12px;
+}
+
+/* ── Insights → Recurring timeline (Phase V, V3b) ─────────────────────────── */
+.recurring-timeline-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 8px;
+}
+
+.recurring-timeline-header h3 {
+  margin: 0;
+}
+
+.timeline-toggle {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.timeline-toggle-btn {
+  padding: 5px 12px;
+  border: none;
+  background: #fff;
+  color: #374151;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.timeline-toggle-btn + .timeline-toggle-btn {
+  border-left: 1px solid #d1d5db;
+}
+
+.timeline-toggle-btn.active {
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Posted solid, still scheduled light with a dashed edge; income in aqua, ended lighter */
+.timeline-posted {
+  fill: var(--chart-blue);
+}
+
+.timeline-posted.income {
+  fill: var(--chart-aqua);
+}
+
+.timeline-posted.ended {
+  fill-opacity: 0.35;
+}
+
+.timeline-scheduled {
+  fill: var(--chart-blue);
+  fill-opacity: 0.12;
+  stroke: var(--chart-blue);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.timeline-scheduled.income {
+  fill: var(--chart-aqua);
+  stroke: var(--chart-aqua);
+}
+
+/* A white tick per payment on its bar, and an invisible hover target over each */
+.timeline-tick,
+.timeline-key-tick {
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.timeline-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* One payment's details, above it */
+.timeline-chart {
+  position: relative;
+}
+
+.timeline-payment-tip {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, calc(-100% - 6px));
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.timeline-payment-tip.below {
+  transform: translate(-50%, 6px);
+}
+
+.timeline-payment-tip .tip-amount {
+  margin: 2px 0 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-payment-tip ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #e5e7eb;
+}
+
+/* A ring where a payment's amount changed from the one before */
+.timeline-ring,
+.timeline-key-ring {
+  fill: #fff;
+  stroke: #1a1a2e;
+  stroke-width: 1.5;
+}
+
+.timeline-row-label {
+  fill: #1f2937;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.timeline-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Insights → Accounts: balance over time (Phase V, V4) ─────────────────── */
+.balance-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+
+.balance-header h3 {
+  margin: 0;
+}
+
+.balance-views {
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.balance-now {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-change {
+  margin: 2px 0 12px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* The forecast (Phase F, F1): dashed, and labelled with what it counts */
+.balance-forecast-line {
+  margin: -6px 0 12px;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.balance-forecast .recharts-line-curve {
+  stroke: var(--chart-blue);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+.balance-key {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px solid var(--chart-blue);
+}
+
+.balance-key.forecast {
+  border-top-style: dashed;
+}
+
+/* The history doesn't end at the current balance: a warning, in the darker orange */
+.balance-mismatch {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #b5441c;
+}
+
+.balance-line .recharts-line-curve {
+  stroke: var(--chart-blue);
+  stroke-width: 2;
+}
+
+.balance-tip .tip-amount {
+  margin: 2px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-tip ul {
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.balance-tip li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #e5e7eb;
+}
+
+.balance-tip li span:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-tip .tip-more {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: #cbd5e1;
+}
+
+/* ── Insights → Overview: spending by category (Phase V, V5b) ─────────────── */
+.income-line {
+  margin: -10px 0 20px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.category-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 20px;
+}
+
+.category-panel {
+  margin: 0;
+}
+
+/* The category's name, then its label on the line below */
+.category-panel figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.category-panel figcaption strong {
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+/* One colour for every panel; a month only partly in the period lighter */
+.category-bar {
+  fill: var(--chart-blue);
+}
+
+.category-bar.partial {
+  fill-opacity: 0.35;
+}
+
+/* ── Insights → Overview: net per month (Phase V, V5c) ─────────────────────── */
+.net-bar.positive,
+.net-key.positive {
+  fill: var(--chart-aqua);
+  background: var(--chart-aqua);
+}
+
+.net-bar.negative,
+.net-key.negative {
+  fill: var(--chart-orange);
+  background: var(--chart-orange);
+}
+
+.net-bar.partial {
+  fill-opacity: 0.35;
+}
+
+.net-key {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.net-key.average {
+  height: 2px;
+  background: #1a1a2e;
+}
+
+/* ── Insights → Overview: top vendors (Phase V, V5d) ───────────────────────── */
+.top-vendors-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+}
+
+.top-vendors-header h3 {
+  margin: 0;
+}
+
+.vendor-bars {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each vendor is a button: its name, its bar, and its amount in a column at the end */
+.vendor-bar {
+  display: grid;
+  grid-template-columns: minmax(90px, 28%) 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vendor-bar:hover,
+.vendor-bar.selected {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.vendor-bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.vendor-name {
+  overflow: hidden;
+  font-size: 0.88rem;
+  color: #1f2937;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vendor-track {
+  height: 12px;
+}
+
+.vendor-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 3px 3px 0;
+  background: var(--chart-blue);
+}
+
+.vendor-value {
+  font-size: 0.85rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.vendor-detail {
+  margin: 6px 8px 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--chart-blue);
+  border-radius: 0 6px 6px 0;
+  background: #fff;
+}
+
+.vendor-detail-stats {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.vendor-detail-more {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* Tablet and phone: one chart a row, as wide as the card (two need 820px), and the summary cards two
+   across with Net under them across both. These follow the rules they change, so they win. */
+@media (max-width: 900px) {
+  .summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-card.net {
+    grid-column: 1 / -1;
+  }
+
+  .charts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .charts-grid > * {
+    min-width: 0;
+  }
+}
+
+/* Phone: the summary cards, chart cards and weekly averages tighter, an amount sized to fit its half of
+   the row, the category panels one a row, and Top vendors' "Leave out recurring charges" under its
+   "Click a vendor for details." (the header's pieces join the card's column, then `order`) */
+@media (max-width: 600px) {
+  .summary-cards {
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .summary-card {
+    padding: 12px 14px;
+  }
+
+  .summary-card h3 {
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+  }
+
+  .summary-card .amount {
+    margin: 4px 0;
+    font-size: clamp(1.1rem, 5.5vw, 1.5rem);
+  }
+
+  .summary-card .subtitle {
+    font-size: 0.8rem;
+  }
+
+  .charts-grid {
+    gap: 16px;
+  }
+
+  .chart-container {
+    padding: 14px;
+  }
+
+  .trends-summary {
+    padding: 0;
+  }
+
+  .category-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .top-vendors {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-vendors-header {
+    display: contents;
+  }
+
+  .top-vendors-header h3 {
+    margin-bottom: 20px;
+  }
+
+  .top-vendors > :not(.top-vendors-header) {
+    order: 3;
+  }
+
+  .top-vendors > .chart-note {
+    order: 1;
+    margin-bottom: 8px;
+  }
+
+  .top-vendors-header .bri-toggle {
+    order: 2;
+    align-self: flex-start;
+    margin-bottom: 12px;
+  }
+}

@@ -1,108 +1,25 @@
 """
-analytics_service.py - CSV Processing and Analytics
+analytics_service.py - Analytics Reporting
 
-Handles financial data parsing and report generation.
-No database writes — pure data transformation and analysis.
+Builds spending/income reports from transactions. Import file parsing lives in
+import_parser.py. No database writes — pure data transformation and analysis.
 """
 import pandas as pd
-import re
-from datetime import datetime, date, timedelta
 
 
 class AnalyticsService:
-
-    # PARSING UTILITIES =========================================================
-
-    @staticmethod
-    def clean_currency(value: str) -> float:
-        """Convert currency string to float (handles $, €, £, commas, etc.)"""
-        if pd.isna(value) or value == '':
-            return 0.0
-
-        cleaned = re.sub(r'[£$€,\s]', '', str(value))
-
-        try:
-            return float(cleaned)
-        except ValueError:
-            return 0.0
-
-    @staticmethod
-    def parse_date(date_str: str) -> date:
-        """Parse date string across multiple common formats, including Excel serials"""
-        if pd.isna(date_str) or date_str == '':
-            return date.today()
-
-        date_str = str(date_str).strip()
-
-        try:
-            if '.' in date_str or date_str.isdigit():
-                excel_date = float(date_str)
-                return datetime(1899, 12, 30) + timedelta(days=excel_date)
-        except (ValueError, OverflowError):
-            pass
-
-        formats = ['%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y']
-        for fmt in formats:
-            try:
-                return datetime.strptime(date_str, fmt).date()
-            except ValueError:
-                continue
-
-        print(f"Warning: Could not parse date '{date_str}', using today's date")
-        return date.today()
-
-    # CSV LOADING ===============================================================
-
-    @staticmethod
-    def load_csv(filepath) -> pd.DataFrame:
-        """
-        Load and normalize a financial CSV file into a standard DataFrame.
-
-        Supported formats:
-          1) date, vendor, category, expense, income, account, (notes)
-          2) date, vendor, category, amount, account, (notes)
-        """
-        df = pd.read_csv(filepath)
-        df.columns = df.columns.str.lower().str.strip()
-
-        df['date'] = df['date'].apply(AnalyticsService.parse_date)
-
-        if 'expense' in df.columns and 'income' in df.columns:
-            df['expense'] = df['expense'].apply(AnalyticsService.clean_currency)
-            df['income'] = df['income'].apply(AnalyticsService.clean_currency)
-            df['amount'] = df['income'] - df['expense']
-        elif 'amount' in df.columns:
-            df['amount'] = df['amount'].apply(AnalyticsService.clean_currency)
-        else:
-            raise ValueError(
-                "CSV must have either 'expense' and 'income' columns, "
-                "or a single 'amount' column"
-            )
-
-        if 'vendor' in df.columns:
-            df['vendor'] = df['vendor'].fillna('Unknown')
-        elif 'store' in df.columns:
-            df['vendor'] = df['store'].fillna('Unknown')
-
-        df['category'] = df['category'].fillna('Uncategorized')
-        df['notes'] = df['notes'].fillna('') if 'notes' in df.columns else ''
-
-        required_columns = ['date', 'vendor', 'category', 'amount']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"CSV is missing required columns: {missing_columns}")
-
-        return df
 
     # REPORTING =================================================================
 
     @staticmethod
     def generate_report(transactions: list) -> dict:
         """
-        Generate a comprehensive analytics report from a list of TransactionModel objects.
-        Returns a dictionary ready for use in an API response.
+        Generate a comprehensive analytics report from a list of TransactionModel objects, leaving
+        out transfers and a loan account's transactions (they count in no total). Returns a
+        dictionary ready for use in an API response.
         """
-        if not transactions:
+        counted = [t for t in transactions if not t.is_transfer and not t.on_loan_account]
+        if not counted:
             return {
                 'summary': {
                     'total_income': 0.0,
@@ -129,7 +46,7 @@ class AnalyticsService:
             'category': trans.category,
             'amount': trans.amount,
             'notes': trans.notes
-        } for trans in transactions]
+        } for trans in counted]
 
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'])

@@ -1,116 +1,468 @@
 import { useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { formatDollars, formatSignedCents } from '../utils/money';
+import AccountKindFields from './AccountKindFields';
+import InterestFields from './InterestFields';
+import InterestHits from './InterestHits';
+import AccountGoalProgress from './goals/AccountGoalProgress';
+import { useGoals } from '../hooks/useGoals';
+import GroupedTransactionList from './transactions/GroupedTransactionList';
+import { loanPayments } from '../utils/loanPayments';
 
-function AccountsView({ accounts, onCreateAccount, onEditAccount, onDeleteAccount }) {
-  const [editingId, setEditingId] = useState(null);
-  const [editFields, setEditFields] = useState({});
-  const [creating, setCreating] = useState(false);
-  const [newFields, setNewFields] = useState({ account_id: '', account_name: '' });
+// A typed dollar amount in cents, or null while it's blank or not a number
+const typedCents = (text) => {
+  const dollars = Number(text);
+  return text.trim() === '' || !Number.isFinite(dollars) ? null : Math.round(dollars * 100);
+};
 
-  const startEdit = (account) => {
-    setEditingId(account.id);
-    setEditFields({ account_id: account.account_id, account_name: account.account_name });
+// A typed yearly rate (percent), or null while it's blank: no interest
+const typedApr = (text) => (text.trim() === '' ? null : Number(text));
+
+// A stable stand-in when no one listens for errors (useGoals refetches when it changes)
+const IGNORE_ERROR = () => {};
+
+// The rate and how often it hits, as account fields for the API (both null without a rate)
+const interestFields = (aprText, frequency) => {
+  const apr = typedApr(aprText);
+  return { apr, interest_frequency: apr === null ? null : frequency };
+};
+
+function AccountsView({
+  transactions,
+  accounts,
+  recurring = [],
+  interest = [],
+  onEdit,
+  onDelete,
+  onPairTransfer,
+  onDeleteTransferBulk,
+  onCreateAccount,
+  onEditAccount,
+  onDeleteAccount,
+  onEditInterest,
+  onApproveInterest,
+  onDeleteInterest,
+  onError = IGNORE_ERROR,
+}) {
+  // Each account's goals show their progress on its row (Phase F, F2f)
+  const { goals } = useGoals(onError, accounts);
+  const [showAddAccountForm, setShowAddAccountForm] = useState(false);
+  const [newAccountId, setNewAccountId] = useState('');
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountKind, setNewAccountKind] = useState('bank');
+  const [newAccountApr, setNewAccountApr] = useState('');
+  const [newAccountFrequency, setNewAccountFrequency] = useState('monthly');
+  const [accountAdding, setAccountAdding] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState(null);
+  const [editingAccountName, setEditingAccountName] = useState('');
+  const [editingAccountIdStr, setEditingAccountIdStr] = useState('');
+  const [editingKind, setEditingKind] = useState('bank');
+  const [editingApr, setEditingApr] = useState('');
+  const [editingFrequency, setEditingFrequency] = useState('monthly');
+  const [editingOpeningBalance, setEditingOpeningBalance] = useState('');
+  const [editingCurrentBalance, setEditingCurrentBalance] = useState('');
+  const [editingBalanceSource, setEditingBalanceSource] = useState('opening');   // the one typed in last
+  const [pairingTxId, setPairingTxId] = useState(null);
+  const [pairingToAccountId, setPairingToAccountId] = useState('');
+  const [transferBulkToAccountId, setTransferBulkToAccountId] = useState('');
+  const [expandedAccountIds, setExpandedAccountIds] = useState(new Set());
+  const [movingPeerId, setMovingPeerId] = useState(null);
+  const [movingToAccountId, setMovingToAccountId] = useState('');
+  // The account row tapped open (phones show its Edit / Delete only then), one at a time
+  const [openAccountId, setOpenAccountId] = useState(null);
+
+  // A tap on a row, not on one of its buttons or its interest (which has its own), opens or closes its actions
+  const toggleAccount = (e, id) => {
+    if (e.target.closest('button, input, select, label, a, [role="button"], .account-interest')) return;
+    setOpenAccountId(open => (open === id ? null : id));
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditFields({});
-  };
+  const toggleAccountExpand = (id) =>
+    setExpandedAccountIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const saveEdit = async (id) => {
-    await onEditAccount(id, editFields);
-    setEditingId(null);
-  };
+  // A label that acts as a button: focusable, Enter or Space presses it, and a tap on it doesn't
+  // also open its row's actions (GroupedTransactionList skips role="button")
+  const pressable = (onPress) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick: onPress,
+    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress(); } },
+  });
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!newFields.account_id) return;
-    await onCreateAccount(newFields.account_id, newFields.account_name || newFields.account_id);
-    setNewFields({ account_id: '', account_name: '' });
-    setCreating(false);
-  };
+  // A row's "To" / "From" and its other account: a transfer's peer (click to move it, or to link an
+  // unlinked one); on a loan, a payment's account it was paid from, and none for the loan's own
+  // transactions (any entered on it)
+  const transferPeer = (t, a, isLoan) => (
+    <>
+      <span className="account-transfer-direction">
+        {isLoan ? (t.account_id !== a.id ? 'From' : '') : t.amount < 0 ? 'To' : 'From'}
+      </span>
+      <span className="account-transfer-peer">
+        {isLoan ? (
+          t.account_id !== a.id && (
+            <span className="account-loan-payer">{accounts.find(ac => ac.id === t.account_id)?.account_name ?? ''}</span>
+          )
+        ) : t.transfer_peer_id ? (
+          movingPeerId === t.id ? (
+            <span className="account-transfer-pair-picker">
+              <select value={movingToAccountId} onChange={e => setMovingToAccountId(e.target.value)} autoFocus>
+                <option value="">— select account —</option>
+                {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!movingToAccountId}
+                onClick={async () => {
+                  await onPairTransfer(t.id, parseInt(movingToAccountId));
+                  setMovingPeerId(null);
+                  setMovingToAccountId('');
+                }}
+              >Move</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setMovingPeerId(null); setMovingToAccountId(''); }}>✕</button>
+            </span>
+          ) : (
+            <span
+              className="account-transfer-peer-name"
+              title="Click to change linked account"
+              {...pressable(() => { setMovingPeerId(t.id); setMovingToAccountId(''); })}
+            >{t.transfer_peer_account}</span>
+          )
+        ) : (
+          pairingTxId === t.id ? (
+            <span className="account-transfer-pair-picker">
+              <select value={pairingToAccountId} onChange={e => setPairingToAccountId(e.target.value)} autoFocus>
+                <option value="">— select account —</option>
+                {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                  <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                ))}
+              </select>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={!pairingToAccountId}
+                onClick={async () => {
+                  await onPairTransfer(t.id, parseInt(pairingToAccountId));
+                  setPairingTxId(null);
+                  setPairingToAccountId('');
+                }}
+              >Link</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setPairingTxId(null); setPairingToAccountId(''); }}>✕</button>
+            </span>
+          ) : (
+            <span
+              className="account-transfer-unlinked"
+              title="Click to link to another account"
+              {...pressable(() => { setPairingTxId(t.id); setPairingToAccountId(''); })}
+            >Unlinked</span>
+          )
+        )}
+      </span>
+    </>
+  );
 
-  const handleDelete = (account) => {
-    if (!window.confirm(`Delete "${account.account_name}" and all ${account.transaction_count} transactions? This cannot be undone.`)) return;
-    onDeleteAccount(account.id);
+  const closeAddForm = () => {
+    setShowAddAccountForm(false);
+    setNewAccountId('');
+    setNewAccountName('');
+    setNewAccountKind('bank');
+    setNewAccountApr('');
+    setNewAccountFrequency('monthly');
   };
 
   return (
     <div className="accounts-view">
       <div className="view-header">
         <h2>Accounts</h2>
-        <button className="btn btn-primary" onClick={() => setCreating(c => !c)}>
-          {creating ? 'Cancel' : '+ New Account'}
-        </button>
+        {!showAddAccountForm && (
+          <button className="btn btn-primary" onClick={() => setShowAddAccountForm(true)}>+ Add Account</button>
+        )}
       </div>
 
-      {creating && (
-        <form onSubmit={handleCreate} className="transaction-form">
+      {showAddAccountForm && (
+        <div className="account-form">
           <div className="form-group">
-            <label>Account ID <small>(e.g. Discover 1234)</small></label>
-            <input
-              type="text"
-              value={newFields.account_id}
-              onChange={e => setNewFields({ ...newFields, account_id: e.target.value })}
-              placeholder="Discover 1234"
-              required
-            />
+            <label htmlFor="new-account-id">Account ID <small>(e.g. checking-1234)</small></label>
+            <input id="new-account-id" type="text" value={newAccountId} onChange={e => setNewAccountId(e.target.value)} placeholder="checking-1234" autoFocus />
           </div>
           <div className="form-group">
-            <label>Display Name</label>
-            <input
-              type="text"
-              value={newFields.account_name}
-              onChange={e => setNewFields({ ...newFields, account_name: e.target.value })}
-              placeholder="My Credit Card"
-            />
+            <label htmlFor="new-account-name">Display Name</label>
+            <input id="new-account-name" type="text" value={newAccountName} onChange={e => setNewAccountName(e.target.value)} placeholder="Chase Checking" />
           </div>
+          <AccountKindFields idPrefix="new-account" kind={newAccountKind} onKind={setNewAccountKind} />
+          <InterestFields
+            idPrefix="new-account" kind={newAccountKind} apr={newAccountApr} onApr={setNewAccountApr}
+            frequency={newAccountFrequency} onFrequency={setNewAccountFrequency}
+          />
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary">Create</button>
+            <button
+              className="btn btn-primary"
+              disabled={!newAccountId.trim() || accountAdding}
+              onClick={async () => {
+                setAccountAdding(true);
+                await onCreateAccount({
+                  account_id: newAccountId.trim(),
+                  account_name: newAccountName.trim() || newAccountId.trim(),
+                  kind: newAccountKind,
+                  ...interestFields(newAccountApr, newAccountFrequency),
+                });
+                closeAddForm();
+                setAccountAdding(false);
+              }}
+            >
+              {accountAdding ? 'Adding…' : 'Add'}
+            </button>
+            <button className="btn btn-ghost" onClick={closeAddForm}>Cancel</button>
           </div>
-        </form>
+        </div>
       )}
 
-      <div className="account-list">
-        {accounts.map(account => (
-          <div key={account.id} className="account-item">
-            {editingId === account.id ? (
-              <div className="account-edit-form">
-                <div className="account-edit-inputs">
-                  <input
-                    value={editFields.account_name}
-                    onChange={e => setEditFields({ ...editFields, account_name: e.target.value })}
-                    placeholder="Display name"
-                  />
-                  <input
-                    value={editFields.account_id}
-                    onChange={e => setEditFields({ ...editFields, account_id: e.target.value })}
-                    placeholder="Account ID"
-                  />
-                </div>
-                <div className="account-edit-actions">
-                  <button className="btn btn-primary btn-sm" onClick={() => saveEdit(account.id)}>Save</button>
-                  <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
-                </div>
+      <div className="accounts-list">
+        {accounts.length === 0 ? (
+          <p className="no-data">No accounts yet. Add one above.</p>
+        ) : (
+          accounts.map(a => {
+            // A bank account's row lists its transfers; a loan's, its own transactions (any entered on
+            // it) and the payments paying it down (bills paid from another account, not transfers), as
+            // they are: editing one edits the payment, in the account it was paid from. Both in one
+            // list. Interest isn't a transaction: what's waiting for approval is a list of its own
+            // (InterestHits), and approved interest shows only in the charts.
+            const isLoan = a.kind === 'loan';
+            const listed = isLoan
+              ? [...transactions.filter(t => t.account_id === a.id), ...loanPayments(transactions, recurring, a.id)]
+              : transactions.filter(t => t.account_id === a.id && t.is_transfer);
+            const waiting = interest.filter(hit => hit.account_id === a.id && !hit.approved);
+            const expandable = listed.length > 0;
+            const expanded = expandable && expandedAccountIds.has(a.id);
+            // Starting balance + transactions (transfers included) and approved interest = current balance
+            const transactionCents = Math.round(a.balance * 100) - Math.round((a.opening_balance ?? 0) * 100);
+            const typeStarting = (text) => {
+              setEditingOpeningBalance(text);
+              setEditingBalanceSource('opening');
+              const cents = typedCents(text);
+              if (cents !== null) setEditingCurrentBalance(((cents + transactionCents) / 100).toFixed(2));
+            };
+            const typeCurrent = (text) => {
+              setEditingCurrentBalance(text);
+              setEditingBalanceSource('current');
+              const cents = typedCents(text);
+              if (cents !== null) setEditingOpeningBalance(((cents - transactionCents) / 100).toFixed(2));
+            };
+            const typedBalance = editingBalanceSource === 'current' ? editingCurrentBalance : editingOpeningBalance;
+
+            return (
+              <div key={a.id} className={`account-item${openAccountId === a.id ? ' account-open' : ''}`}>
+                {editingAccountId === a.id ? (
+                  <div className="account-edit-form">
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-id`}>Account ID</label>
+                      <input
+                        id={`account-${a.id}-id`}
+                        type="text"
+                        value={editingAccountIdStr}
+                        onChange={e => setEditingAccountIdStr(e.target.value)}
+                        placeholder="e.g., checking-1234"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-name`}>Display Name</label>
+                      <input
+                        id={`account-${a.id}-name`}
+                        type="text"
+                        value={editingAccountName}
+                        onChange={e => setEditingAccountName(e.target.value)}
+                        placeholder="e.g., Chase Checking"
+                      />
+                    </div>
+                    <AccountKindFields idPrefix={`account-${a.id}`} kind={editingKind} onKind={setEditingKind} />
+                    <InterestFields
+                      idPrefix={`account-${a.id}`} kind={editingKind} apr={editingApr} onApr={setEditingApr}
+                      frequency={editingFrequency} onFrequency={setEditingFrequency}
+                    />
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-opening`}>Starting balance</label>
+                      <input
+                        id={`account-${a.id}-opening`}
+                        type="number"
+                        step="0.01"
+                        value={editingOpeningBalance}
+                        onChange={e => typeStarting(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <small className="account-field-hint">
+                        Before its first transaction here. Negative if owed.
+                      </small>
+                    </div>
+                    <p className="account-balance-sum">
+                      Starting balance + transactions ({formatSignedCents(transactionCents)}) = current balance.
+                    </p>
+                    <div className="form-group">
+                      <label htmlFor={`account-${a.id}-current`}>Current balance</label>
+                      <input
+                        id={`account-${a.id}-current`}
+                        type="number"
+                        step="0.01"
+                        value={editingCurrentBalance}
+                        onChange={e => typeCurrent(e.target.value)}
+                        placeholder="0.00"
+                      />
+                      <small className="account-field-hint">
+                        What your bank shows today, once every transaction to date is here.
+                      </small>
+                    </div>
+                    <div className="account-edit-actions">
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={typedBalance.trim() === ''}
+                        onClick={async () => {
+                          const saved = await onEditAccount(a.id, {
+                            account_id: editingAccountIdStr,
+                            account_name: editingAccountName,
+                            kind: editingKind,
+                            ...interestFields(editingApr, editingFrequency),
+                            ...(editingBalanceSource === 'current'
+                              ? { balance: Number(editingCurrentBalance) }
+                              : { opening_balance: Number(editingOpeningBalance) }),
+                          });
+                          if (saved) setEditingAccountId(null);
+                        }}
+                      >Save</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditingAccountId(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="account-item-row" onClick={e => toggleAccount(e, a.id)}>
+                      <button
+                        className="account-expand-btn"
+                        onClick={() => toggleAccountExpand(a.id)}
+                        disabled={!expandable}
+                        title={!expandable ? (isLoan ? 'No transactions' : 'No transfers')
+                          : expanded ? 'Collapse' : (isLoan ? 'Show its transactions' : 'Expand transfers')}
+                      >
+                        {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      </button>
+                      <div className="account-info">
+                        <strong>
+                          {a.account_name}
+                          {a.kind === 'loan' && <span className="loan-badge">Loan</span>}
+                          {a.needs_attention && <span className="needs-attention-badge">Needs attention</span>}
+                        </strong>
+                        <small>
+                          {a.account_id}
+                          {listed.length > 0 && (
+                            <span className="account-transfer-count">
+                              {listed.length} {isLoan ? 'transaction' : 'transfer'}{listed.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {a.opening_balance !== 0 && (
+                            <span className="account-opening-balance">
+                              Starting balance {formatDollars(a.opening_balance)}
+                            </span>
+                          )}
+                          {a.apr != null && (
+                            <span className="account-apr">{`${a.apr.toFixed(2)}% a year, ${a.interest_frequency ?? 'monthly'}`}</span>
+                          )}
+                        </small>
+                        <AccountGoalProgress goals={(goals ?? []).filter(goal => goal.account_id === a.id)} />
+                        <InterestHits
+                          hits={waiting} loan={isLoan}
+                          onSave={onEditInterest} onApprove={onApproveInterest} onDelete={onDeleteInterest}
+                        />
+                        {a.needs_attention && (
+                          <small className="needs-attention-hint">
+                            Made by an import: check it, then edit or click “Looks good”.
+                          </small>
+                        )}
+                      </div>
+                      <div className={`account-balance ${a.balance >= 0 ? 'green' : 'red'}`}>
+                        {formatDollars(a.balance)}
+                      </div>
+                      <div className="account-actions">
+                        {a.needs_attention && (
+                          <button
+                            className="btn btn-secondary btn-sm account-looks-good"
+                            onClick={() => onEditAccount(a.id, { needs_attention: false })}
+                          >Looks good</button>
+                        )}
+                        <span className="account-card-actions">
+                          <button
+                            className="btn btn-ghost btn-sm icon-btn"
+                            title="Edit"
+                            onClick={() => {
+                              setOpenAccountId(null);
+                              setEditingAccountId(a.id);
+                              setEditingAccountName(a.account_name);
+                              setEditingAccountIdStr(a.account_id);
+                              setEditingKind(a.kind ?? 'bank');
+                              setEditingApr(a.apr == null ? '' : String(a.apr));
+                              setEditingFrequency(a.interest_frequency ?? 'monthly');
+                              setEditingOpeningBalance(String(a.opening_balance ?? 0));
+                              setEditingCurrentBalance(String(a.balance ?? 0));
+                              setEditingBalanceSource('opening');
+                            }}
+                          ><Pencil size={14} /><span className="tx-action-label">Edit</span></button>
+                          <button
+                            className="btn btn-danger btn-sm icon-btn"
+                            title="Delete"
+                            onClick={async () => {
+                              if (!window.confirm(`Delete "${a.account_name}"? This will permanently remove all its transactions and recurring items.`)) return;
+                              await onDeleteAccount(a.id);
+                            }}
+                          ><Trash2 size={14} /><span className="tx-action-label">Delete</span></button>
+                        </span>
+                      </div>
+                    </div>
+
+
+                    {expanded && (
+                      <GroupedTransactionList
+                        transactions={listed}
+                        label={isLoan ? 'Transactions' : 'Transfers'}
+                        renderMiddle={t => transferPeer(t, a, isLoan)}
+                        renderBulkActions={(selected, clearSelection) => (
+                          <>
+                            {/* Moving re-links transfers to another account; a loan's transactions aren't transfers */}
+                            {!isLoan && (
+                              <>
+                                <span className="transfer-bulk-hint">Move {selected.length} to:</span>
+                                <select value={transferBulkToAccountId} onChange={e => setTransferBulkToAccountId(e.target.value)}>
+                                  <option value="">— account —</option>
+                                  {accounts.filter(ac => ac.id !== a.id).map(ac => (
+                                    <option key={ac.id} value={ac.id}>{ac.account_name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  disabled={!transferBulkToAccountId}
+                                  onClick={async () => {
+                                    const toId = parseInt(transferBulkToAccountId);
+                                    for (const t of selected) await onPairTransfer(t.id, toId);
+                                    setTransferBulkToAccountId('');
+                                  }}
+                                >Move</button>
+                              </>
+                            )}
+                            <button
+                              className="btn btn-danger btn-sm"
+                              onClick={async () => {
+                                await onDeleteTransferBulk(selected.map(t => t.id));
+                                clearSelection();
+                              }}
+                            >Delete {selected.length}</button>
+                          </>
+                        )}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                      />
+                    )}
+                  </>
+                )}
               </div>
-            ) : (
-              <div className="account-info">
-                <div className="account-details">
-                  <strong>{account.account_name}</strong>
-                  <span className="account-id-label">{account.account_id}</span>
-                  <span className="account-meta">{account.transaction_count} transactions</span>
-                </div>
-                <div className="account-right">
-                  <span className={`account-balance ${account.balance >= 0 ? 'green' : 'red'}`}>
-                    ${account.balance?.toFixed(2) || '0.00'}
-                  </span>
-                  <button className="btn btn-ghost btn-sm icon-btn" title="Edit" onClick={() => startEdit(account)}><Pencil size={14} /></button>
-                  <button className="btn btn-danger btn-sm icon-btn" title="Delete" onClick={() => handleDelete(account)}><Trash2 size={14} /></button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+            );
+          })
+        )}
       </div>
     </div>
   );

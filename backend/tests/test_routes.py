@@ -1,0 +1,586 @@
+"""
+HTTP integration tests — hit the actual Flask routes via test client.
+These verify the full request/response cycle including auth middleware.
+"""
+from datetime import date, timedelta
+
+import pytest
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+class TestAuth:
+    def test_login_returns_token(self, client, user):
+        resp = client.post('/api/auth/login', json={'username': 'testuser', 'password': 'testpass'})
+        assert resp.status_code == 200
+        assert 'access_token' in resp.json
+
+    def test_login_wrong_password(self, client, user):
+        resp = client.post('/api/auth/login', json={'username': 'testuser', 'password': 'wrong'})
+        assert resp.status_code == 401
+
+    def test_login_unknown_user(self, client):
+        resp = client.post('/api/auth/login', json={'username': 'nobody', 'password': 'x'})
+        assert resp.status_code == 401
+
+    @pytest.mark.parametrize('body, content_type', [
+        ('null',              'application/json'),
+        ('["testuser"]',      'application/json'),
+        ('username=testuser', 'text/plain'),
+    ])
+    def test_login_malformed_body_returns_400(self, client, body, content_type):
+        resp = client.post('/api/auth/login', data=body, content_type=content_type)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'Missing credentials'}
+
+    def test_login_non_string_password_returns_401(self, client, user):
+        resp = client.post('/api/auth/login', json={'username': 'testuser', 'password': ['testpass']})
+        assert resp.status_code == 401
+        assert resp.json == {'success': False, 'error': 'Invalid credentials'}
+
+    def test_protected_route_requires_token(self, client, account):
+        resp = client.get(f'/api/accounts/{account.id}/transactions')
+        assert resp.status_code == 401
+
+    def test_me_returns_user(self, client, auth_headers, user):
+        resp = client.get('/api/auth/me', headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['user']['username'] == 'testuser'
+
+    def test_register_returns_usable_token(self, client):
+        resp = client.post('/api/auth/register',
+                           json={'username': 'newuser', 'email': 'new@example.com', 'password': 'long-enough'})
+        assert resp.status_code == 201
+
+        me = client.get('/api/auth/me',
+                        headers={'Authorization': f"Bearer {resp.json['access_token']}"})
+        assert me.status_code == 200
+        assert me.json['user']['username'] == 'newuser'
+
+
+class TestRegisterValidation:
+    VALID = {'username': 'newuser', 'email': 'new@example.com', 'password': 'long-enough'}
+
+    def _register(self, client, **overrides):
+        return client.post('/api/auth/register', json={**self.VALID, **overrides})
+
+    @pytest.mark.parametrize('overrides, message', [
+        ({'username': None},                'Missing required fields: username'),
+        ({'username': '   '},               'Missing required fields: username'),
+        ({'username': 123},                 'Missing required fields: username'),
+        ({'email': None, 'password': None}, 'Missing required fields: email, password'),
+        ({'username': 'u' * 51},            'Username must be at most 50 characters.'),
+        ({'email': 'not-an-email'},         'Enter a valid email address.'),
+        ({'password': 'short'},             'Password must be at least 8 characters.'),
+    ])
+    def test_invalid_input_returns_400(self, client, overrides, message):
+        resp = self._register(client, **overrides)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': message}
+
+    def test_non_json_body_returns_400(self, client):
+        resp = client.post('/api/auth/register', data='not json', content_type='text/plain')
+        assert resp.status_code == 400
+
+    def test_taken_username_returns_409(self, client, user):
+        resp = self._register(client, username='testuser')
+        assert resp.status_code == 409
+        assert resp.json['error'] == 'That username is already taken.'
+
+    def test_taken_email_returns_409_regardless_of_case(self, client, user):
+        resp = self._register(client, email='TEST@Example.com')
+        assert resp.status_code == 409
+        assert resp.json['error'] == 'An account with that email already exists.'
+
+
+# ── Accounts ──────────────────────────────────────────────────────────────────
+
+class TestAccountRoutes:
+    def test_list_includes_needs_attention(self, client, auth_headers, account):
+        resp = client.get('/api/accounts', headers=auth_headers)
+        assert resp.json['accounts'][0]['needs_attention'] is False
+
+    def test_looks_good_clears_needs_attention(self, client, auth_headers, account):
+        from extensions import db as _db
+        account.needs_attention = True
+        _db.session.commit()
+        resp = client.patch(f'/api/accounts/{account.id}', json={'needs_attention': False},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['account']['needs_attention'] is False
+
+    def test_invalid_needs_attention_returns_400(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'needs_attention': 'yes'},
+                            headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'needs_attention can only be set to false'}
+
+    def test_create_returns_the_trimmed_account(self, client, auth_headers):
+        resp = client.post('/api/accounts', json={'account_id': ' amex-1001 ', 'account_name': ' Amex Gold '},
+                           headers=auth_headers)
+        assert resp.status_code == 201
+        assert (resp.json['account']['account_id'], resp.json['account']['account_name']) == ('amex-1001', 'Amex Gold')
+
+    @pytest.mark.parametrize('body, error', [
+        ({'account_id': 'x' * 101}, 'Account ID must be at most 100 characters.'),
+        ({'account_name': 'No id'}, "Account ID can't be empty."),
+    ], ids=['long-id', 'missing-id'])
+    def test_create_with_invalid_labels_returns_400(self, client, auth_headers, body, error):
+        resp = client.post('/api/accounts', json=body, headers=auth_headers)
+        assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_create_without_a_json_body_returns_400(self, client, auth_headers):
+        resp = client.post('/api/accounts', data='not json', content_type='text/plain', headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (400, "Account ID can't be empty.")
+
+    def test_rename_returns_the_trimmed_name(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'account_name': ' Joint Checking '},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['account']['account_name'] == 'Joint Checking'
+
+    @pytest.mark.parametrize('body, error', [
+        ({'account_name': 'x' * 101}, 'Display name must be at most 100 characters.'),
+        ({'account_id': '  '}, "Account ID can't be empty."),
+    ], ids=['long-name', 'blank-id'])
+    def test_invalid_name_or_id_returns_400(self, client, auth_headers, account, body, error):
+        resp = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
+    def test_setting_the_starting_balance_returns_the_new_balance(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 1500.25},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['opening_balance'], resp.json['account']['balance']) == (1500.25, 1500.25)
+
+    def test_invalid_starting_balance_returns_400(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 'lots'},
+                            headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': 'Starting balance must be a number.'}
+
+    def test_setting_the_current_balance_returns_the_starting_balance_it_makes(self, client, auth_headers, account):
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers,
+                    json={'date': '2026-01-15', 'vendor': 'Shop', 'category': 'Groceries', 'amount': -20})
+        resp = client.patch(f'/api/accounts/{account.id}', json={'balance': 1000}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['balance'], resp.json['account']['opening_balance']) == (1000, 1020)
+
+    @pytest.mark.parametrize('body, error', [
+        ({'balance': 'lots'}, 'Current balance must be a number.'),
+        ({'balance': 20, 'opening_balance': 10}, 'Send either the starting balance or the current balance, not both.'),
+    ], ids=['not-a-number', 'both'])
+    def test_invalid_current_balance_returns_400(self, client, auth_headers, account, body, error):
+        resp = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
+    def test_creating_a_loan_account_returns_its_kind_and_apr(self, client, auth_headers):
+        resp = client.post('/api/accounts', headers=auth_headers,
+                           json={'account_id': 'aspire-1', 'account_name': 'ASPIRE loan', 'kind': 'loan', 'apr': 6.8})
+        assert resp.status_code == 201
+        assert (resp.json['account']['kind'], resp.json['account']['apr']) == ('loan', 6.8)
+
+    def test_editing_the_kind_and_apr(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'kind': 'loan', 'apr': 5.25}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['kind'], resp.json['account']['apr']) == ('loan', 5.25)
+        listed = client.get('/api/accounts', headers=auth_headers).json['accounts']
+        assert [(a['kind'], a['apr']) for a in listed] == [('loan', 5.25)]
+
+    def test_a_bank_account_can_earn_interest_yearly(self, client, auth_headers, account):
+        resp = client.patch(f'/api/accounts/{account.id}', json={'apr': 0.5, 'interest_frequency': 'yearly'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['account']['kind'], resp.json['account']['apr'], resp.json['account']['interest_frequency']) \
+            == ('bank', 0.5, 'yearly')
+
+    def test_a_balance_is_set_on_the_account_not_by_a_statement(self, client, auth_headers, account):
+        # Setting the current balance moves the starting balance and books nothing; there's no statement route
+        resp = client.post(f'/api/accounts/{account.id}/statement', json={'date': '2026-02-28', 'balance': -100},
+                           headers=auth_headers)
+        assert resp.status_code == 404
+
+    @pytest.mark.parametrize('body, error', [
+        ({'kind': 'card'}, 'Account type must be bank or loan.'),
+        ({'apr': 6.8, 'interest_frequency': 'weekly'}, 'How often must be monthly, quarterly or yearly.'),
+        ({'kind': 'loan', 'apr': 'high'}, 'APR must be a number.'),
+    ], ids=['unknown-kind', 'unknown-frequency', 'string-apr'])
+    def test_invalid_kind_or_apr_returns_400(self, client, auth_headers, account, body, error):
+        created = client.post('/api/accounts', json={'account_id': 'new-1', **body}, headers=auth_headers)
+        edited = client.patch(f'/api/accounts/{account.id}', json=body, headers=auth_headers)
+        for resp in (created, edited):
+            assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_transactions_say_whether_they_are_on_a_loan_account(self, client, auth_headers, account):
+        loan = client.post('/api/accounts', json={'account_id': 'aspire-1', 'kind': 'loan'},
+                           headers=auth_headers).json['account']
+        for acc_id, vendor in [(account.id, 'Shop'), (loan['id'], 'ASPIRE')]:
+            client.post(f'/api/accounts/{acc_id}/transactions', headers=auth_headers,
+                        json={'date': '2026-01-31', 'vendor': vendor, 'category': 'Loan', 'amount': 75})
+        listed = client.get('/api/accounts/all-transactions', headers=auth_headers).json['transactions']
+        assert sorted((t['vendor'], t['on_loan_account']) for t in listed) == [('ASPIRE', True), ('Shop', False)]
+
+
+# ── Budget flags in responses ─────────────────────────────────────────────────
+
+class TestBudgetFlagsInResponses:
+    def _add(self, client, account, auth_headers, day, amount, category='Groceries'):
+        return client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': day, 'vendor': 'Shop', 'category': category, 'amount': amount}).json['transaction']
+
+    def test_transactions_report_flags_that_follow_every_change(self, client, account, auth_headers):
+        client.post('/api/budgets', headers=auth_headers, json={'category': 'Groceries', 'period': '2026-01', 'amount': 50})
+        first = self._add(client, account, auth_headers, '2026-01-03', -45)
+        second = self._add(client, account, auth_headers, '2026-01-10', -10)
+        assert second['over_budget'] is True
+
+        client.patch(f"/api/transactions/{first['id']}", headers=auth_headers,
+                     json={'category': 'Gifts', 'is_reimbursement': False})
+        listed = client.get('/api/accounts/all-transactions', headers=auth_headers).json['transactions']
+        assert {t['id']: t['over_budget'] for t in listed} == {first['id']: False, second['id']: False}
+        single = client.get(f"/api/transactions/{second['id']}", headers=auth_headers).json['transaction']
+        assert single['over_budget'] is False
+
+    def test_the_over_budget_filter_uses_the_computed_flags(self, client, account, auth_headers):
+        client.post('/api/budgets', headers=auth_headers, json={'category': 'Groceries', 'period': '2026-01', 'amount': 50})
+        first = self._add(client, account, auth_headers, '2026-01-03', -45)
+        second = self._add(client, account, auth_headers, '2026-01-10', -10)
+        url = f'/api/accounts/{account.id}/transactions'
+        flagged = lambda: [t['id'] for t in client.get(url + '?over_budget=true', headers=auth_headers).json['transactions']]
+        assert flagged() == [second['id']]
+        client.patch(f"/api/transactions/{first['id']}", headers=auth_headers,
+                     json={'category': 'Gifts', 'is_reimbursement': False})
+        assert flagged() == []
+        unflagged = client.get(url + '?over_budget=false&limit=1', headers=auth_headers).json['transactions']
+        assert len(unflagged) == 1
+
+
+# ── Transaction CRUD via HTTP ─────────────────────────────────────────────────
+
+class TestTransactionRoutes:
+    def _add(self, client, account, auth_headers, **kwargs):
+        payload = {'date': '2026-01-15', 'vendor': 'Netflix',
+                   'category': 'Subscriptions', 'amount': -20.00}
+        payload.update(kwargs)
+        return client.post(f'/api/accounts/{account.id}/transactions',
+                           json=payload, headers=auth_headers)
+
+    def test_add_transaction(self, client, account, auth_headers):
+        resp = self._add(client, account, auth_headers)
+        assert resp.status_code == 201
+        assert resp.json['transaction']['vendor'] == 'Netflix'
+        assert resp.json['transaction']['amount'] == pytest.approx(-20.00)
+
+    def test_add_transaction_updates_balance(self, client, account, auth_headers):
+        resp = self._add(client, account, auth_headers, amount=-50.00)
+        assert resp.json['new_balance'] == pytest.approx(-50.00)
+
+    def test_update_transaction(self, client, account, auth_headers):
+        add_resp = self._add(client, account, auth_headers)
+        tx_id = add_resp.json['transaction']['id']
+
+        resp = client.put(f'/api/transactions/{tx_id}',
+                          json={'vendor': 'Hulu', 'date': '2026-01-15',
+                                'category': 'Subscriptions', 'amount': -20.00,
+                                'notes': '', 'account_id': account.id},
+                          headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['transaction']['vendor'] == 'Hulu'
+
+    def test_update_amount_adjusts_balance(self, client, account, auth_headers):
+        add_resp = self._add(client, account, auth_headers, amount=-20.00)
+        tx_id = add_resp.json['transaction']['id']
+
+        resp = client.put(f'/api/transactions/{tx_id}',
+                          json={'vendor': 'Netflix', 'date': '2026-01-15',
+                                'category': 'Subscriptions', 'amount': -30.00,
+                                'notes': '', 'account_id': account.id},
+                          headers=auth_headers)
+        assert resp.json['new_balance'] == pytest.approx(-30.00)
+
+    def test_delete_transaction(self, client, account, auth_headers):
+        add_resp = self._add(client, account, auth_headers)
+        tx_id = add_resp.json['transaction']['id']
+
+        resp = client.delete(f'/api/transactions/{tx_id}', headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['new_balance'] == pytest.approx(0.00)
+
+    def test_cannot_access_other_users_transaction(self, client, account, auth_headers):
+        from models.user import User
+        from models.account import AccountModel
+        from extensions import db as _db
+
+        other = User(username='other', email='other@example.com')
+        other.set_password('pass')
+        _db.session.add(other)
+        _db.session.flush()
+        other_acct = AccountModel(user_id=other.id, acct_id_str='other-1', acct_name='Other')
+        _db.session.add(other_acct)
+        _db.session.commit()
+
+        add_resp = client.post(f'/api/accounts/{other_acct.id}/transactions',
+                               json={'date': '2026-01-15', 'vendor': 'Test',
+                                     'category': 'Other', 'amount': -10.00},
+                               headers={'Authorization': 'Bearer ' +
+                                        client.post('/api/auth/login',
+                                                    json={'username': 'other', 'password': 'pass'}).json['access_token']})
+        tx_id = add_resp.json['transaction']['id']
+
+        resp = client.delete(f'/api/transactions/{tx_id}', headers=auth_headers)
+        assert resp.status_code == 403
+
+
+# ── Recurring routes ──────────────────────────────────────────────────────────
+
+class TestBalanceRoutes:
+    """GET /api/balances: each account's end-of-day balance per date with transactions."""
+
+    def _add(self, client, account, auth_headers, day, amount):
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers,
+                    json={'date': day, 'vendor': 'Shop', 'category': 'Misc', 'amount': amount})
+
+    def test_every_account_with_its_opening_its_days_and_its_closing(self, client, account, auth_headers):
+        client.patch(f'/api/accounts/{account.id}', json={'opening_balance': 250}, headers=auth_headers)
+        self._add(client, account, auth_headers, '2026-01-05', -40)
+        self._add(client, account, auth_headers, '2026-01-05', 10.5)
+        self._add(client, account, auth_headers, '2026-02-01', 1000)
+        resp = client.get('/api/balances', headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json == {'success': True, 'balances': [{
+            'id': account.id, 'account_name': 'Test Checking',
+            'opening': 250.0, 'opening_cents': 25_000,
+            'days': [
+                {'date': '2026-01-05', 'balance': 220.5, 'balance_cents': 22_050},
+                {'date': '2026-02-01', 'balance': 1220.5, 'balance_cents': 122_050},
+            ],
+            'closing': 1220.5, 'closing_cents': 122_050,
+        }]}
+        current = client.get(f'/api/accounts/{account.id}', headers=auth_headers).json['account']['balance']
+        assert resp.json['balances'][0]['closing'] == current
+
+    def test_filters_by_account_and_dates_as_the_exports_do(self, client, account, auth_headers):
+        savings_id = client.post('/api/accounts', json={'account_id': 'savings-5678', 'account_name': 'Savings'},
+                                 headers=auth_headers).json['account']['id']
+        self._add(client, account, auth_headers, '2026-01-15', -20)
+        self._add(client, account, auth_headers, '2026-02-01', -30)
+        self._add(client, account, auth_headers, '2026-03-01', -5)
+        resp = client.get(f'/api/balances?account_ids={account.id}&start_date=2026-02-01&end_date=2026-02-28',
+                          headers=auth_headers)
+        [only] = resp.json['balances']
+        assert (only['id'], only['opening_cents'], only['days'], only['closing_cents']) == (
+            account.id, -2_000, [{'date': '2026-02-01', 'balance': -50.0, 'balance_cents': -5_000}], -5_000)
+        assert savings_id not in [b['id'] for b in resp.json['balances']]
+
+    @pytest.mark.parametrize('query, error', [
+        ('account_ids=abc', 'account_ids must be a comma-separated list of account ids.'),
+        ('account_ids=999999', 'Unknown account: 999999'),
+        ('start_date=yesterday', 'start_date must be a date like 2026-01-31.'),
+        ('start_date=2026-03-01&end_date=2026-02-01', 'The start date must be on or before the end date.'),
+    ], ids=['not-ids', 'unknown-account', 'bad-date', 'start-after-end'])
+    def test_bad_filters_are_400s(self, client, account, auth_headers, query, error):
+        resp = client.get(f'/api/balances?{query}', headers=auth_headers)
+        assert (resp.status_code, resp.json) == (400, {'success': False, 'error': error})
+
+    def test_requires_a_login(self, client, account):
+        assert client.get('/api/balances').status_code == 401
+
+
+class TestRecurringRoutes:
+    def test_add_recurring(self, client, account, auth_headers):
+        resp = client.post(f'/api/accounts/{account.id}/recurring',
+                           json={'start_date': '2026-01-01', 'vendor': 'Spotify',
+                                 'category': 'Subscriptions', 'amount': -9.99,
+                                 'frequency': 30, 'next_date': '2099-01-01'},
+                           headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json['recurring']['vendor'] == 'Spotify'
+
+    def test_add_recurring_generates_due_transactions(self, client, account, auth_headers):
+        from datetime import date, timedelta
+        past = (date.today() - timedelta(days=1)).isoformat()
+        resp = client.post(f'/api/accounts/{account.id}/recurring',
+                           json={'start_date': past, 'vendor': 'Quizlet',
+                                 'category': 'Subscriptions', 'amount': -20.67,
+                                 'frequency': 30, 'next_date': past},
+                           headers=auth_headers)
+        assert resp.status_code == 201
+
+        txns_resp = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers)
+        vendors = [t['vendor'] for t in txns_resp.json['transactions']]
+        assert 'Quizlet' in vendors
+
+    def _add(self, client, account, auth_headers, **fields):
+        body = {'start_date': '2099-01-31', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75,
+                'frequency': 1, 'frequency_unit': 'months', **fields}
+        return client.post(f'/api/accounts/{account.id}/recurring', json=body, headers=auth_headers)
+
+    def test_add_monthly_recurring(self, client, account, auth_headers):
+        resp = self._add(client, account, auth_headers)
+        assert resp.status_code == 201
+        assert (resp.json['recurring']['frequency'], resp.json['recurring']['frequency_unit']) == (1, 'months')
+
+    @pytest.mark.parametrize('fields, error', [
+        ({'frequency': 0}, 'Frequency must be a whole number of at least 1.'),
+        ({'frequency_unit': 'weeks'}, "Frequency unit must be 'days' or 'months'."),
+    ], ids=['zero-frequency', 'unknown-unit'])
+    def test_add_invalid_schedule_returns_400(self, client, account, auth_headers, fields, error):
+        resp = self._add(client, account, auth_headers, **fields)
+        assert resp.status_code == 400
+        assert resp.json == {'success': False, 'error': error}
+
+    def test_add_skipping_past_occurrences(self, client, account, auth_headers, pin_today):
+        pin_today(date(2026, 10, 24))
+        resp = self._add(client, account, auth_headers, start_date='2025-01-31', skip_past=True)
+        assert resp.status_code == 201
+        assert (resp.json['recurring']['date'], resp.json['recurring']['next_date']) == ('2026-10-31', '2026-10-31')
+        txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
+        assert txns == []
+
+    def _aspire_with_history(self, client, account, auth_headers, pin_today):
+        """A monthly ASPIRE template from Oct 31 and one $75 payment on Sep 30 that isn't linked."""
+        pin_today(date(2026, 10, 25))
+        tx_id = client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': '2026-09-30', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75}).json['transaction']['id']
+        rec_id = self._add(client, account, auth_headers, start_date='2026-10-31').json['recurring']['id']
+        return rec_id, tx_id
+
+    def test_suggestions_list_matching_transactions(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        resp = client.get(f'/api/recurring/{rec_id}/suggestions', headers=auth_headers)
+        assert resp.status_code == 200
+        [suggestion] = resp.json['suggestions']
+        assert (suggestion['date'], suggestion['kind'], suggestion['linked']) == ('2026-09-30', 'history', [])
+        assert [t['id'] for t in suggestion['candidates']] == [tx_id]
+
+    def test_link_and_unlink_a_transaction(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/transactions/{tx_id}'
+
+        linked = client.post(url, headers=auth_headers)
+        assert linked.status_code == 200
+        assert (linked.json['recurring']['date'], linked.json['recurring']['idx']) == ('2026-09-30', 2)
+        assert client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']['recurring_id'] == rec_id
+        assert client.get(f'/api/recurring/{rec_id}/suggestions', headers=auth_headers).json['suggestions'] == []
+
+        unlinked = client.delete(url, headers=auth_headers)
+        assert unlinked.status_code == 200
+        assert unlinked.json['recurring']['idx'] == 1
+        assert client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']['recurring_id'] is None
+
+    def test_invalid_link_or_unlink_returns_400(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/transactions/{tx_id}'
+        unlinked = client.delete(url, headers=auth_headers)
+        assert (unlinked.status_code, unlinked.json['error']) == (400, "That transaction isn't part of this recurring series.")
+        client.post(url, headers=auth_headers)
+        again = client.post(url, headers=auth_headers)
+        assert (again.status_code, again.json['error']) == (400, 'That transaction is already part of a recurring series.')
+
+    def test_templates_say_which_account_they_are_on(self, client, account, auth_headers):
+        """Every template response carries account_id: the account's database id, as transactions do."""
+        savings_id = client.post('/api/accounts', json={'account_id': 'savings-5678', 'account_name': 'Savings'},
+                                 headers=auth_headers).json['account']['id']
+        assert savings_id != account.id
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        created = client.post(f'/api/accounts/{savings_id}/recurring', headers=auth_headers, json={
+            'start_date': tomorrow, 'vendor': 'Rent', 'category': 'Housing', 'amount': -900,
+            'frequency': 1, 'frequency_unit': 'months'}).json['recurring']
+        responses = [
+            created,
+            client.get(f'/api/recurring/{created["id"]}', headers=auth_headers).json['recurring'],
+            client.patch(f'/api/recurring/{created["id"]}', json={'notes': 'Lease'}, headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/recurring', headers=auth_headers).json['recurring'],
+            *client.get(f'/api/accounts/{savings_id}/upcoming', headers=auth_headers).json['upcoming'],
+        ]
+        assert [r.get('account_id') for r in responses] == [savings_id] * 5
+
+    def test_templates_report_whether_they_need_attention(self, client, account, auth_headers, pin_today):
+        rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
+        [listed] = client.get(f'/api/accounts/{account.id}/recurring', headers=auth_headers).json['recurring']
+        single = client.get(f'/api/recurring/{rec_id}', headers=auth_headers).json['recurring']
+        for template in (listed, single):
+            assert (template['suggestion_count'], template['needs_attention']) == (1, True)
+
+    def test_dismiss_and_undo(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        url = f'/api/recurring/{rec_id}/dismissals/{tx_id}'
+        dismissed = client.post(url, headers=auth_headers)
+        assert dismissed.status_code == 200
+        assert (dismissed.json['recurring']['suggestion_count'], dismissed.json['recurring']['needs_attention']) == (0, False)
+        assert dismissed.json['recurring']['dismissed_transaction_ids'] == [tx_id]
+        undone = client.delete(url, headers=auth_headers)
+        assert (undone.status_code, undone.json['recurring']['suggestion_count']) == (200, 1)
+        assert undone.json['recurring']['dismissed_transaction_ids'] == []
+
+    def test_adding_an_unrelated_transaction_to_the_series(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        client.post(f'/api/recurring/{rec_id}/dismissals/{tx_id}', headers=auth_headers)
+        linked = client.post(f'/api/recurring/{rec_id}/transactions/{tx_id}', headers=auth_headers)
+        assert linked.status_code == 200
+        assert (linked.json['recurring']['idx'], linked.json['recurring']['dismissed_transaction_ids']) == (2, [])
+
+    def test_missing_transaction_returns_404(self, client, account, auth_headers, pin_today):
+        rec_id, _ = self._aspire_with_history(client, account, auth_headers, pin_today)
+        resp = client.post(f'/api/recurring/{rec_id}/transactions/999999', headers=auth_headers)
+        assert (resp.status_code, resp.json['error']) == (404, 'Transaction not found')
+
+    def test_creating_with_past_occurrences_does_not_duplicate_history(self, client, account, auth_headers, pin_today):
+        pin_today(date(2026, 10, 25))
+        client.post(f'/api/accounts/{account.id}/transactions', headers=auth_headers, json={
+            'date': '2026-09-30', 'vendor': 'ASPIRE', 'category': 'Loan', 'amount': -75})
+        self._add(client, account, auth_headers, start_date='2026-09-30')   # past occurrences added
+        txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
+        assert [(t['date'], t['recurring_index']) for t in txns] == [('2026-09-30', 1)]
+
+    def test_renaming_a_template_renames_its_series(self, client, account, auth_headers, pin_today):
+        rec_id, tx_id = self._aspire_with_history(client, account, auth_headers, pin_today)
+        client.post(f'/api/recurring/{rec_id}/transactions/{tx_id}', headers=auth_headers)
+        resp = client.patch(f'/api/recurring/{rec_id}', json={'vendor': 'Aspire Loan', 'category': 'Student loan'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        tx = client.get(f'/api/transactions/{tx_id}', headers=auth_headers).json['transaction']
+        assert (tx['vendor'], tx['category']) == ('Aspire Loan', 'Student loan')
+
+    def test_switch_a_template_to_monthly(self, client, account, auth_headers):
+        rec_id = self._add(client, account, auth_headers, frequency=30, frequency_unit='days').json['recurring']['id']
+        resp = client.patch(f'/api/recurring/{rec_id}', json={'frequency': 1, 'frequency_unit': 'months'},
+                            headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json['recurring']['frequency_unit'] == 'months'
+
+    def _subscription(self, client, account, auth_headers, number):
+        """A monthly $20 series from Apr 2, 2026 limited to `number` payments, its past ones added."""
+        return client.post(f'/api/accounts/{account.id}/recurring', headers=auth_headers, json={
+            'start_date': '2026-04-02', 'vendor': 'Anthropic', 'category': 'Subscriptions', 'amount': -20,
+            'frequency': 1, 'frequency_unit': 'months', 'number': number}).json['recurring']
+
+    def _payments(self, client, account, auth_headers):
+        txns = client.get(f'/api/accounts/{account.id}/transactions', headers=auth_headers).json['transactions']
+        return sorted((t['date'], t['id']) for t in txns)
+
+    def test_lifting_a_used_up_limit_adds_the_payments_now_due(self, client, account, auth_headers, pin_today):
+        """Limited to 7 payments (Apr–Oct) and made unlimited on Nov 22: saving adds Nov 2's at once."""
+        pin_today(date(2026, 11, 22))
+        rec = self._subscription(client, account, auth_headers, number=7)
+        assert (rec['next_date'], rec['idx']) == ('2026-11-02', 8)    # used up: Nov 2 waits
+        resp = client.patch(f'/api/recurring/{rec["id"]}', json={'number': -1}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (resp.json['recurring']['next_date'], resp.json['recurring']['idx']) == ('2026-12-02', 9)
+        assert [day for day, _ in self._payments(client, account, auth_headers)][-2:] == ['2026-10-02', '2026-11-02']
+
+    def test_a_deleted_payment_comes_back_once_the_next_date_moves_back(self, client, account, auth_headers, pin_today):
+        """Limited to 8, Nov 2's payment deleted, made unlimited: Nov 2 stays deleted (the next date is
+        Dec 2) until the next date is set back to Nov 2, and then saving adds it at once."""
+        pin_today(date(2026, 11, 22))
+        rec_id = self._subscription(client, account, auth_headers, number=8)['id']
+        [(_, nov_2)] = [p for p in self._payments(client, account, auth_headers) if p[0] == '2026-11-02']
+        assert client.delete(f'/api/transactions/{nov_2}', headers=auth_headers).status_code == 200
+        unlimited = client.patch(f'/api/recurring/{rec_id}', json={'number': -1}, headers=auth_headers).json['recurring']
+        assert (unlimited['next_date'], unlimited['idx']) == ('2026-12-02', 8)
+        moved = client.patch(f'/api/recurring/{rec_id}', json={'next_date': '2026-11-02'}, headers=auth_headers)
+        assert moved.status_code == 200
+        assert (moved.json['recurring']['next_date'], moved.json['recurring']['idx']) == ('2026-12-02', 9)
+        assert '2026-11-02' in [day for day, _ in self._payments(client, account, auth_headers)]

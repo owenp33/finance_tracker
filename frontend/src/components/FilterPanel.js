@@ -1,16 +1,17 @@
 import React from 'react';
 
 /**
- * Reusable filter panel used by TransactionsView and InsightsView.
+ * Reusable filter panel used by the All transactions tab and Insights' Overview and Reports tabs.
  *
  * Required props:
  *   accounts, selectedAccountIds, onAccountToggle, onAccountSelectAll, onAccountClear
- *   allCategories, selectedCategories, onCategoryToggle, onCategorySelectAll, onCategoryClear
  *   startDate, endDate, onStartDateChange, onEndDateChange
  *   showDateClear, onDateClear
  *   activeFilterCount, onClearAll
  *
  * Optional props:
+ *   allCategories, selectedCategories, onCategoryToggle, onCategorySelectAll, onCategoryClear
+ *                     — the Category section, shown only when selectedCategories is passed
  *   dateSectionLabel  — header for the date column (default: 'Date Range')
  *   presets           — array of [key, label] to render quick-pick pills
  *   datePreset        — currently active preset key
@@ -46,7 +47,7 @@ export default function FilterPanel({
   onClearAll,
 }) {
   const allAccountsSelected = accounts.length > 0 && selectedAccountIds.size === accounts.length;
-  const allCatsSelected     = allCategories.length > 0 && selectedCategories.size === allCategories.length;
+  const allCatsSelected     = allCategories.length > 0 && selectedCategories?.size === allCategories.length;
 
   return (
     <div className="filter-panel">
@@ -110,34 +111,36 @@ export default function FilterPanel({
         </div>
 
         {/* Category */}
-        <div className="filter-section">
-          <div className="filter-section-header">
-            <span>Category</span>
-            {selectedCategories.size > 0 && (
-              <button className="filter-clear-btn" onClick={onCategoryClear}>Clear</button>
-            )}
-          </div>
-          <div className="filter-scroll-list">
-            <label className="filter-option filter-select-all">
-              <input
-                type="checkbox"
-                checked={allCatsSelected}
-                onChange={() => allCatsSelected ? onCategoryClear() : onCategorySelectAll()}
-              />
-              <span>Select All</span>
-            </label>
-            {allCategories.map(cat => (
-              <label key={cat} className="filter-option">
+        {selectedCategories && (
+          <div className="filter-section">
+            <div className="filter-section-header">
+              <span>Category</span>
+              {selectedCategories.size > 0 && (
+                <button className="filter-clear-btn" onClick={onCategoryClear}>Clear</button>
+              )}
+            </div>
+            <div className="filter-scroll-list">
+              <label className="filter-option filter-select-all">
                 <input
                   type="checkbox"
-                  checked={selectedCategories.has(cat)}
-                  onChange={() => onCategoryToggle(cat)}
+                  checked={allCatsSelected}
+                  onChange={() => allCatsSelected ? onCategoryClear() : onCategorySelectAll()}
                 />
-                <span>{cat}</span>
+                <span>Select All</span>
               </label>
-            ))}
+              {allCategories.map(cat => (
+                <label key={cat} className="filter-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedCategories.has(cat)}
+                    onChange={() => onCategoryToggle(cat)}
+                  />
+                  <span>{cat}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
       {activeFilterCount > 0 && (

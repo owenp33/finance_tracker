@@ -7,6 +7,7 @@ calculation. Raw reads (get_budget, get_user_budgets) stay in db_service.
 from datetime import date
 from extensions import db
 from models.budget import BudgetModel
+from models.scheduled_pace import ScheduledPaceModel
 from models.account import AccountModel
 from models.transaction import TransactionModel
 from services.db_service import DbService
@@ -24,6 +25,7 @@ class BudgetService:
         Spending is the absolute sum of negative transactions (expenses)
         across all of the user's accounts for the given calendar month,
         matching the sign convention used throughout analytics_service.py.
+        Each row also says whether its category has a scheduled pace.
         """
         budgets = BudgetModel.query.filter_by(user_id=user_id, period=period).all()
         if not budgets:
@@ -44,17 +46,38 @@ class BudgetService:
             .join(AccountModel, TransactionModel.account_id == AccountModel.id)
             .filter(
                 AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',            # a loan's entries only move what's owed
                 TransactionModel.date >= period_start,
                 TransactionModel.date <  period_end,
                 TransactionModel.amount_cents < 0,      # expenses only
+                TransactionModel.is_transfer == False,  # exclude inter-account transfers
             )
             .all()
         )
 
-        # Sum absolute spending per category (in cents)
+        # Fetch reimbursements — positive transactions marked as reimbursements
+        reimbursement_rows = (
+            TransactionModel.query
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .filter(
+                AccountModel.user_id == user_id,
+                AccountModel.kind != 'loan',
+                TransactionModel.date >= period_start,
+                TransactionModel.date <  period_end,
+                TransactionModel.is_reimbursement == True,
+                TransactionModel.amount_cents > 0,
+            )
+            .all()
+        )
+
+        # Sum absolute spending per category (in cents), then subtract reimbursements
         spending: dict[str, int] = {}
         for t in expense_rows:
             spending[t.category] = spending.get(t.category, 0) + abs(t.amount_cents)
+        for t in reimbursement_rows:
+            spending[t.category] = max(0, spending.get(t.category, 0) - t.amount_cents)
+
+        scheduled = db_service.get_scheduled_pace_categories(user_id)
 
         result = []
         for budget in budgets:
@@ -76,6 +99,7 @@ class BudgetService:
                 'remaining_cents':      remaining_cents,
                 'rollover':             budget.rollover,
                 'over_budget':          remaining_cents < 0,
+                'scheduled_pace':       budget.category in scheduled,
             })
 
         result.sort(key=lambda x: x['category'])
@@ -85,9 +109,10 @@ class BudgetService:
 
     def create_budget(self, user_id, category, period, amount, rollover=False, carried_over=0.0):
         """
-        Create a budget allocation and immediately re-evaluate flags for the
-        category/period — existing spending may already exceed the new limit.
+        Create a budget allocation. (Over-budget flags are computed when transactions are read.)
+        Raises ValueError when the category can't have a budget (check_budgetable).
         """
+        self.check_budgetable(user_id, category)
         budget = BudgetModel(
             user_id=user_id,
             category=category,
@@ -97,50 +122,49 @@ class BudgetService:
             carried_over_cents=int(round(carried_over * 100)),
         )
         db.session.add(budget)
-        db.session.flush()
-        db_service._reevaluate_category_flags(user_id, category, period)
         db.session.commit()
         return budget
 
     def update_budget(self, budget_id, data):
         """
-        Apply field updates to a budget allocation and re-evaluate flags when
-        the threshold changes (amount, carried_over) or category is renamed.
-        Returns (updated_budget, error_message).
+        Apply field updates to a budget allocation.
+        Returns (updated_budget, error_message); raises ValueError when a new category can't have a
+        budget (check_budgetable).
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
             return None, 'Budget not found'
-
-        old_category = budget.category
-        needs_reevaluation = False
+        if 'category' in data and data['category'] != budget.category:
+            self.check_budgetable(budget.user_id, data['category'])
 
         if 'amount' in data:
             budget.amount = float(data['amount'])
-            needs_reevaluation = True
         if 'rollover' in data:
             budget.rollover = bool(data['rollover'])
         if 'carried_over' in data:
             budget.carried_over = float(data['carried_over'])
-            needs_reevaluation = True
         if 'category' in data:
             budget.category = data['category']
-            needs_reevaluation = True
-
-        if needs_reevaluation:
-            db.session.flush()
-            # If category was renamed, clear flags on the old name too
-            if budget.category != old_category:
-                db_service._reevaluate_category_flags(budget.user_id, old_category, budget.period)
-            db_service._reevaluate_category_flags(budget.user_id, budget.category, budget.period)
 
         db.session.commit()
         return budget, None
 
+    def check_budgetable(self, user_id, category):
+        """
+        A budget is for spending, and it comes off the income set on the Budgeting page: refuse a
+        category whose money in outweighs its money out, in dollars over all time, or none of whose
+        transactions count as spending (transfers, or on a loan account). A category never used is
+        fine. Raises ValueError with the reason.
+        """
+        totals = db_service.get_category_totals(int(user_id), category)
+        if totals['total'] and not totals['counted']:
+            raise ValueError(f"{category} can't have a budget: none of its transactions count as spending.")
+        if totals['money_in'] > totals['money_out']:
+            raise ValueError(f"{category} can't have a budget: it's mostly money coming in.")
+
     def delete_budget(self, budget_id):
         """
-        Remove a budget allocation and any future rollover copies of it, then
-        clear over_budget flags on transactions for every affected period.
+        Remove a budget allocation and any future rollover copies of it.
         """
         budget = db_service.get_budget(budget_id)
         if not budget:
@@ -160,31 +184,35 @@ class BudgetService:
         to_delete = [budget] + future_rollover
 
         for b in to_delete:
-            b_year, b_month = int(b.period[:4]), int(b.period[5:7])
-            b_next_year, b_next_month = (b_year + 1, 1) if b_month == 12 else (b_year, b_month + 1)
-            period_start = date(b_year,      b_month,      1)
-            period_end   = date(b_next_year, b_next_month, 1)
-
-            # SELECT ids first — .update() cannot be used with .join()
-            tx_ids = [
-                t.id for t in (
-                    TransactionModel.query
-                    .join(AccountModel, TransactionModel.account_id == AccountModel.id)
-                    .filter(
-                        AccountModel.user_id        == user_id,
-                        TransactionModel.category   == category,
-                        TransactionModel.date       >= period_start,
-                        TransactionModel.date       <  period_end,
-                    )
-                    .all()
-                )
-            ]
-            if tx_ids:
-                TransactionModel.query.filter(
-                    TransactionModel.id.in_(tx_ids)
-                ).update({'over_budget': False}, synchronize_session='fetch')
-
             db.session.delete(b)
 
         db.session.commit()
         return True
+
+    # SCHEDULED PACE ============================================================
+
+    def set_scheduled_pace(self, user_id, category, scheduled):
+        """
+        Pace a budget category by its recurring charges (scheduled=True) or evenly (False), in
+        every month. The category matches exactly, as its budgets name it, and the setting stays
+        when its budgets are deleted. Raises ValueError unless the category is text of 1 to 50
+        characters and `scheduled` is a boolean. Setting the pace a category already has changes
+        nothing.
+        """
+        if not isinstance(category, str):
+            raise ValueError("'category' must be text.")
+        if not category.strip():
+            raise ValueError("'category' can't be empty.")
+        limit = ScheduledPaceModel.category.type.length
+        if len(category) > limit:
+            raise ValueError(f"'category' must be at most {limit} characters.")
+        if not isinstance(scheduled, bool):
+            raise ValueError("'scheduled' must be true or false.")
+
+        user_id = int(user_id)   # the JWT identity is a string; the session's keys hold ints
+        setting = db_service.get_scheduled_pace(user_id, category)
+        if scheduled and setting is None:
+            db.session.add(ScheduledPaceModel(user_id=user_id, category=category))
+        elif not scheduled and setting is not None:
+            db.session.delete(setting)
+        db.session.commit()

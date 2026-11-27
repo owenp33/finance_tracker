@@ -3,10 +3,11 @@ import { fetchAPI } from './client';
 export const getAccounts = () =>
   fetchAPI('/api/accounts').then(d => d.accounts);
 
-export const createAccount = (accountId, accountName) =>
+// fields: account_id, account_name, kind ('bank' or 'loan') and, for a loan, apr (percent or null)
+export const createAccount = (fields) =>
   fetchAPI('/api/accounts', {
     method: 'POST',
-    body: JSON.stringify({ account_id: accountId, account_name: accountName }),
+    body: JSON.stringify(fields),
   }).then(d => d.account);
 
 export const updateAccount = (id, fields) =>
@@ -17,6 +18,3 @@ export const updateAccount = (id, fields) =>
 
 export const deleteAccount = (id) =>
   fetchAPI(`/api/accounts/${id}`, { method: 'DELETE' });
-
-export const getUpcoming = (accountId, days = 30) =>
-  fetchAPI(`/api/accounts/${accountId}/upcoming?days=${days}`).then(d => d.upcoming);

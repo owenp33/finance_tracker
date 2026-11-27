@@ -1,0 +1,282 @@
+/* transactions/GroupedTransactionList: an account's or a series' expanded list, grouped by
+   vendor, with select-all, bulk actions, sort and in-place edit. */
+
+/* An account's expanded list (a bank account's transfers, a loan's transactions), under its row */
+.account-transfers {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.account-transfers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  min-height: 28px;
+}
+
+.account-transfers-header .bulk-select-all {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.transfer-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transfer-bulk-bar select {
+  font-size: 0.82rem;
+  padding: 3px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.account-transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #444;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+
+.account-transfer-row.transfer-selected {
+  background: var(--accent-tint);
+}
+
+.transfer-checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.account-transfer-date {
+  color: #888;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.transfer-vendor-group + .transfer-vendor-group {
+  border-top: 1px solid #e0e0e0;
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.transfer-vendor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 2px;
+}
+
+.transfer-vendor-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.transfer-vendor-flows {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.transfer-rel-out {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.transfer-rel-in {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.account-transfer-amount {
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.account-transfer-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 90px;   /* expands for year-inclusive dates; peer column never shifts */
+}
+
+.transfer-row-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.account-transfer-row:hover .transfer-row-actions {
+  opacity: 1;
+}
+
+.account-transfer-row:hover .account-transfer-date {
+  opacity: 0;
+}
+
+.transfer-action-btn {
+  flex-shrink: 0;
+}
+
+.transfer-sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.transfer-sort-select {
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.transfer-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.transfer-edit-row input {
+  font-size: 0.82rem;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.transfer-edit-row input[type="text"],
+.transfer-edit-row input[type="number"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.transfer-edit-row input[type="date"] {
+  width: 130px;
+}
+
+/* Nothing selected: hidden, keeping its room so the header doesn't jump when it appears */
+.transfer-bulk-bar.idle {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Phone: select-all and the sort menu share the header's first line, both smaller, the label giving
+   way ("…") rather than wrapping; the bulk bar, gone while idle, takes a line of its own when shown.
+   And since a phone has no hover, a tap opens a row's actions on a line under it (the row's
+   transfer-open class, GroupedTransactionList), each with its word (.tx-action-label) */
+@media (max-width: 600px) {
+  .account-transfers-header {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .account-transfers-header .bulk-select-all {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 6px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .account-transfers-header .bulk-select-all span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .transfer-sort-controls {
+    flex-shrink: 0;
+  }
+
+  .transfer-sort-select {
+    font-size: 0.75rem;
+    padding: 3px 4px;
+  }
+
+  .transfer-bulk-bar {
+    order: 3;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .transfer-bulk-bar.idle {
+    display: none;
+  }
+
+  /* Each row one line: its checkbox, amount, its middle (a transfer's To / From and other account, or a
+     series' notes and chips) and date; the actions on a line of their own while the row is open. An
+     account's list leaves the year out of its dates to make the room (styles/accounts.css). */
+  .account-transfer-row {
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 4px;
+  }
+
+  .account-transfer-amount {
+    min-width: 62px;
+  }
+
+  /* the date and the actions become the row's own pieces */
+  .account-transfer-right {
+    display: contents;
+  }
+
+  .account-transfer-date {
+    margin-left: auto;
+  }
+
+  .account-transfer-row:hover .account-transfer-date {
+    opacity: 1;
+  }
+
+  .transfer-row-actions {
+    position: static;
+    transform: none;
+    display: none;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: 6px;
+    opacity: 1;
+  }
+
+  .account-transfer-row.transfer-open .transfer-row-actions {
+    display: flex;
+  }
+
+  .transfer-row-actions .icon-btn {
+    padding: 8px 12px;
+  }
+}

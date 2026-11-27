@@ -1,0 +1,181 @@
+/* The page itself: the reset, the chart palette, the spacing every view shares, the background, the
+   app's width, the loading screen, empty-state text and colour utilities.
+
+   Breakpoints, the same in every file (a media query can't read a variable):
+     phone  (max-width: 600px)    tablet (max-width: 900px)
+     big    (min-width: 1600px)   huge   (min-width: 2200px) */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Chart palette (Phase V). Orange means over budget or a warning, always with text. */
+:root {
+  --chart-blue: #2a78d6;
+  --chart-orange: #eb6834;
+  --chart-aqua: #1baf7a;
+}
+
+/* The app's colours: dark green for links, the active tab, focus rings and checkboxes (its hover shade,
+   its RGB alone for rgba() shadows, a lighter line, and a tint with its border for selected rows and
+   the add forms); black for the title, primary buttons and the selected sort and filter options, dark
+   grey for their hover; lime for the active nav button. */
+:root {
+  --accent: #166534;
+  --accent-hover: #14532d;
+  --accent-rgb: 22, 101, 52;
+  --accent-light: #4ade80;
+  --accent-tint: #f0fdf4;
+  --accent-tint-border: #bbf7d0;
+  --ink: #0b0f0c;
+  --ink-soft: #374151;
+  --lime: #a3e635;
+  --lime-light: #d9f99d;
+  --lime-rgb: 163, 230, 53;
+}
+
+/* Spacing every view shares: around the page, inside a view's white card, and the room the phone's
+   bottom nav (header.css) takes under the page */
+:root {
+  --page-gutter: 20px;
+  --card-pad: 30px;
+  --bottom-nav: 0px;
+}
+
+@media (max-width: 600px) {
+  :root {
+    --page-gutter: 10px;
+    --card-pad: 16px;
+    --bottom-nav: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0d0f12;
+  min-height: 100vh;
+  /* every checkbox and radio green, unless its rule says otherwise */
+  accent-color: var(--accent);
+}
+
+/* The page's background, two fixed layers behind everything, so they stay put as the page scrolls (iOS
+   ignores a fixed background on the body itself): dark green into graphite, still; over it a green glow
+   at the top left and two diagonal flashes of lime and white, drifting. The drifting layer is 40% larger
+   than the screen (its stops scaled to match, so at rest it sits as on a screen-sized layer) and moves by
+   transform alone, so it never shows an edge and the GPU moves it without repainting. --drift-duration
+   is one way (it goes back the same); it stays still for anyone who asks for reduced motion. */
+:root {
+  --drift-duration: 40s;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  inset: 0;
+  background: linear-gradient(160deg, #0c2a1b 0%, #13171c 62%, #0d0f12 100%);
+}
+
+body::after {
+  inset: -20%;
+  background:
+    linear-gradient(118deg, transparent 0 40%, rgba(190, 242, 100, 0.16) 42.14%, transparent 45%,
+      transparent 55%, rgba(255, 255, 255, 0.07) 56.79%, transparent 58.57%),
+    radial-gradient(50% 42.86% at 27.14% 14.29%, rgba(34, 197, 94, 0.26), transparent 62%);
+  animation: background-drift var(--drift-duration) ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes background-drift {
+  from { transform: translate(-3%, -2%) rotate(-2deg); }
+  to   { transform: translate(3%, 2%) rotate(2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    animation: none;
+  }
+}
+
+.App {
+  min-height: 100vh;
+  padding: var(--page-gutter);
+  padding-bottom: calc(var(--page-gutter) + var(--bottom-nav));
+}
+
+.App-main {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Big screens: the whole app larger, so a big monitor shows the laptop layout scaled up rather than a
+   narrow strip of small text. Zoom re-lays everything out at the larger size (text, spacing, icons,
+   charts), so it stays sharp, and Recharts maps the mouse to the right point under it. */
+@media (min-width: 1600px) {
+  .App-header,
+  .App-main,
+  .auth-container {
+    zoom: 1.25;
+  }
+}
+
+@media (min-width: 2200px) {
+  .App-header,
+  .App-main,
+  .auth-container {
+    zoom: 1.5;
+  }
+}
+
+/* Loading Screen */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: white;
+}
+
+.loading-screen h1 {
+  font-size: 3rem;
+  margin-bottom: 20px;
+}
+
+.no-data {
+  text-align: center;
+  color: #999;
+  padding: 40px;
+  font-size: 1.1rem;
+}
+
+/* Color utilities */
+.green {
+  color: #51cf66;
+}
+
+.red {
+  color: #ff6b6b;
+}
+
+.purple {
+  color: #7c3aed;
+}
+
+.positive { color: #00C49F; font-weight: 600; }
+
+.negative { color: #FF8042; font-weight: 600; }
+
+/* === Orange utility ======================================== */
+.orange { color: #e67700; }
