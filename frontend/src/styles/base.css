@@ -70,6 +70,7 @@ body {
      (a noise tile at 5%) so the dark fade shows no bands;
    - #root::before (the React root, so it sits between the other two): a soft green glow circling the top
      left, once every 1.7 × --drift-duration;
+   - .background-sky (below), the stars and emojis, a canvas at the start of the React root;
    - body::after: soft lime and white streaks, a repeating gradient that flows one way without end, moving
      one period (900px along its 115° line) every --drift-duration. The layer reaches one period past the
      screen up and to the left, so it always covers the screen as it moves.
@@ -135,6 +136,17 @@ body::after {
   #root::before {
     animation: none;
   }
+}
+
+/* The stars, shooting stars and money emojis (components/BackgroundSky draws them): over the glow, under
+   the streaks, behind every card */
+.background-sky {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .App {
